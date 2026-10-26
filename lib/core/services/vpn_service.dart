@@ -3,9 +3,20 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
+class TunnelSpeed {
+  const TunnelSpeed({required this.upBytesPerSec, required this.downBytesPerSec});
+
+  final int upBytesPerSec;
+  final int downBytesPerSec;
+}
+
 /// Contract for the future native tunnel (sing-box / VpnService / NE).
 /// UI talks only to this interface — swap [MockVpnService] for a real engine later.
 abstract class VpnService {
+  Stream<String> get statusStream => const Stream.empty();
+
+  Stream<TunnelSpeed> get trafficStream => const Stream<TunnelSpeed>.empty();
+
   Future<void> connect({
     required ServerLocation location,
     required ProSettings settings,
@@ -21,6 +32,12 @@ abstract class VpnService {
 
 /// Simulated tunnel until servers and libbox are integrated.
 class MockVpnService implements VpnService {
+  @override
+  Stream<String> get statusStream => const Stream.empty();
+
+  @override
+  Stream<TunnelSpeed> get trafficStream => const Stream<TunnelSpeed>.empty();
+
   @override
   Future<void> connect({
     required ServerLocation location,

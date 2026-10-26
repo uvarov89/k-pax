@@ -9,12 +9,13 @@ import 'package:pulse_vpn/core/models/split_tunnel.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 import 'package:pulse_vpn/core/services/tunnel_config.dart';
 import 'package:pulse_vpn/core/services/vpn_service.dart';
+import 'package:pulse_vpn/core/services/windows_singbox_vpn_service.dart';
 
-/// Android tunnel via sing-box. Other platforms keep [MockVpnService].
+/// Android and Windows use sing-box. Other platforms keep [MockVpnService].
 VpnService defaultVpnService() {
-  if (!kIsWeb && Platform.isAndroid) {
-    return SingboxVpnService();
-  }
+  if (kIsWeb) return MockVpnService();
+  if (Platform.isAndroid) return SingboxVpnService();
+  if (Platform.isWindows) return WindowsSingboxVpnService();
   return MockVpnService();
 }
 
@@ -22,6 +23,13 @@ class SingboxVpnService implements VpnService {
   SingboxVpnService({FlutterSingbox? singbox}) : _singbox = singbox ?? FlutterSingbox();
 
   final FlutterSingbox _singbox;
+
+  @override
+  Stream<String> get statusStream =>
+      _singbox.onStatusChanged.map((event) => '${event['status'] ?? ''}');
+
+  @override
+  Stream<TunnelSpeed> get trafficStream => const Stream<TunnelSpeed>.empty();
 
   @override
   Future<void> connect({

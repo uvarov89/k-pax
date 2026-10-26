@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:pulse_vpn/core/models/subscription.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
@@ -16,34 +17,23 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final _contact = TextEditingController();
-  final _entryKey = GlobalKey();
-  final _fieldFocus = FocusNode();
 
   @override
   void dispose() {
     _contact.dispose();
-    _fieldFocus.dispose();
     super.dispose();
-  }
-
-  void _focusEntry() {
-    final target = _entryKey.currentContext;
-    if (target != null) {
-      Scrollable.ensureVisible(target, alignment: 0.05, duration: const Duration(milliseconds: 250));
-    }
-    _fieldFocus.requestFocus();
   }
 
   Future<void> _openRestore(String channel) async {
     final uri = channel == 'email'
         ? Uri.parse(
-            'mailto:support@k-pax.space?subject=${Uri.encodeComponent('Восстановление доступа K-Pax')}&body=${Uri.encodeComponent('Прошу вернуть ссылку доступа.')}',
+            'mailto:access@k-pax.space?subject=${Uri.encodeComponent('Восстановление доступа K-Pax')}&body=${Uri.encodeComponent('Прошу вернуть ссылку доступа.')}',
           )
         : Uri.parse('https://t.me/KPax_Space_bot?start=restore');
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(channel == 'email' ? 'support@k-pax.space' : '@KPax_Space_bot')),
+        SnackBar(content: Text(channel == 'email' ? 'access@k-pax.space' : '@KPax_Space_bot')),
       );
     }
   }
@@ -94,7 +84,8 @@ class _AccountScreenState extends State<AccountScreen> {
         '${account.accessExpiresAt.day.toString().padLeft(2, '0')}.'
         '${account.accessExpiresAt.month.toString().padLeft(2, '0')}.'
         '${account.accessExpiresAt.year}';
-    final showId = account.userId.isNotEmpty && !account.userId.startsWith('u_');
+    final kpax = controller.isKPaxSubscription;
+    final showId = kpax && account.userId.isNotEmpty && !account.userId.startsWith('u_');
     final restoring = controller.restoreChannel;
 
     return NordBackground(
@@ -108,10 +99,9 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
             _Card(
-              key: _entryKey,
                 surface: surface,
                 border: border,
                 child: Column(
@@ -121,12 +111,11 @@ class _AccountScreenState extends State<AccountScreen> {
                       s.pasteLinkTitle,
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 8),
-                    Text(s.pasteLinkBody, style: TextStyle(color: muted, height: 1.35)),
+                    const SizedBox(height: 12),
+                    Text(s.pasteLinkBody, style: TextStyle(color: muted, height: 1.6)),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _contact,
-                      focusNode: _fieldFocus,
                       keyboardType: TextInputType.text,
                       autocorrect: false,
                       enableSuggestions: false,
@@ -172,6 +161,14 @@ class _AccountScreenState extends State<AccountScreen> {
                   ],
                 ),
               ),
+            if (controller.subscriptions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _Card(
+                surface: surface,
+                border: border,
+                child: _SubscriptionList(controller: controller, muted: muted),
+              ),
+            ],
             const SizedBox(height: 12),
             _Card(
               surface: surface,
@@ -180,7 +177,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    account.hasAccess ? s.planName : s.noAccessYet,
+                    account.hasAccess ? controller.subscriptionName : s.noAccessYet,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -202,46 +199,124 @@ class _AccountScreenState extends State<AccountScreen> {
                           accent: true,
                         ),
                         _Chip(
-                          label: s.daysLeft(account.daysRemaining),
+                          label: controller.hasExpiry
+                              ? s.daysLeft(account.daysRemaining)
+                              : s.noExpiry,
                           accent: false,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      s.activeUntil(date),
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
+                    if (controller.hasExpiry) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        s.activeUntil(date),
+                        style: TextStyle(color: muted, fontSize: 13),
+                      ),
+                    ],
                   ],
                 ],
               ),
             ),
+            if (kpax && RegExp(r'^KP-\d{5,8}$').hasMatch(account.userId)) ...[
+              const SizedBox(height: 12),
+              _Card(
+                surface: surface,
+                border: border,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      s.referralTitle,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(s.referralBody, style: TextStyle(color: muted, height: 1.45)),
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      s.inviteLink(account.userId),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: s.inviteLink(account.userId)),
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(s.linkCopied)),
+                          );
+                        },
+                        child: Text(s.copyLink),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             _Card(
               surface: surface,
               border: border,
               child: Column(
                 children: [
+                  if (kpax || controller.needsLink) ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.manageSubscription),
+                      subtitle: Text(s.seePlans, style: TextStyle(color: muted)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => openPaywall(context),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.devices),
+                      subtitle:
+                          Text(s.devicesStub, style: TextStyle(color: muted)),
+                    ),
+                    const Divider(height: 1),
+                  ] else if (controller.providerWebPage != null) ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.providerSite),
+                      subtitle: Text(s.providerSiteHint, style: TextStyle(color: muted)),
+                      trailing: Icon(Icons.open_in_new, color: muted, size: 20),
+                      onTap: () => launchUrl(
+                        controller.providerWebPage!,
+                        mode: LaunchMode.externalApplication,
+                      ),
+                    ),
+                    const Divider(height: 1),
+                  ],
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(s.manageSubscription),
-                    subtitle: Text(s.seePlans, style: TextStyle(color: muted)),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => openPaywall(context),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(s.devices),
-                    subtitle:
-                        Text(s.devicesStub, style: TextStyle(color: muted)),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(s.replaceLink),
-                    trailing: Icon(Icons.chevron_right, color: muted),
-                    onTap: _focusEntry,
+                    title: Text(s.refreshServers),
+                    subtitle: Text(s.refreshServersHint, style: TextStyle(color: muted)),
+                    trailing: controller.isRefreshingServers
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(Icons.refresh, color: muted),
+                    onTap: controller.isRefreshingServers
+                        ? null
+                        : () async {
+                            await controller.refreshServers();
+                            if (!context.mounted) return;
+                            final message = controller.linkError ?? s.serversUpdated;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(message)),
+                            );
+                          },
                   ),
                 ],
               ),
@@ -253,9 +328,79 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 }
 
+class _SubscriptionList extends StatelessWidget {
+  const _SubscriptionList({required this.controller, required this.muted});
+
+  final VpnController controller;
+  final Color muted;
+
+  Future<void> _confirmRemove(BuildContext context, SavedSubscription item) async {
+    final s = controller.strings;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(s.removeSubscription),
+        content: Text(s.removeSubscriptionBody(controller.subscriptionLabel(item))),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(s.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(s.remove),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await controller.removeSubscription(item.url);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = controller.strings;
+    final busy = controller.isBusy || controller.linkState == SubscriptionLinkState.loading;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          s.mySubscriptions,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        Text(s.mySubscriptionsHint, style: TextStyle(color: muted, height: 1.45)),
+        const SizedBox(height: 8),
+        for (final item in controller.subscriptions)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              item.url == controller.subscriptionUrl
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: item.url == controller.subscriptionUrl ? NordColors.accent : muted,
+            ),
+            title: Text(
+              controller.subscriptionLabel(item),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: item.url == controller.subscriptionUrl
+                ? Text(s.activeSubscription, style: TextStyle(color: muted, fontSize: 13))
+                : null,
+            trailing: IconButton(
+              tooltip: s.removeSubscription,
+              icon: Icon(Icons.delete_outline, color: muted),
+              onPressed: busy ? null : () => _confirmRemove(context, item),
+            ),
+            onTap: busy ? null : () => controller.switchSubscription(item.url),
+          ),
+      ],
+    );
+  }
+}
+
 class _Card extends StatelessWidget {
   const _Card({
-    super.key,
     required this.surface,
     required this.border,
     required this.child,
@@ -269,7 +414,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: surface,
         borderRadius: BorderRadius.circular(16),

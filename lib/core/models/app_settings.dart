@@ -51,6 +51,7 @@ class AppSettings {
     this.theme = AppThemePreference.dark,
     this.notificationsEnabled = true,
     this.autoConnectOnLaunch = false,
+    this.launchAtLogin = false,
     this.autoConnectOnWifi = false,
     this.autoConnectOnMobile = false,
     this.rememberLastCountry = true,
@@ -62,6 +63,7 @@ class AppSettings {
   final AppThemePreference theme;
   final bool notificationsEnabled;
   final bool autoConnectOnLaunch;
+  final bool launchAtLogin;
   final bool autoConnectOnWifi;
   final bool autoConnectOnMobile;
   final bool rememberLastCountry;
@@ -73,6 +75,7 @@ class AppSettings {
     AppThemePreference? theme,
     bool? notificationsEnabled,
     bool? autoConnectOnLaunch,
+    bool? launchAtLogin,
     bool? autoConnectOnWifi,
     bool? autoConnectOnMobile,
     bool? rememberLastCountry,
@@ -84,6 +87,7 @@ class AppSettings {
       theme: theme ?? this.theme,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       autoConnectOnLaunch: autoConnectOnLaunch ?? this.autoConnectOnLaunch,
+      launchAtLogin: launchAtLogin ?? this.launchAtLogin,
       autoConnectOnWifi: autoConnectOnWifi ?? this.autoConnectOnWifi,
       autoConnectOnMobile: autoConnectOnMobile ?? this.autoConnectOnMobile,
       rememberLastCountry: rememberLastCountry ?? this.rememberLastCountry,

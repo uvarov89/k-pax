@@ -13,6 +13,7 @@ class ConnectButton extends StatelessWidget {
     required this.connectingLabel,
     required this.disconnectingLabel,
     required this.retryLabel,
+    this.diameter = 188,
   });
 
   final VpnConnectionState state;
@@ -22,6 +23,7 @@ class ConnectButton extends StatelessWidget {
   final String connectingLabel;
   final String disconnectingLabel;
   final String retryLabel;
+  final double diameter;
 
   @override
   Widget build(BuildContext context) {
@@ -75,8 +77,8 @@ class ConnectButton extends StatelessWidget {
         onTap: busy ? null : onPressed,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 280),
-          width: 196,
-          height: 196,
+          width: diameter,
+          height: diameter,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: fillColor,
@@ -101,14 +103,25 @@ class ConnectButton extends StatelessWidget {
                       color: ringColor,
                     ),
                   )
-                : Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: connected ? Colors.white : labelColor,
-                      letterSpacing: 0.2,
-                    ),
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.power_settings_new_rounded,
+                        size: 40,
+                        color: connected ? Colors.white : ringColor,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: connected ? Colors.white : labelColor,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
                   ),
           ),
         ),

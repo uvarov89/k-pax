@@ -27,12 +27,12 @@ class LegalScreen extends StatelessWidget {
           ),
         ),
         body: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           itemCount: paragraphs.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 14),
+          separatorBuilder: (_, _) => const SizedBox(height: 16),
           itemBuilder: (context, index) => Text(
             paragraphs[index],
-            style: TextStyle(color: muted, height: 1.4, fontSize: 15),
+            style: TextStyle(color: muted, height: 1.6, fontSize: 15),
           ),
         ),
       ),

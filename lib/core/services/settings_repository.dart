@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pulse_vpn/core/models/app_settings.dart';
@@ -10,6 +12,7 @@ class SettingsRepository {
   static const _kTheme = 'theme';
   static const _kNotifications = 'notifications';
   static const _kAutoLaunch = 'auto_connect_launch';
+  static const _kLaunchAtLogin = 'launch_at_login';
   static const _kAutoWifi = 'auto_connect_wifi';
   static const _kAutoMobile = 'auto_connect_mobile';
   static const _kRememberCountry = 'remember_last_country';
@@ -34,6 +37,7 @@ class SettingsRepository {
   static const _kFriendsConverted = 'friends_converted';
   static const _kDisplayName = 'display_name';
   static const _kSubscriptionUrl = 'subscription_url';
+  static const _kSubscriptions = 'subscriptions';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -53,6 +57,7 @@ class SettingsRepository {
           : AppThemePreference.dark,
       notificationsEnabled: p.getBool(_kNotifications) ?? true,
       autoConnectOnLaunch: p.getBool(_kAutoLaunch) ?? false,
+      launchAtLogin: p.getBool(_kLaunchAtLogin) ?? false,
       autoConnectOnWifi: p.getBool(_kAutoWifi) ?? false,
       autoConnectOnMobile: p.getBool(_kAutoMobile) ?? false,
       rememberLastCountry: p.getBool(_kRememberCountry) ?? true,
@@ -70,6 +75,7 @@ class SettingsRepository {
     );
     await p.setBool(_kNotifications, settings.notificationsEnabled);
     await p.setBool(_kAutoLaunch, settings.autoConnectOnLaunch);
+    await p.setBool(_kLaunchAtLogin, settings.launchAtLogin);
     await p.setBool(_kAutoWifi, settings.autoConnectOnWifi);
     await p.setBool(_kAutoMobile, settings.autoConnectOnMobile);
     await p.setBool(_kRememberCountry, settings.rememberLastCountry);
@@ -91,7 +97,7 @@ class SettingsRepository {
         BypassMode.auto,
       ),
       dnsAutomatic: p.getBool(_kDns) ?? true,
-      killSwitch: p.getBool(_kKillSwitch) ?? false,
+      killSwitch: p.getBool(_kKillSwitch) ?? true,
       ipv6Mode: _enumAt(Ipv6Mode.values, p.getInt(_kIpv6), Ipv6Mode.enabled),
       protocolFallback: p.getBool(_kFallback) ?? true,
       reconnectPolicy: _enumAt(
@@ -169,6 +175,34 @@ class SettingsRepository {
   Future<void> saveSubscriptionUrl(String url) async {
     final p = await _prefs;
     await p.setString(_kSubscriptionUrl, url);
+  }
+
+  /// Saved links; the single link of older versions becomes the first entry.
+  Future<List<SavedSubscription>> loadSubscriptions() async {
+    final p = await _prefs;
+    final raw = p.getString(_kSubscriptions);
+    final list = <SavedSubscription>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          for (final item in decoded) {
+            final saved = SavedSubscription.fromJson(item);
+            if (saved != null && list.every((other) => other.url != saved.url)) list.add(saved);
+          }
+        }
+      } catch (_) {}
+    }
+    final active = p.getString(_kSubscriptionUrl) ?? '';
+    if (active.isNotEmpty && list.every((item) => item.url != active)) {
+      list.insert(0, SavedSubscription(url: active));
+    }
+    return list;
+  }
+
+  Future<void> saveSubscriptions(List<SavedSubscription> list) async {
+    final p = await _prefs;
+    await p.setString(_kSubscriptions, jsonEncode([for (final item in list) item.toJson()]));
   }
 
   Future<({AppUserMode mode, LocationMode locationMode, String locationId})>

@@ -44,7 +44,7 @@ class CountryPickerScreen extends StatelessWidget {
           children: [
             Expanded(
               child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 itemCount: controller.locations.length,
                 separatorBuilder: (context, index) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
@@ -131,7 +131,7 @@ class CountryPickerScreen extends StatelessWidget {
               top: false,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
                 decoration: BoxDecoration(
                   color: barBg.withValues(alpha: 0.92),
                   border: Border(top: BorderSide(color: border)),

@@ -12,23 +12,26 @@ enum AppUserMode { simple, pro }
 
 enum LocationMode { auto, country }
 
-enum TunnelProtocol { auto, vlessReality, hysteria2 }
+enum TunnelProtocol { auto, vlessReality, hysteria2, grpc, tuic, message }
 
 enum BypassMode { auto, tcpOnly, udpPrefer }
 
 extension TunnelProtocolLabel on TunnelProtocol {
   String get labelRu => switch (this) {
-        TunnelProtocol.auto => 'Auto',
-        TunnelProtocol.vlessReality => 'VLESS+REALITY',
+        TunnelProtocol.auto => 'Авто',
+        TunnelProtocol.vlessReality => 'VLESS',
         TunnelProtocol.hysteria2 => 'Hysteria2',
+        TunnelProtocol.grpc => 'Запасной',
+        TunnelProtocol.tuic => 'TUIC',
+        TunnelProtocol.message => 'Сообщения',
       };
 }
 
 extension BypassModeLabel on BypassMode {
   String get labelRu => switch (this) {
-        BypassMode.auto => 'Auto',
-        BypassMode.tcpOnly => 'TCP only',
-        BypassMode.udpPrefer => 'UDP prefer',
+        BypassMode.auto => 'Авто',
+        BypassMode.tcpOnly => 'Только TCP',
+        BypassMode.udpPrefer => 'Сначала UDP',
       };
 }
 
@@ -37,7 +40,7 @@ class ProSettings {
     this.protocol = TunnelProtocol.auto,
     this.bypassMode = BypassMode.auto,
     this.dnsAutomatic = true,
-    this.killSwitch = false,
+    this.killSwitch = true,
     this.ipv6Mode = Ipv6Mode.enabled,
     this.protocolFallback = true,
     this.reconnectPolicy = ReconnectPolicy.normal,

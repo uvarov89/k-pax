@@ -1,5 +1,24 @@
 enum SubscriptionPlan { trial, basic, pro, expired }
 
+/// A subscription link saved in the app. [name] comes from the provider.
+class SavedSubscription {
+  const SavedSubscription({required this.url, this.name = ''});
+
+  final String url;
+  final String name;
+
+  SavedSubscription named(String value) => SavedSubscription(url: url, name: value);
+
+  Map<String, String> toJson() => {'url': url, 'name': name};
+
+  static SavedSubscription? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final url = raw['url']?.toString() ?? '';
+    if (url.isEmpty) return null;
+    return SavedSubscription(url: url, name: raw['name']?.toString() ?? '');
+  }
+}
+
 extension SubscriptionPlanX on SubscriptionPlan {
   bool get hasAccess => this != SubscriptionPlan.expired;
 

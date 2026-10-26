@@ -57,6 +57,9 @@ app.*.map.json
 # Subscription QR images
 /assets/pulse-test-*.png
 
+# sing-box Windows binary, downloaded at build time
+/third_party/sing-box/
+
 # Plugin and native build output
 **/build/
 **/.gradle/

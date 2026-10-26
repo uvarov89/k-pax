@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -22,6 +25,7 @@ class ProSettingsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final android = !kIsWeb && Platform.isAndroid;
     final controller = context.watch<VpnController>();
     final settings = controller.proSettings;
     final s = controller.strings;
@@ -130,7 +134,7 @@ class ProSettingsSheet extends StatelessWidget {
                 _SegmentedChoices<TunnelProtocol>(
                   values: TunnelProtocol.values,
                   selected: settings.protocol,
-                  labelOf: (v) => v.labelRu,
+                  labelOf: s.protocolLabel,
                   onChanged: (v) => controller.updateProSettings(
                     settings.copyWith(protocol: v),
                   ),
@@ -141,15 +145,20 @@ class ProSettingsSheet extends StatelessWidget {
                 _SegmentedChoices<BypassMode>(
                   values: BypassMode.values,
                   selected: settings.bypassMode,
-                  labelOf: (v) => v.labelRu,
+                  labelOf: s.bypassLabel,
                   onChanged: (v) => controller.updateProSettings(
                     settings.copyWith(bypassMode: v),
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  s.bypassHint(settings.bypassMode),
+                  style: TextStyle(color: muted, fontSize: 13, height: 1.4),
+                ),
                 const SizedBox(height: 12),
                 _SettingsTile(
                   title: s.dns,
-                  subtitle: s.dnsAutomatic,
+                  subtitle: settings.dnsAutomatic ? s.dnsThroughTunnel : s.dnsComputer,
                   trailing: Switch(
                     value: settings.dnsAutomatic,
                     onChanged: (v) => controller.updateProSettings(
@@ -157,19 +166,20 @@ class ProSettingsSheet extends StatelessWidget {
                     ),
                   ),
                 ),
-                _SettingsTile(
-                  title: s.splitTunneling,
-                  subtitle: s.splitSoon,
-                  trailing: Icon(Icons.chevron_right, color: muted),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const SplitTunnelScreen(),
-                      ),
-                    );
-                  },
-                ),
+                if (android)
+                  _SettingsTile(
+                    title: s.splitTunneling,
+                    subtitle: s.splitSoon,
+                    trailing: Icon(Icons.chevron_right, color: muted),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SplitTunnelScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 _SettingsTile(
                   title: s.killSwitch,
                   subtitle: s.killSwitchHint,
@@ -233,27 +243,30 @@ class ProSettingsSheet extends StatelessWidget {
                 ),
                 if (controller.lastProbeResults != null) ...[
                   const SizedBox(height: 12),
-                  ...controller.lastProbeResults!.entries.map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          Text(
-                            e.key.toUpperCase(),
-                            style: TextStyle(color: secondary),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${e.value} ms',
-                            style: const TextStyle(
-                              color: NordColors.accent,
-                              fontWeight: FontWeight.w600,
+                  if (controller.lastProbeResults!.isEmpty)
+                    Text(
+                      s.probeEmpty,
+                      style: TextStyle(color: muted, fontSize: 13, height: 1.4),
+                    )
+                  else
+                    ...controller.lastProbeResults!.entries.map(
+                      (e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Text(e.key, style: TextStyle(color: secondary)),
+                            const Spacer(),
+                            Text(
+                              e.value < 0 ? s.probeNoAnswer : '${e.value} ms',
+                              style: TextStyle(
+                                color: e.value < 0 ? muted : NordColors.accent,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ],
             ),

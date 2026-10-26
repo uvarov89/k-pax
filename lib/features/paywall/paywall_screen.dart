@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -32,23 +33,21 @@ class PaywallScreen extends StatelessWidget {
           ),
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           children: [
-            ClipOval(
-              child: Image.asset(
-                'assets/brand/logo.png',
-                width: 88,
-                height: 88,
-                fit: BoxFit.cover,
-              ),
+            Image.asset(
+              'assets/brand/logo.png',
+              width: 96,
+              height: 96,
+              fit: BoxFit.contain,
             ),
             const SizedBox(height: 16),
             Text(
               title,
               style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
-            Text(s.paywallSubtitle, style: TextStyle(color: secondary, height: 1.35)),
+            const SizedBox(height: 12),
+            Text(s.paywallSubtitle, style: TextStyle(color: secondary, height: 1.6)),
             if (account.hasAccess) ...[
               const SizedBox(height: 12),
               Text(
@@ -74,10 +73,10 @@ class PaywallScreen extends StatelessWidget {
                     s.planName,
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Text(
                     s.paywallSubtitle,
-                    style: const TextStyle(height: 1.35),
+                    style: const TextStyle(height: 1.6),
                   ),
                 ],
               ),
@@ -86,7 +85,18 @@ class PaywallScreen extends StatelessWidget {
             Text(
               s.paymentStubNote,
               textAlign: TextAlign.center,
-              style: TextStyle(color: muted, fontSize: 12),
+              style: TextStyle(color: muted, height: 1.45, fontSize: 14),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://k-pax.space/pay'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Text(s.buyOnSite),
+              ),
             ),
           ],
         ),

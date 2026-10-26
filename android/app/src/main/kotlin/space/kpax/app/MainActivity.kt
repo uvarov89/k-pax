@@ -1,4 +1,4 @@
-package com.pulse.pulse_vpn
+package space.kpax.app
 
 import io.flutter.embedding.android.FlutterActivity
 

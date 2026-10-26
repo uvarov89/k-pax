@@ -67,10 +67,8 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final selectedBg =
-        isDark ? NordColors.surfaceElevated : NordColors.lightSurfaceElevated;
-    final selectedFg =
-        isDark ? NordColors.textPrimary : NordColors.lightTextPrimary;
+    final selectedBg = NordColors.accent;
+    final selectedFg = Colors.white;
     final idleFg =
         isDark ? NordColors.textSecondary : NordColors.lightTextSecondary;
 
@@ -89,6 +87,8 @@ class _Chip extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               color: selected ? selectedFg : idleFg,

@@ -52,12 +52,7 @@ abstract final class NordSignalTheme {
       switchTheme: _switchTheme(dark: true),
     );
 
-    return base.copyWith(
-      textTheme: base.textTheme.apply(
-        bodyColor: NordColors.textPrimary,
-        displayColor: NordColors.textPrimary,
-      ),
-    );
+    return base.copyWith(textTheme: _readableText(base.textTheme, NordColors.textPrimary));
   }
 
   static ThemeData get light {
@@ -83,16 +78,20 @@ abstract final class NordSignalTheme {
       switchTheme: _switchTheme(dark: false),
     );
 
-    return base.copyWith(
-      textTheme: base.textTheme.apply(
-        bodyColor: NordColors.lightTextPrimary,
-        displayColor: NordColors.lightTextPrimary,
-      ),
-    );
+    return base.copyWith(textTheme: _readableText(base.textTheme, NordColors.lightTextPrimary));
   }
 
   static ThemeData forPreference(AppThemePreference preference) {
     return preference == AppThemePreference.light ? light : dark;
+  }
+
+  static TextTheme _readableText(TextTheme theme, Color color) {
+    final applied = theme.apply(bodyColor: color, displayColor: color);
+    return applied.copyWith(
+      bodyLarge: applied.bodyLarge?.copyWith(height: 1.55),
+      bodyMedium: applied.bodyMedium?.copyWith(height: 1.55),
+      bodySmall: applied.bodySmall?.copyWith(height: 1.5),
+    );
   }
 
   static SwitchThemeData _switchTheme({required bool dark}) {

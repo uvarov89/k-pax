@@ -1,0 +1,13 @@
+---
+description: Keep third_party and build artifacts out of default exploration
+globs: third_party/**,build/**,.dart_tool/**
+alwaysApply: false
+---
+
+# Vendored / build trees
+
+These paths are huge and rarely the task surface.
+
+- Do not explore or summarize this tree unless the user named a file here or a bug clearly originates in a vendored plugin.
+- Prefer the wrapper/API used from `lib/` over editing forks under `third_party/`.
+- Never bulk-read generated `build/` output.

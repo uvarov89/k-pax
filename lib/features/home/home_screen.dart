@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
-import 'package:pulse_vpn/features/settings/windows_update_prompt.dart';
+import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/features/connection/widgets/connect_button.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
+import 'package:pulse_vpn/features/home/onboarding_screen.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/settings/settings_screen.dart';
 
@@ -18,12 +22,43 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  VpnController? _bound;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      checkForWindowsUpdate(context, manual: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await OnboardingScreen.showIfNeeded(context);
+      if (!mounted) return;
+      checkForAppUpdate(context, manual: false);
+      final controller = context.read<VpnController>();
+      _bound = controller;
+      controller.addListener(_onControllerFlash);
+      _onControllerFlash();
     });
+  }
+
+  @override
+  void dispose() {
+    _bound?.removeListener(_onControllerFlash);
+    super.dispose();
+  }
+
+  void _onControllerFlash() {
+    final controller = _bound;
+    if (controller == null || !mounted) return;
+    final flash = controller.takeUiFlash();
+    if (flash == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(flash.message)),
+    );
+    if (flash.openAccount) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_openProfile());
+      });
+    }
   }
 
   Future<void> _openProfile() {
@@ -118,7 +153,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 Expanded(
-                  child: controller.linkState == SubscriptionLinkState.loading
+                  child: controller.linkState == SubscriptionLinkState.loading &&
+                          !controller.isLoginWaiting &&
+                          controller.profile == null
                       ? const Center(child: CircularProgressIndicator())
                       : CustomScrollView(
                           slivers: [
@@ -127,7 +164,30 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 children: [
                                   const SizedBox(height: 20),
-                                  if (controller.needsLink)
+                                  if (controller.isLoginWaiting)
+                                    _SubscriptionBanner(
+                                      text: controller.loginChannel == 'telegram'
+                                          ? s.waitingTelegramConfirm
+                                          : s.waitingEmailConfirm,
+                                      actionLabel: controller.loginChannel == 'telegram' &&
+                                              (controller.loginBotUrl ?? '').isNotEmpty
+                                          ? s.openBotConfirm
+                                          : s.account,
+                                      onAction: () async {
+                                        final bot = controller.loginBotUrl;
+                                        if (controller.loginChannel == 'telegram' &&
+                                            bot != null &&
+                                            bot.isNotEmpty) {
+                                          await launchUrl(
+                                            Uri.parse(bot),
+                                            mode: LaunchMode.externalApplication,
+                                          );
+                                          return;
+                                        }
+                                        await _openProfile();
+                                      },
+                                    )
+                                  else if (controller.needsLink)
                                     _SubscriptionBanner(
                                       text: s.openProfileForAccess,
                                       actionLabel: s.account,
@@ -146,6 +206,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                       actionLabel: s.account,
                                       danger: true,
                                       onAction: _openProfile,
+                                    )
+                                  else if (controller.showRefreshSubscriptionNotice)
+                                    _SubscriptionBanner(
+                                      text: s.refreshSubscriptionNotice,
+                                      actionLabel: controller.isRefreshingServers
+                                          ? '…'
+                                          : s.refreshSubscriptionAction,
+                                      onAction: controller.isRefreshingServers
+                                          ? () {}
+                                          : () => controller.refreshSubscriptionFromNotice(),
+                                      onDismiss: () =>
+                                          controller.dismissRefreshSubscriptionNotice(),
+                                      dismissLabel: s.dismissNotice,
                                     ),
                                   const Spacer(),
                                   Text(
@@ -161,6 +234,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                   if (controller.isConnected) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      s.connectedTagline,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.8,
+                                        color: NordColors.accent.withValues(alpha: 0.9),
+                                      ),
+                                    ),
                                     const SizedBox(height: 6),
                                     Text(
                                       controller.sessionLabel,
@@ -198,14 +282,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                   const Spacer(),
-                                  _ServerRow(
-                                    title: s.location,
-                                    value: controller.selectedLocation.isAuto
-                                        ? s.auto
-                                        : controller.selectedLocation.nameRu,
-                                    hint: controller.selectedLocation.isAuto
-                                        ? s.bestServerAuto
-                                        : null,
+                                  KpaxCard(
+                                    glow: controller.isConnected,
                                     onTap: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute<void>(
@@ -213,6 +291,42 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ),
                                       );
                                     },
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                s.location,
+                                                style: TextStyle(color: muted, fontSize: 13),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                controller.selectedLocation.isAuto
+                                                    ? s.auto
+                                                    : controller.selectedLocation.nameRu,
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              if (controller.selectedLocation.isAuto) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  s.bestServerAuto,
+                                                  style: TextStyle(color: muted, fontSize: 13),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.chevron_right_rounded,
+                                          color: muted,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -273,73 +387,22 @@ class _PlanBadge extends StatelessWidget {
   }
 }
 
-class _ServerRow extends StatelessWidget {
-  const _ServerRow({
-    required this.title,
-    required this.value,
-    required this.onTap,
-    this.hint,
-  });
-
-  final String title;
-  final String value;
-  final String? hint;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final muted = isDark ? NordColors.textMuted : NordColors.lightTextMuted;
-    return Material(
-      color: (isDark ? NordColors.surface : NordColors.lightSurface).withValues(alpha: 0.92),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isDark ? NordColors.border : NordColors.lightBorder),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: TextStyle(color: muted, fontSize: 13)),
-                    const SizedBox(height: 2),
-                    Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                    if (hint != null) ...[
-                      const SizedBox(height: 2),
-                      Text(hint!, style: TextStyle(color: muted, fontSize: 13)),
-                    ],
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: muted),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SubscriptionBanner extends StatelessWidget {
   const _SubscriptionBanner({
     required this.text,
     required this.actionLabel,
     required this.onAction,
     this.danger = false,
+    this.onDismiss,
+    this.dismissLabel,
   });
 
   final String text;
   final String actionLabel;
   final VoidCallback onAction;
   final bool danger;
+  final VoidCallback? onDismiss;
+  final String? dismissLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -348,11 +411,13 @@ class _SubscriptionBanner extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: danger
-            ? const Color(0xFF7F1D1D).withValues(alpha: 0.45)
-            : NordColors.surface.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(12),
+            ? NordColors.danger.withValues(alpha: 0.16)
+            : NordColors.cyan.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: danger ? const Color(0xFFEF4444) : NordColors.border,
+          color: danger
+              ? NordColors.danger.withValues(alpha: 0.55)
+              : NordColors.cyan.withValues(alpha: 0.35),
         ),
       ),
       child: Row(
@@ -365,8 +430,17 @@ class _SubscriptionBanner extends StatelessWidget {
           ),
           TextButton(
             onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: danger ? NordColors.danger : NordColors.cyan,
+            ),
             child: Text(actionLabel),
           ),
+          if (onDismiss != null)
+            TextButton(
+              onPressed: onDismiss,
+              style: TextButton.styleFrom(foregroundColor: NordColors.textMuted),
+              child: Text(dismissLabel ?? 'OK'),
+            ),
         ],
       ),
     );

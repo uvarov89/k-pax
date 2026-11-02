@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -16,6 +17,8 @@ class WindowsSingboxVpnService implements VpnService {
   final StreamController<String> _status = StreamController<String>.broadcast();
   final StreamController<TunnelSpeed> _traffic = StreamController<TunnelSpeed>.broadcast();
   String _current = 'Stopped';
+  String? _clashSecret;
+  File? _activeConfig;
 
   @override
   Stream<String> get statusStream => _status.stream;
@@ -34,10 +37,26 @@ class WindowsSingboxVpnService implements VpnService {
 
   File get _pidFile => File('${_stateDir.path}\\sing-box.pid');
 
+  String _newClashSecret() {
+    final rand = Random.secure();
+    final bytes = List<int>.generate(24, (_) => rand.nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
   void _set(String value) {
     if (_current == value) return;
     _current = value;
     if (!_status.isClosed) _status.add(value);
+  }
+
+  Future<void> _wipeConfigFile(File? file) async {
+    if (file == null) return;
+    try {
+      if (await file.exists()) {
+        await file.writeAsString('{}');
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   @override
@@ -53,9 +72,19 @@ class WindowsSingboxVpnService implements VpnService {
     await disconnect();
     final dir = _stateDir;
     await dir.create(recursive: true);
-    final config = File('${dir.path}\\config.json');
+    // Prefer wiping leftover plaintext configs from older builds.
+    await _wipeConfigFile(File('${dir.path}\\config.json'));
+    _clashSecret = _newClashSecret();
+    final config = File('${dir.path}\\config-${_clashSecret!.substring(0, 8)}.json');
+    _activeConfig = config;
     await config.writeAsString(
-      buildTunnelConfig(node, settings, appSettings: appSettings, enableStats: true),
+      buildTunnelConfig(
+        node,
+        settings,
+        appSettings: appSettings,
+        enableStats: true,
+        clashSecret: _clashSecret,
+      ),
     );
     _set('Starting');
     final process = await Process.start(
@@ -81,6 +110,9 @@ class WindowsSingboxVpnService implements VpnService {
       if (!exited.isCompleted) exited.complete(code);
       if (identical(_process, process)) {
         _process = null;
+        unawaited(_wipeConfigFile(_activeConfig));
+        _activeConfig = null;
+        _clashSecret = null;
         _set('Stopped');
       }
     });
@@ -91,6 +123,9 @@ class WindowsSingboxVpnService implements VpnService {
     if (!identical(_process, process)) return;
     if (code != null) {
       _process = null;
+      await _wipeConfigFile(_activeConfig);
+      _activeConfig = null;
+      _clashSecret = null;
       _set('Stopped');
       await stderrDone.future.timeout(
         const Duration(milliseconds: 400),
@@ -106,13 +141,15 @@ class WindowsSingboxVpnService implements VpnService {
   Future<void> _pumpTraffic() async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (_process == null) return;
+    final secret = _clashSecret;
+    if (secret == null || secret.isEmpty) return;
     final client = HttpClient();
     _trafficClient = client;
     try {
       final request = await client.getUrl(
         Uri.parse('http://127.0.0.1:$kClashPort/traffic'),
       );
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $kClashSecret');
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $secret');
       final response = await request.close();
       var buffer = '';
       await for (final chunk in response.transform(utf8.decoder)) {
@@ -155,6 +192,11 @@ class WindowsSingboxVpnService implements VpnService {
       } catch (_) {}
     }
     await _stopRecordedProcess();
+    await _wipeConfigFile(_activeConfig);
+    _activeConfig = null;
+    _clashSecret = null;
+    // Legacy fixed path from older builds.
+    await _wipeConfigFile(File('${_stateDir.path}\\config.json'));
     _set('Stopped');
   }
 

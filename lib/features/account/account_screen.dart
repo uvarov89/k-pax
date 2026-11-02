@@ -24,18 +24,78 @@ class _AccountScreenState extends State<AccountScreen> {
     super.dispose();
   }
 
-  Future<void> _openRestore(String channel) async {
-    final uri = channel == 'email'
-        ? Uri.parse(
-            'mailto:access@k-pax.space?subject=${Uri.encodeComponent('Восстановление доступа K-Pax')}&body=${Uri.encodeComponent('Прошу вернуть ссылку доступа.')}',
-          )
-        : Uri.parse('https://t.me/KPax_Space_bot?start=restore');
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(channel == 'email' ? 'access@k-pax.space' : '@KPax_Space_bot')),
-      );
-    }
+  Future<void> _openDevices(BuildContext context, VpnController controller) async {
+    await controller.loadDevices();
+    if (!context.mounted) return;
+    final s = controller.strings;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return Consumer<VpnController>(
+          builder: (context, c, _) {
+            final muted = Theme.of(context).brightness == Brightness.dark
+                ? NordColors.textMuted
+                : NordColors.lightTextMuted;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      s.devices,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(s.devicesHint, style: TextStyle(color: muted, height: 1.35)),
+                    const SizedBox(height: 12),
+                    if (c.isLoadingDevices)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (c.devicesError != null)
+                      Text(c.devicesError!, style: const TextStyle(color: Color(0xFFFFC1CC)))
+                    else if (c.devices.isEmpty)
+                      Text(s.devicesEmpty, style: TextStyle(color: muted))
+                    else
+                      ...c.devices.map(
+                        (device) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(device.label.isEmpty ? s.devices : device.label),
+                          subtitle: Text(
+                            device.detail,
+                            style: TextStyle(color: muted, fontSize: 13),
+                          ),
+                          trailing: TextButton(
+                            onPressed: () async {
+                              final ok = await c.kickDevice(device.id);
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(ok ? s.devicesKicked : s.devicesLoadFailed),
+                                ),
+                              );
+                            },
+                            child: Text(s.devicesKick),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: c.isLoadingDevices ? null : () => c.loadDevices(),
+                      child: Text(s.devicesRefresh),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _submit(VpnController controller) async {
@@ -86,7 +146,6 @@ class _AccountScreenState extends State<AccountScreen> {
         '${account.accessExpiresAt.year}';
     final kpax = controller.isKPaxSubscription;
     final showId = kpax && account.userId.isNotEmpty && !account.userId.startsWith('u_');
-    final restoring = controller.restoreChannel;
 
     return NordBackground(
       child: Scaffold(
@@ -113,51 +172,75 @@ class _AccountScreenState extends State<AccountScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(s.pasteLinkBody, style: TextStyle(color: muted, height: 1.6)),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _contact,
-                      keyboardType: TextInputType.text,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: s.pasteLinkHint,
-                        filled: true,
-                      ),
-                    ),
-                    if (controller.linkError != null) ...[
-                      const SizedBox(height: 8),
+                    if (controller.isLoginWaiting) ...[
+                      const SizedBox(height: 16),
                       Text(
-                        controller.linkError!,
-                        style: const TextStyle(color: Color(0xFFFFC1CC)),
+                        controller.loginChannel == 'telegram'
+                            ? s.waitingTelegramConfirm
+                            : s.waitingEmailConfirm,
+                        style: TextStyle(color: muted, height: 1.45),
                       ),
-                    ],
-                    if (restoring == 'email' || restoring == 'telegram') ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        restoring == 'email' ? s.restoreHintEmail : s.restoreHintTelegram,
-                        style: TextStyle(color: muted, height: 1.35),
-                      ),
+                      if ((controller.loginHint ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(controller.loginHint!, style: TextStyle(color: muted, height: 1.35)),
+                      ],
+                      const SizedBox(height: 12),
+                      if (controller.loginChannel == 'telegram' &&
+                          (controller.loginBotUrl ?? '').isNotEmpty)
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () => launchUrl(
+                              Uri.parse(controller.loginBotUrl!),
+                              mode: LaunchMode.externalApplication,
+                            ),
+                            child: Text(s.openBotConfirm),
+                          ),
+                        ),
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () => _openRestore(restoring!),
-                          child: Text(s.restoreAccess),
+                        child: OutlinedButton(
+                          onPressed: controller.cancelLogin,
+                          child: Text(s.cancelLogin),
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: controller.linkState == SubscriptionLinkState.loading
-                            ? null
-                            : () => _submit(controller),
-                        child: Text(s.saveLink),
+                      const SizedBox(height: 12),
+                      const Center(child: CircularProgressIndicator()),
+                    ] else ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _contact,
+                        keyboardType: TextInputType.text,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: s.pasteLinkHint,
+                          filled: true,
+                        ),
                       ),
-                    ),
+                      if (controller.linkError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          controller.linkError!,
+                          style: const TextStyle(color: Color(0xFFFFC1CC)),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: controller.linkState == SubscriptionLinkState.loading
+                              ? null
+                              : () => _submit(controller),
+                          child: Text(s.saveLink),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(s.lostAccessHelp, style: TextStyle(color: muted, height: 1.4)),
+                    ],
                   ],
                 ),
               ),
@@ -276,13 +359,16 @@ class _AccountScreenState extends State<AccountScreen> {
                       onTap: () => openPaywall(context),
                     ),
                     const Divider(height: 1),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(s.devices),
-                      subtitle:
-                          Text(s.devicesStub, style: TextStyle(color: muted)),
-                    ),
-                    const Divider(height: 1),
+                    if (kpax)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(s.devices),
+                        subtitle:
+                            Text(s.devicesHint, style: TextStyle(color: muted)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _openDevices(context, controller),
+                      ),
+                    if (kpax) const Divider(height: 1),
                   ] else if (controller.providerWebPage != null) ...[
                     ListTile(
                       contentPadding: EdgeInsets.zero,

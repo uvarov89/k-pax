@@ -1,0 +1,35 @@
+# K-Pax source map (short). Do not dump full tree into context.
+
+## Workspace
+antirkn_vpn — Flutter package name pulse_vpn, product K-Pax
+Site k-pax.space UI: outside this repo
+API/hosts in client: k-pax.space, sub.k-pax.space
+
+## Client (edit here for app bugs / UI)
+lib/main.dart
+lib/app/          theme, l10n, pulse_app
+lib/core/models/
+lib/core/state/   vpn_controller
+lib/core/services/
+  subscription_*.dart, tunnel_config.dart, *vpn_service.dart
+  deep_link_service.dart, *_update.dart, windows_platform.dart
+lib/features/     account, connection, home, locations, paywall, settings
+test/             dart tests next to concerns
+
+## Platforms
+android/app/      Kotlin MainActivity, VPN always-on
+ios/Runner + ios/PacketTunnel + ios/scripts/
+windows/runner + windows/installer/k-pax.iss
+codemagic.yaml    iOS TestFlight
+
+## Server / edge (edit for billing, sub, nodes, Caddy)
+server/panel.py
+server/k-pax-*.py + *.service/*.timer
+server/Caddyfile*
+server/x-plm/     x-plm panel assets/templates sibling
+docs/OPS-RUNBOOK.md
+
+## Avoid unless task names them
+third_party/      vendored plugins — huge
+build/ .dart_tool/ android/.gradle/
+*.apk, pubspec.lock (unless dependency task)

@@ -49,8 +49,26 @@ void main() {
 
   test('stats endpoint is added only when requested', () {
     expect(config()['experimental'], isNull);
-    final stats = config(enableStats: true)['experimental'] as Map;
+    expect(
+      jsonDecode(
+        buildTunnelConfig(
+          node,
+          const ProSettings(),
+          enableStats: true,
+        ),
+      )['experimental'],
+      isNull,
+    );
+    final stats = jsonDecode(
+      buildTunnelConfig(
+        node,
+        const ProSettings(),
+        enableStats: true,
+        clashSecret: 'session-secret',
+      ),
+    )['experimental'] as Map;
     expect((stats['clash_api'] as Map)['external_controller'], '127.0.0.1:9090');
+    expect((stats['clash_api'] as Map)['secret'], 'session-secret');
   });
 
   test('selected windows programs can bypass the tunnel', () {

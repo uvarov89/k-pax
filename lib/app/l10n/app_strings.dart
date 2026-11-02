@@ -12,25 +12,40 @@ class AppStrings {
   String get settings => isRu ? 'Настройки' : 'Settings';
   String get simple => isRu ? 'Простой' : 'Simple';
   String get pro => isRu ? 'Подробно' : 'Details';
-  String get connect => isRu ? 'Подключить' : 'Connect';
-  String get disconnect => isRu ? 'Отключить' : 'Disconnect';
-  String get connecting => isRu ? 'Подключение' : 'Connecting';
-  String get disconnecting => isRu ? 'Отключение' : 'Disconnecting';
-  String get retry => isRu ? 'Повторить' : 'Retry';
-  String get notConnected => isRu ? 'Не подключено' : 'Not connected';
-  String get connectingStatus => isRu ? 'Подключение…' : 'Connecting…';
-  String get disconnectingStatus => isRu ? 'Отключение…' : 'Disconnecting…';
+  String get connect => isRu ? 'В эфир' : 'Enter orbit';
+  String get disconnect => isRu ? 'Покинуть' : 'Leave';
+  String get connecting => isRu ? 'Стыковка' : 'Docking';
+  String get disconnecting => isRu ? 'Сход' : 'Leaving';
+  String get retry => isRu ? 'Ещё раз' : 'Try again';
+  String get notConnected => isRu ? 'Вне эфира' : 'Off the air';
+  String get connectingStatus => isRu ? 'Стыковка…' : 'Docking…';
+  String get reconnectingStatus =>
+      isRu ? 'Возврат на орбиту…' : 'Returning to orbit…';
+  String get reconnectFailed => isRu
+      ? 'Не удалось вернуться. Нажмите «В эфир».'
+      : 'Could not return. Tap Enter orbit.';
+  String get disconnectingStatus => isRu ? 'Сход с орбиты…' : 'Leaving orbit…';
   String get connectionError =>
-      isRu ? 'Ошибка подключения' : 'Connection error';
+      isRu ? 'Стыковка не вышла' : 'Docking failed';
   String get connectFailed =>
-      isRu ? 'Не удалось подключиться' : 'Failed to connect';
+      isRu ? 'Не удалось выйти в эфир' : 'Could not enter orbit';
   String get killSwitchHeld => isRu
-      ? 'Туннель оборвался. Трафик заблокирован, пока не подключитесь снова.'
-      : 'The tunnel dropped. Traffic stays blocked until you connect again.';
+      ? 'Связь оборвалась. Трафик закрыт, пока снова не выйдете в эфир.'
+      : 'The link dropped. Traffic stays blocked until you enter orbit again.';
+  String get loginConfirmedFlash => isRu
+      ? 'Вход подтверждён — доступ обновлён'
+      : 'Sign-in confirmed — access refreshed';
   String get updateDownloading =>
       isRu ? 'Обновляем K-Pax…' : 'Updating K-Pax…';
   String connectedTo(String place) =>
-      isRu ? 'Подключено · $place' : 'Connected · $place';
+      isRu ? 'На орбите · $place' : 'In orbit · $place';
+  String get connectedTagline =>
+      isRu ? 'Чистый эфир' : 'Clear airwaves';
+  String get onboardingTitle => 'Planet K-Pax';
+  String get onboardingBody => isRu
+      ? 'Интернет без лишнего шума. 14 дней бесплатно, без карты. Одна ссылка на телефон и компьютер.'
+      : 'Internet with less noise. 14 days free, no card. One link for phone and computer.';
+  String get onboardingCta => isRu ? 'Начать' : 'Begin';
   String get auto => isRu ? 'Автовыбор' : 'Auto';
   String get country => isRu ? 'Страна' : 'Country';
   String get bestServerAuto => isRu
@@ -145,7 +160,7 @@ class AppStrings {
   String get sectionNotifications => isRu ? 'Уведомления' : 'Notifications';
   String get sectionAccount => isRu ? 'Аккаунт' : 'Account';
   String get sectionAppearance => isRu ? 'Внешний вид' : 'Appearance';
-  String get sectionAbout => isRu ? 'О приложении' : 'About';
+  String get sectionAbout => 'About K-Pax';
   String get autoConnectLaunch =>
       isRu ? 'Автоподключение при запуске' : 'Connect on launch';
   String get launchWithWindows =>
@@ -172,48 +187,87 @@ class AppStrings {
   String get refreshServersHint => isRu
       ? 'Заново получить серверы по вашей ссылке'
       : 'Fetch servers from your link again';
-  String get pasteLinkTitle => isRu ? 'Почта, ник или ссылка' : 'Email, nick or link';
+  String get refreshSubscriptionNotice => isRu
+      ? 'Мы обновили серверы для стабильности. Нажмите «Обновить», чтобы подтянуть новые настройки.'
+      : 'We updated servers for stability. Tap Refresh to pull the new settings.';
+  String get refreshSubscriptionAction => isRu ? 'Обновить' : 'Refresh';
+  String get dismissNotice => isRu ? 'Скрыть' : 'Dismiss';
+  String get pasteLinkTitle => isRu ? 'Войти или вставить ссылку' : 'Sign in or paste a link';
   String get pasteLinkBody => isRu
-      ? 'Укажите почту или Telegram: доступ создаётся один раз. Если он уже есть, появится «Восстановить доступ». Свою ссылку или ссылку другого сервиса вставьте в это же поле.'
-      : 'Enter an email or Telegram nick. Access is created once. If it already exists, Restore access appears. Paste your own link or another service link in the same field.';
-  String get pasteLinkHint => isRu ? 'Почта, @ник или ссылка' : 'Email, @nick or link';
-  String get saveLink => isRu ? 'Получить доступ' : 'Get access';
-  String contactTaken(String number) => isRu
-      ? 'Номер $number. Эта почта или ник уже используются.'
-      : 'Account $number. This email or nick is already used.';
-  String get restoreAccess => isRu ? 'Восстановить доступ' : 'Restore access';
-  String get writeEmail => isRu ? 'Написать на почту' : 'Write an email';
-  String get writeTelegram => isRu ? 'Написать в Telegram' : 'Write in Telegram';
-  String get restoreHintEmail => isRu
-      ? 'Откроется письмо на access@k-pax.space. Отправьте его с этой же почты. Проверьте папку «Спам».'
-      : 'A message to access@k-pax.space opens. Send it from this same email. Check the spam folder.';
-  String get restoreHintTelegram => isRu
-      ? 'Напишите с этого же Telegram. Бот пришлёт ссылку и сколько дней осталось.'
-      : 'Write from this same Telegram. The bot sends the link and the days left.';
+      ? 'Почта или @ник Telegram — придёт подтверждение, ссылка подгрузится сама. Можно вставить ссылку K-Pax или подписку другого провайдера — вход не нужен.'
+      : 'Email or @Telegram nick — confirm ownership, then the link loads itself. Or paste a K-Pax / other-provider subscription link — no sign-in needed.';
+  String get pasteLinkHint => isRu
+      ? 'Почта, @ник, https://sub.k-pax.space/s/… или ссылка другого провайдера'
+      : 'Email, @nick, https://sub.k-pax.space/s/… or another provider link';
+  String get saveLink => isRu ? 'Продолжить' : 'Continue';
+  String get loginWithContact => isRu ? 'Войти' : 'Sign in';
+  String get pasteOwnLink => isRu ? 'Вставить свою ссылку' : 'Paste your link';
+  String get openBotConfirm => isRu ? 'Открыть бота' : 'Open the bot';
+  String get waitingEmailConfirm => isRu
+      ? 'Письмо отправлено. Нажмите кнопку в письме — доступ появится здесь сам, ссылку копировать не нужно.'
+      : 'Email sent. Tap the button in the message — access appears here; no need to copy a link.';
+  String get waitingTelegramConfirm => isRu
+      ? 'Откройте бота и нажмите «Подтвердить» — доступ появится здесь сам.'
+      : 'Open the bot and tap Confirm — access appears here.';
+  String get cancelLogin => isRu ? 'Отменить' : 'Cancel';
+  String get loginTimedOut => isRu
+      ? 'Время подтверждения вышло. Запросите вход ещё раз.'
+      : 'Confirmation timed out. Start sign-in again.';
   String get openProfileForAccess => isRu
-      ? 'Почту или ник укажите в профиле'
-      : 'Enter your email or nick in the profile';
+      ? 'Войдите почтой или @ником в профиле'
+      : 'Sign in with email or @nick in the profile';
   String get linkReadyTitle => isRu ? 'Доступ включён' : 'Access is on';
   String get linkReadyBody => isRu
       ? 'Ссылка сохранена в приложении. Скопируйте её для компьютера: второй раз мы её не покажем.'
       : 'The link is saved in the app. Copy it for your computer: it will not be shown again.';
   String get badLink => isRu
-      ? 'Нужна ссылка с сайта, она начинается с https://sub.k-pax.space/s/'
-      : 'Use the link from the site. It starts with https://sub.k-pax.space/s/';
+      ? 'Не похоже на почту, @ник или ссылку подписки.'
+      : 'Does not look like an email, @nick, or subscription link.';
   String get linkOpenFailed => isRu
       ? 'Ссылка не открылась. Проверьте интернет и попробуйте ещё раз.'
       : 'The link did not open. Check the internet and try again.';
   String get replaceLink => isRu ? 'Заменить ссылку' : 'Replace link';
   String get serversUpdated =>
       isRu ? 'Серверы обновлены' : 'Servers updated';
-  String get accountSoon => isRu
-      ? 'Подписка и устройства — после backend'
-      : 'Subscription and devices — after backend';
   String get language => isRu ? 'Язык' : 'Language';
   String get theme => isRu ? 'Тема' : 'Theme';
   String get themeDark => isRu ? 'Тёмная' : 'Dark';
   String get themeLight => isRu ? 'Светлая' : 'Light';
-  String get about => isRu ? 'О приложении' : 'About';
+  String get about => 'About K-Pax';
+  String get aboutPlanet => 'Planet K-Pax';
+  String get aboutLead => isRu
+      ? 'K-Pax создаёт спокойное соединение между вашим устройством и сетью. Без лишнего шума и без автопродления.'
+      : 'K-Pax makes a calm link between your device and the network. Less noise, and no auto-renewal.';
+  String get aboutThesisQuietTitle =>
+      isRu ? 'Чистый эфир' : 'Clear airwaves';
+  String get aboutThesisQuietBody => isRu
+      ? 'Рекламные сети и счётчики отключаются на подключении. Меньше шума в ленте и на сайтах.'
+      : 'Ad networks and trackers drop on connect. Less noise in feeds and on sites.';
+  String get aboutThesisLinkTitle =>
+      isRu ? 'Одна ссылка' : 'One link';
+  String get aboutThesisLinkBody => isRu
+      ? 'Телефон и компьютер на одной ссылке. Два устройства сразу, сверху — автоматический выбор сервера.'
+      : 'Phone and computer share one link. Two devices at once, with automatic server pick on top.';
+  String get aboutThesisPayTitle =>
+      isRu ? 'Без автопродления' : 'No auto-renewal';
+  String get aboutThesisPayBody => isRu
+      ? 'Карту не привязываем. Понравится — разово 110 ₽ через СБП. Не понравится — просто не продлеваете.'
+      : 'No card on file. Like it — pay 110 ₽ once via SBP. If not — just do not renew.';
+  String get aboutChangelogTitle => isRu ? 'Что нового' : 'What is new';
+  List<String> get aboutChangelog => isRu
+      ? const [
+          'Обновление серверов и стабильности — обновите подписку в приложении, если трафик оборвался.',
+          'Список устройств и отключение лишнего с телефона или компьютера.',
+          'Автообновление Android и Windows: установка из приложения (APK / Setup).',
+          'Фон космоса, экран «О КаПэкс», статусы эфира и онбординг — на телефоне и на ПК.',
+        ]
+      : const [
+          'Server and stability update — refresh the subscription in the app if traffic dropped.',
+          'Device list and the option to kick an extra session from phone or computer.',
+          'Android and Windows auto-update: install from the app (APK / Setup).',
+          'Space backdrop, About K-Pax, orbit statuses and onboarding — on phone and PC.',
+        ];
+  String get aboutOpenSite => isRu ? 'Сайт k-pax.space' : 'Site k-pax.space';
   String get version => isRu ? 'Версия' : 'Version';
   String get privacy => isRu ? 'Политика приватности' : 'Privacy policy';
   String get privacySoon => isRu
@@ -253,6 +307,9 @@ class AppStrings {
   String get updateApplyFailed => isRu
       ? 'Не удалось обновить K-Pax. Проверьте интернет и повторите.'
       : 'Could not update K-Pax. Check the internet and try again.';
+  String get updateInstallPermission => isRu
+      ? 'Разрешите установку из K-Pax в настройках Android и повторите обновление.'
+      : 'Allow installs from K-Pax in Android settings, then try the update again.';
   String get quitApp => isRu ? 'Закрыть приложение' : 'Quit the app';
   String get quitAppHint => isRu
       ? 'Крестик убирает окно в трей. Эта кнопка завершает программу.'
@@ -286,17 +343,10 @@ class AppStrings {
   String daysLeft(int n) => isRu ? 'Осталось $n дн.' : '$n days left';
   String activeUntil(String date) =>
       isRu ? 'Доступ до $date' : 'Access until $date';
-  String get paymentStubNote => isRu
+  String get paymentNote => isRu
       ? '110 ₽ за 30 дней, разовая оплата через СБП на сайте. Без автопродления. Оплата продлевает ту же ссылку.'
       : '110 ₽ for 30 days, a one-time SBP payment on the site. No auto-renewal. Payment extends the same link.';
   String get buyOnSite => isRu ? 'Открыть оплату' : 'Open payment';
-  String get activateDemo => isRu ? 'Активировать демо' : 'Activate demo';
-  String get restorePurchases =>
-      isRu ? 'Восстановить покупки' : 'Restore purchases';
-  String get restoreNothing => isRu
-      ? 'Активных покупок не найдено'
-      : 'No active purchases found';
-  String get restoreOk => isRu ? 'Доступ активен' : 'Access is active';
   String get subscriptionRequired => isRu
       ? 'Нужна активная подписка'
       : 'An active subscription is required';
@@ -318,28 +368,37 @@ class AppStrings {
   String get copyCode => isRu ? 'Скопировать код' : 'Copy code';
   String get linkCopied => isRu ? 'Ссылка скопирована' : 'Link copied';
   String get codeCopied => isRu ? 'Код скопирован' : 'Code copied';
-  String get simulateReferral => isRu
-      ? 'Демо: друг оплатил'
-      : 'Demo: friend paid';
-  String get referralBonusApplied => isRu
-      ? 'Друг оформил подписку. Вам начислен 1 месяц.'
-      : 'A friend subscribed. You received 1 free month.';
-  String get referralCapReached => isRu
-      ? 'Достигнут лимит реферальных месяцев'
-      : 'Referral month cap reached';
   String get devices => isRu ? 'Устройства' : 'Devices';
-  String get devicesStub => isRu
-      ? 'До 2 устройств на одной ссылке'
-      : 'Up to 2 devices on one link';
+  String get devicesHint => isRu
+      ? 'До 2 устройств одновременно. Третье отключится само.'
+      : 'Up to 2 devices at once. A third one is disconnected.';
+  String get devicesEmpty => isRu
+      ? 'Сейчас онлайн нет других устройств'
+      : 'No other devices online now';
+  String get devicesLoadFailed => isRu
+      ? 'Не удалось загрузить список устройств'
+      : 'Could not load the device list';
+  String get devicesKick => isRu ? 'Отключить' : 'Disconnect';
+  String get devicesKicked => isRu
+      ? 'Устройство будет отключено в течение минуты'
+      : 'The device will disconnect within a minute';
+  String get devicesRefresh => isRu ? 'Обновить список' : 'Refresh list';
+  String get refreshAccess => isRu ? 'Обновить доступ' : 'Refresh access';
+  String get refreshAccessHint => isRu
+      ? 'Уже оплатили на сайте — подтянуть срок без повторного входа'
+      : 'Already paid on the site — refresh access without signing in again';
+  String get paidRefreshDone => isRu
+      ? 'Доступ обновлён'
+      : 'Access refreshed';
+  String get loginWaitingHome => isRu
+      ? 'Ждём подтверждение входа…'
+      : 'Waiting for sign-in confirmation…';
+  String get lostAccessHelp => isRu
+      ? 'Потеряли доступ — введите ту же почту или @ник выше: для почты придёт письмо, для Telegram откроется бот.'
+      : 'Lost access — enter the same email or @nick above: email gets a letter, Telegram opens the bot.';
   String get userId => isRu ? 'ID пользователя' : 'User ID';
-  String get signInStub => isRu
-      ? 'Вход по email — скоро'
-      : 'Email sign-in — coming soon';
   String get legal => isRu ? 'Документы' : 'Legal';
   String get terms => isRu ? 'Пользовательское соглашение' : 'Terms of use';
-  String get termsStub => isRu
-      ? 'Срок, страны и устройства'
-      : 'Term, countries and devices';
   List<String> get termsParagraphs => isRu
       ? const [
           'K-Pax — личный VPN. Первые 14 дней карта не нужна. Когда срок кончится, доступ остановится, пока не появится оплата.',
@@ -355,13 +414,6 @@ class AppStrings {
           'Do not give the link to other people. Access can be stopped if strangers are clearly using it, or if a server is temporarily down.',
           '110 ₽ extends the same link by 30 days. Payment does not create a new link.',
         ];
-  String get demoTools => isRu ? 'Демо-инструменты' : 'Demo tools';
-  String get demoExpire => isRu ? 'Сделать доступ истёкшим' : 'Expire access';
-  String get demoResetTrial =>
-      isRu ? 'Сбросить trial (14 дней)' : 'Reset trial (14 days)';
-  String get purchaseSuccess => isRu
-      ? 'Подписка активирована (демо)'
-      : 'Subscription activated (demo)';
   String get noAccessYet => isRu
       ? 'Подписки нет. Укажите почту, ник или ссылку выше.'
       : 'No subscription yet. Enter an email, nick or link above.';
@@ -388,23 +440,8 @@ class AppStrings {
   String get providerSiteHint => isRu
       ? 'Продление и вопросы по этой подписке'
       : 'Renewal and questions about this subscription';
-  String get trialWelcomeTitle => isRu
-      ? '14 дней бесплатно'
-      : '14 days free';
-  String get trialWelcomeBody => isRu
-      ? 'Карта не нужна. Подключитесь и оцените K-Pax. Подписка одна для всех.'
-      : 'No card required. Connect and try K-Pax. Everyone gets the same subscription.';
   String get continueLabel => isRu ? 'Продолжить' : 'Continue';
   String get sectionPremium => isRu ? 'Подписка' : 'Subscription';
-  String get rateApp => isRu ? 'Оценить приложение' : 'Rate the app';
-  String get rateAppStub => isRu
-      ? 'Ссылка на магазин появится при публикации'
-      : 'Store link will appear at release';
-  String get shareApp => isRu ? 'Поделиться приложением' : 'Share the app';
-  String get diagnostics => isRu ? 'Диагностика' : 'Diagnostics';
-  String get diagnosticsHint => isRu
-      ? 'Отправить отчёт об ошибке (скоро)'
-      : 'Send an error report (soon)';
   String get proLockedHint => isRu
       ? 'Нужна активная подписка'
       : 'An active subscription is required';

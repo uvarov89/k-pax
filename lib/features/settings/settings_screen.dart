@@ -3,9 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -17,7 +15,7 @@ import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/settings/split_tunnel_screen.dart';
 import 'package:pulse_vpn/features/settings/windows_split_screen.dart';
-import 'package:pulse_vpn/features/settings/windows_update_prompt.dart';
+import 'package:pulse_vpn/features/settings/about_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -103,6 +101,22 @@ class SettingsScreen extends StatelessWidget {
                     settings.copyWith(autoConnectOnLaunch: v),
                   ),
                 ),
+                if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) ...[
+                  _SwitchRow(
+                    title: s.autoConnectWifi,
+                    value: settings.autoConnectOnWifi,
+                    onChanged: (v) => controller.updateAppSettings(
+                      settings.copyWith(autoConnectOnWifi: v),
+                    ),
+                  ),
+                  _SwitchRow(
+                    title: s.autoConnectMobile,
+                    value: settings.autoConnectOnMobile,
+                    onChanged: (v) => controller.updateAppSettings(
+                      settings.copyWith(autoConnectOnMobile: v),
+                    ),
+                  ),
+                ],
                 if (!kIsWeb && Platform.isWindows)
                   _SwitchRow(
                     title: s.launchWithWindows,
@@ -293,63 +307,21 @@ class SettingsScreen extends StatelessWidget {
               surface: surface,
               border: border,
               children: [
-                if (!kIsWeb && Platform.isWindows)
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    title: Text(s.checkUpdates),
-                    trailing: Icon(Icons.chevron_right, color: muted),
-                    onTap: () => checkForWindowsUpdate(context, manual: true),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: Text(s.about),
+                  subtitle: Text(
+                    s.aboutPlanet,
+                    style: TextStyle(color: muted, fontSize: 13),
                   ),
-                FutureBuilder<PackageInfo>(
-                  future: PackageInfo.fromPlatform(),
-                  builder: (context, snapshot) {
-                    final version = snapshot.data?.version ?? '—';
-                    final build = snapshot.data?.buildNumber ?? '';
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                      title: Text(s.version),
-                      subtitle: Text(
-                        build.isEmpty ? version : '$version ($build)',
-                        style: TextStyle(color: muted, fontSize: 13),
+                  trailing: Icon(Icons.chevron_right, color: muted),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AboutScreen(),
                       ),
                     );
                   },
-                ),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  title: Text(s.terms),
-                  subtitle: Text(
-                    'k-pax.space/terms',
-                    style: TextStyle(color: muted, fontSize: 13),
-                  ),
-                  onTap: () => launchUrl(
-                    Uri.parse('https://k-pax.space/terms'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  title: Text(s.privacy),
-                  subtitle: Text(
-                    'k-pax.space/privacy',
-                    style: TextStyle(color: muted, fontSize: 13),
-                  ),
-                  onTap: () => launchUrl(
-                    Uri.parse('https://k-pax.space/privacy'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  title: Text(s.support),
-                  subtitle: Text(
-                    s.supportSoon,
-                    style: TextStyle(color: muted, fontSize: 13),
-                  ),
-                  onTap: () => launchUrl(
-                    Uri.parse('https://t.me/k_pax_space'),
-                    mode: LaunchMode.externalApplication,
-                  ),
                 ),
                 if (!kIsWeb && Platform.isWindows)
                   Padding(

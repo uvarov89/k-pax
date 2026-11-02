@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -34,98 +36,214 @@ class ConnectButton extends StatelessWidget {
 
     final Color ringColor;
     final Color fillColor;
+    final Color glowColor;
     final String label;
 
     switch (state) {
       case VpnConnectionState.connected:
         ringColor = NordColors.accent;
         fillColor = NordColors.accentDim;
+        glowColor = NordColors.accent;
         label = disconnectLabel;
       case VpnConnectionState.connecting:
         ringColor = NordColors.connecting;
         fillColor = isDark
             ? NordColors.disconnectFill
             : NordColors.lightDisconnectFill;
+        glowColor = NordColors.connecting;
         label = connectingLabel;
       case VpnConnectionState.disconnecting:
         ringColor = NordColors.connecting;
         fillColor = isDark
             ? NordColors.disconnectFill
             : NordColors.lightDisconnectFill;
+        glowColor = NordColors.connecting;
         label = disconnectingLabel;
       case VpnConnectionState.error:
-        ringColor = const Color(0xFFEF4444);
+        ringColor = NordColors.danger;
         fillColor = isDark
             ? NordColors.disconnectFill
             : NordColors.lightDisconnectFill;
+        glowColor = NordColors.danger;
         label = retryLabel;
       case VpnConnectionState.disconnected:
-        ringColor = isDark ? NordColors.border : NordColors.lightBorder;
+        ringColor = isDark ? NordColors.cyan : NordColors.cyanDim;
         fillColor = isDark
             ? NordColors.disconnectFill
             : NordColors.lightDisconnectFill;
+        glowColor = NordColors.cyan;
         label = connectLabel;
     }
 
-    final labelColor =
-        isDark ? NordColors.textPrimary : NordColors.lightTextPrimary;
+    final labelColor = connected
+        ? Colors.white
+        : (isDark ? NordColors.textPrimary : NordColors.lightTextPrimary);
 
     return Semantics(
       button: true,
       label: label,
       child: GestureDetector(
         onTap: busy ? null : onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
+        child: SizedBox(
           width: diameter,
           height: diameter,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: fillColor,
-            border: Border.all(color: ringColor, width: connected ? 4 : 2),
-            boxShadow: connected
-                ? [
-                    BoxShadow(
-                      color: NordColors.accent.withValues(alpha: 0.28),
-                      blurRadius: 28,
-                      spreadRadius: 2,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Center(
-            child: busy
-                ? SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: ringColor,
-                    ),
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.power_settings_new_rounded,
-                        size: 40,
-                        color: connected ? Colors.white : ringColor,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: connected ? Colors.white : labelColor,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (busy)
+                _OrbitRing(
+                  diameter: diameter,
+                  color: ringColor,
+                ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                width: diameter,
+                height: diameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: fillColor,
+                  border: Border.all(
+                    color: ringColor,
+                    width: connected ? 4 : 2.5,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: glowColor.withValues(alpha: connected ? 0.38 : 0.22),
+                      blurRadius: connected ? 36 : 28,
+                      spreadRadius: connected ? 4 : 1,
+                    ),
+                    if (isDark)
+                      BoxShadow(
+                        color: glowColor.withValues(alpha: 0.12),
+                        blurRadius: 60,
+                        spreadRadius: 8,
+                      ),
+                  ],
+                  gradient: connected
+                      ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF4AE8A8), NordColors.accentDim],
+                        )
+                      : null,
+                ),
+                child: Center(
+                  child: busy
+                      ? Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: labelColor,
+                            letterSpacing: 0.3,
+                          ),
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.power_settings_new_rounded,
+                              size: 40,
+                              color: connected ? Colors.white : ringColor,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: labelColor,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+class _OrbitRing extends StatefulWidget {
+  const _OrbitRing({required this.diameter, required this.color});
+
+  final double diameter;
+  final Color color;
+
+  @override
+  State<_OrbitRing> createState() => _OrbitRingState();
+}
+
+class _OrbitRingState extends State<_OrbitRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Transform.rotate(
+          angle: _controller.value * math.pi * 2,
+          child: CustomPaint(
+            size: Size.square(widget.diameter),
+            painter: _OrbitPainter(color: widget.color),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _OrbitPainter extends CustomPainter {
+  _OrbitPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 3;
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      math.pi * 1.15,
+      false,
+      paint,
+    );
+    final soft = Paint()
+      ..color = color.withValues(alpha: 0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(center, radius, soft);
+  }
+
+  @override
+  bool shouldRepaint(covariant _OrbitPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

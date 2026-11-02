@@ -1,0 +1,29 @@
+---
+description: Token economy — find then read, no redundant context, no quality loss
+alwaysApply: true
+---
+
+# Token economy (K-Pax)
+
+Quality and correctness beat saving tokens. Never invent code you have not verified. Save tokens by **narrow context**, not by skipping needed reads.
+
+## Two stages
+
+1. **Find** — Grep/Glob under one area (`lib/`, `server/`, `windows/`, …). Prefer `.cursor/project-source-index.txt` + `AGENTS.md` over listing the repo.
+2. **Read** — Only matched files; use offset/limit on large files. Then edit.
+
+Skip stage 1 when the user already gave an exact path.
+
+## Hard limits
+
+- Do not re-read a file unchanged in this chat; reuse what you already have.
+- Do not open `third_party/`, `build/`, `.dart_tool/`, or full platform trees unless the task is there.
+- Shell/test output: summarize; do not paste walls of logs into the next step. Cap follow-up reads of logs at ~100 lines of signal.
+- No workspace-wide ripgrep with vague patterns. Narrow path + symbol/string first.
+- If after one focused search the locus is unclear — ask (client / server / ios / windows) instead of scanning everything.
+
+## Still required
+
+- Read enough to match existing patterns before changing code.
+- After edits, check lints on touched files when tools allow.
+- Do not weaken security, networking, or payment paths to “save tokens”.

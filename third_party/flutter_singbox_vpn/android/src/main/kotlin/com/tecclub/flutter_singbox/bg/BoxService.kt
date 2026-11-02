@@ -103,44 +103,19 @@ class BoxService(
             //     notification.show(lastProfileName, "Starting...")
             // }
 
-            // Load the configuration from the SimpleConfigManager instead of database
-            android.util.Log.e("BoxService", "Loading configuration from SimpleConfigManager")
             val content = SimpleConfigManager.getConfig()
-            android.util.Log.e("BoxService", "Config loaded, length: ${content.length}")
-            
             if (content.isBlank() || content == "{}") {
-                android.util.Log.e("BoxService", "Empty configuration detected")
                 stopAndAlert(Alert.EmptyConfiguration)
                 return
             }
 
             lastProfileName = "SingBox VPN"
-            // withContext(Dispatchers.Main) {
-            //     android.util.Log.e("BoxService", "Updating notification with profile name")
-            //     // notification.show(lastProfileName, "Starting...")
-            // }
 
-            android.util.Log.e("BoxService", "Starting DefaultNetworkMonitor")
             DefaultNetworkMonitor.start()
-            
-            android.util.Log.e("BoxService", "Setting memory limit")
             Libbox.setMemoryLimit(true)
-            
-            // Enhanced logging for config content - only show the first 1000 chars to avoid log truncation
-            android.util.Log.e("BoxService", "CONFIG CONTENT START ----------------")
-            if (content.length > 1000) {
-                android.util.Log.e("BoxService", "Config content (first 1000 chars): ${content.substring(0, 1000)}")
-                android.util.Log.e("BoxService", "... (${content.length - 1000} more characters)")
-            } else {
-                android.util.Log.e("BoxService", "Config content: $content")
-            }
-            android.util.Log.e("BoxService", "CONFIG CONTENT END ------------------")
 
-            android.util.Log.e("BoxService", "Creating new SingBox service with config")
             val newService = try {
-                val service = Libbox.newService(content, platformInterface)
-                android.util.Log.e("BoxService", "SingBox service created successfully")
-                service
+                Libbox.newService(content, platformInterface)
             } catch (e: Exception) {
                 android.util.Log.e("BoxService", "Failed to create SingBox service: ${e.message}", e)
                 stopAndAlert(Alert.CreateService, e.message)

@@ -8,6 +8,7 @@ import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/settings/split_tunnel_screen.dart';
+import 'package:pulse_vpn/features/settings/windows_split_screen.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 
@@ -26,6 +27,7 @@ class ProSettingsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final android = !kIsWeb && Platform.isAndroid;
+    final windows = !kIsWeb && Platform.isWindows;
     final controller = context.watch<VpnController>();
     final settings = controller.proSettings;
     final s = controller.strings;
@@ -166,7 +168,7 @@ class ProSettingsSheet extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (android)
+                if (android || windows)
                   _SettingsTile(
                     title: s.splitTunneling,
                     subtitle: s.splitSoon,
@@ -175,7 +177,9 @@ class ProSettingsSheet extends StatelessWidget {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const SplitTunnelScreen(),
+                          builder: (_) => android
+                              ? const SplitTunnelScreen()
+                              : const WindowsSplitScreen(),
                         ),
                       );
                     },

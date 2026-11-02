@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
+import 'package:pulse_vpn/core/services/deep_link_service.dart';
+import 'package:pulse_vpn/core/services/network_auto_connect.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/home/home_screen.dart';
 
@@ -20,6 +22,8 @@ class PulseApp extends StatefulWidget {
 
 class _PulseAppState extends State<PulseApp> {
   late AppThemePreference _theme;
+  DeepLinkService? _deepLinks;
+  NetworkAutoConnect? _networkAuto;
 
   @override
   void initState() {
@@ -27,8 +31,15 @@ class _PulseAppState extends State<PulseApp> {
     _theme = widget.controller.appSettings.theme;
     widget.controller.addListener(_onTheme);
     _bindTray();
+    _deepLinks = DeepLinkService(widget.controller);
+    _networkAuto = NetworkAutoConnect(widget.controller);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.controller.maybeAutoConnect();
+      _deepLinks?.start();
+      // Skip platform plugins under `flutter test` (no EventChannel impl).
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        _networkAuto?.start();
+      }
     });
   }
 
@@ -52,7 +63,9 @@ class _PulseAppState extends State<PulseApp> {
         : controller.isConnected
             ? 'connected'
             : 'disconnected';
-    const MethodChannel('kpax/window').invokeMethod<void>('setTrayState', state);
+    const MethodChannel('kpax/window')
+        .invokeMethod<void>('setTrayState', state)
+        .catchError((_) {});
   }
 
   void _onTheme() {
@@ -65,6 +78,8 @@ class _PulseAppState extends State<PulseApp> {
   void dispose() {
     widget.controller.removeListener(_onTheme);
     widget.controller.removeListener(_pushTrayState);
+    _deepLinks?.dispose();
+    _networkAuto?.dispose();
     super.dispose();
   }
 

@@ -83,7 +83,7 @@ class PaywallScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              s.paymentStubNote,
+              s.paymentNote,
               textAlign: TextAlign.center,
               style: TextStyle(color: muted, height: 1.45, fontSize: 14),
             ),
@@ -98,6 +98,30 @@ class PaywallScreen extends StatelessWidget {
                 child: Text(s.buyOnSite),
               ),
             ),
+            if (controller.subscriptionUrl != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: controller.isRefreshingServers
+                      ? null
+                      : () async {
+                          await controller.refreshAccessAfterPayment(
+                            openAccount: true,
+                          );
+                          if (!context.mounted) return;
+                          Navigator.of(context).pop();
+                        },
+                  child: Text(s.refreshAccess),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                s.refreshAccessHint,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: muted, height: 1.4, fontSize: 13),
+              ),
+            ],
           ],
         ),
       ),

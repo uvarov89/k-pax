@@ -699,20 +699,17 @@ class FlutterSingboxPlugin :
     private var configContent: String? = null
     
     private fun saveConfig(config: String, result: Result) {
-        android.util.Log.e("FlutterSingboxPlugin", "Saving config: ${config.length} bytes")
         configContent = config // Store locally for immediate use when starting VPN
         
         coroutineScope.launch {
             try {
                 val success = SimpleConfigManager.saveConfig(config)
-                android.util.Log.e("FlutterSingboxPlugin", "Config save result: $success")
                 if (success) {
                     result.success(true)
                 } else {
                     result.error("CONFIG_SAVE_FAILED", "Failed to save configuration", null)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("FlutterSingboxPlugin", "Error saving config: ${e.message}", e)
                 result.error("CONFIG_SAVE_ERROR", e.message, null)
             }
         }
@@ -820,21 +817,13 @@ class FlutterSingboxPlugin :
                  android.util.Log.e("FlutterSingboxPlugin", "VPN prepare returned false, continuing")
              }
              
-            // Load config from SimpleConfigManager and set it as an extra
             val config = SimpleConfigManager.getConfig()
-            android.util.Log.e("FlutterSingboxPlugin", "Loaded config from SimpleConfigManager, length: ${config.length}")
-            
-            // Create intent with action and config content
             val intent = Intent(context, Settings.serviceClass()).apply {
                 action = BoxService.ACTION_START
                 putExtra(BoxService.EXTRA_CONFIG_CONTENT, config)
             }
-            android.util.Log.e("FlutterSingboxPlugin", "Created intent with ACTION_START and config extra")
-            
             withContext(Dispatchers.Main) {
-                android.util.Log.e("FlutterSingboxPlugin", "Starting foreground service")
                 androidx.core.content.ContextCompat.startForegroundService(context, intent)
-                android.util.Log.e("FlutterSingboxPlugin", "Service start request sent")
             }
         }
     }
@@ -871,9 +860,9 @@ class FlutterSingboxPlugin :
     
     private fun stopVPN(result: Result) {
         try {
-            android.util.Log.e("FlutterSingboxPlugin", "Stopping VPN")
-            
-            // Set shutting down flag and clear starting flag
+            // Drop in-memory tunnel JSON as soon as the user disconnects.
+            SimpleConfigManager.clearConfig()
+            configContent = null
             isShuttingDown = true
             isStarting = false
             
@@ -997,14 +986,7 @@ class FlutterSingboxPlugin :
             if (resultCode == Activity.RESULT_OK) {
                 android.util.Log.e("FlutterSingboxPlugin", "VPN permission granted, starting service")
                 pendingVpnPermissionResult?.let {
-                    // First load the config that should be used
-                    val configContent = SimpleConfigManager.getConfig()
-                    android.util.Log.e("FlutterSingboxPlugin", "Loaded config from SimpleConfigManager: ${configContent.length} bytes")
-                    
-                    // Start VPN service with the config
                     startVPNService(it)
-                } ?: run {
-                    android.util.Log.e("FlutterSingboxPlugin", "WARNING: No pending result found after permission granted")
                 }
             } else {
                 android.util.Log.e("FlutterSingboxPlugin", "VPN permission denied by user")

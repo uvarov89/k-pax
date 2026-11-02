@@ -64,3 +64,8 @@ app.*.map.json
 **/build/
 **/.gradle/
 **/.cxx/
+
+# Built on CI / locally � do not commit
+ios/Frameworks/Libbox.xcframework/
+third_party/sing_box/ios/Frameworks/Libbox.xcframework/
+

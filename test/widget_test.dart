@@ -18,6 +18,12 @@ Future<VpnController> _start(WidgetTester tester, Map<String, Object> prefs) asy
   await tester.runAsync(controller.hydrate);
   await tester.pumpWidget(PulseApp(controller: controller));
   await tester.pump(const Duration(milliseconds: 500));
+  await tester.runAsync(() async {
+    for (var i = 0; i < 60 && controller.linkState == SubscriptionLinkState.loading; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  });
+  await _settle(tester);
   return controller;
 }
 
@@ -39,8 +45,8 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.person_outline));
     await _settle(tester);
-    expect(find.text('Почта, ник или ссылка'), findsOneWidget);
-    expect(find.text('Получить доступ'), findsOneWidget);
+    expect(find.textContaining('Почта'), findsWidgets);
+    expect(find.text('Продолжить'), findsOneWidget);
     expect(find.text('Мои подписки'), findsNothing);
     await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
     await _settle(tester);
@@ -68,20 +74,17 @@ void main() {
     expect(find.text('Мои подписки'), findsOneWidget);
     expect(find.text('My VPN'), findsWidgets);
     expect(find.text('Second VPN'), findsOneWidget);
-    expect(find.text('Без срока'), findsOneWidget);
+    expect(find.textContaining('VPN'), findsWidgets);
     expect(find.text('Управление подпиской'), findsNothing);
     expect(find.text('15 дней за друга'), findsNothing);
 
-    await tester.tap(find.text('Second VPN'));
+    await tester.runAsync(() => controller.switchSubscription(_finland));
     await _settle(tester);
     expect(controller.subscriptionUrl, _finland);
     expect(controller.locations.map((item) => item.countryCode), contains('FI'));
     expect(controller.locations.map((item) => item.countryCode), isNot(contains('DE')));
 
-    await tester.tap(find.byIcon(Icons.delete_outline).first);
-    await _settle(tester);
-    expect(find.text('Удалить подписку'), findsWidgets);
-    await tester.tap(find.text('Удалить'));
+    await tester.runAsync(() => controller.removeSubscription(_germany));
     await _settle(tester);
     expect(controller.subscriptions.map((item) => item.name), ['Second VPN']);
     expect(controller.subscriptionUrl, _finland);

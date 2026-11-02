@@ -202,7 +202,7 @@ void FlutterWindow::ShowTrayMenu() {
   }
   AppendMenuW(menu, MF_STRING, kTrayShow, L"Открыть");
   const wchar_t* toggle_label =
-      tray_connected_ ? L"Отключить" : L"Подключить";
+      tray_connected_ ? L"Покинуть" : L"В эфир";
   AppendMenuW(menu, MF_STRING | (tray_busy_ ? MF_GRAYED : 0), kTrayToggle,
               toggle_label);
   AppendMenuW(menu, MF_STRING, kTrayExit, L"Закрыть приложение");

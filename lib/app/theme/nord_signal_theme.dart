@@ -1,31 +1,37 @@
 import 'package:flutter/material.dart';
 
+import 'package:pulse_vpn/app/theme/kpax_space_background.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 
-/// Nord Signal visual system from Variant A mockups.
+/// K-Pax brand palette: deep navy, cyan glow, green signal.
 abstract final class NordColors {
-  static const bgTop = Color(0xFF0F172A);
-  static const bgBottom = Color(0xFF1E293B);
-  static const surface = Color(0xFF243044);
-  static const surfaceElevated = Color(0xFF2C3B52);
-  static const border = Color(0xFF3A4A63);
-  static const textPrimary = Color(0xFFF1F5F9);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted = Color(0xFF64748B);
-  static const accent = Color(0xFF10B981);
-  static const accentDim = Color(0xFF059669);
-  static const connecting = Color(0xFFF59E0B);
-  static const disconnectFill = Color(0xFF334155);
+  static const bgTop = Color(0xFF070B14);
+  static const bgMid = Color(0xFF0E1524);
+  static const bgBottom = Color(0xFF121A2C);
+  static const surface = Color(0xFF172033);
+  static const surfaceElevated = Color(0xFF1E2A40);
+  static const border = Color(0xFF2C3A52);
+  static const borderGlow = Color(0xFF3D5578);
+  static const textPrimary = Color(0xFFE8EEF7);
+  static const textSecondary = Color(0xFFA8B4C8);
+  static const textMuted = Color(0xFF6E7C94);
+  static const cyan = Color(0xFF6EB6FF);
+  static const cyanDim = Color(0xFF3D8FE0);
+  static const accent = Color(0xFF3DDC97);
+  static const accentDim = Color(0xFF2BB87A);
+  static const connecting = Color(0xFFF0B429);
+  static const disconnectFill = Color(0xFF1A2436);
+  static const danger = Color(0xFFEF6B7B);
 
-  static const lightBgTop = Color(0xFFF8FAFC);
-  static const lightBgBottom = Color(0xFFE2E8F0);
+  static const lightBgTop = Color(0xFFF5F8FC);
+  static const lightBgBottom = Color(0xFFE4EBF5);
   static const lightSurface = Color(0xFFFFFFFF);
-  static const lightSurfaceElevated = Color(0xFFF1F5F9);
-  static const lightBorder = Color(0xFFCBD5E1);
-  static const lightTextPrimary = Color(0xFF0F172A);
-  static const lightTextSecondary = Color(0xFF475569);
-  static const lightTextMuted = Color(0xFF64748B);
-  static const lightDisconnectFill = Color(0xFFE2E8F0);
+  static const lightSurfaceElevated = Color(0xFFF0F4FA);
+  static const lightBorder = Color(0xFFCDD7E6);
+  static const lightTextPrimary = Color(0xFF0E1524);
+  static const lightTextSecondary = Color(0xFF40506A);
+  static const lightTextMuted = Color(0xFF6E7C94);
+  static const lightDisconnectFill = Color(0xFFE4EBF5);
 }
 
 abstract final class NordSignalTheme {
@@ -36,10 +42,12 @@ abstract final class NordSignalTheme {
       fontFamily: 'Roboto',
       colorScheme: const ColorScheme.dark(
         primary: NordColors.accent,
-        onPrimary: Colors.white,
-        secondary: NordColors.surfaceElevated,
+        onPrimary: Color(0xFF062216),
+        secondary: NordColors.cyan,
+        onSecondary: Color(0xFF041018),
         surface: NordColors.surface,
         onSurface: NordColors.textPrimary,
+        error: NordColors.danger,
       ),
       scaffoldBackgroundColor: NordColors.bgTop,
       appBarTheme: const AppBarTheme(
@@ -50,6 +58,41 @@ abstract final class NordSignalTheme {
       ),
       dividerColor: NordColors.border,
       switchTheme: _switchTheme(dark: true),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: NordColors.accent,
+          foregroundColor: const Color(0xFF062216),
+          disabledBackgroundColor: NordColors.border,
+          disabledForegroundColor: NordColors.textMuted,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: NordColors.bgTop,
+        hintStyle: const TextStyle(color: NordColors.textMuted),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: NordColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: NordColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: NordColors.cyan, width: 1.4),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: NordColors.surfaceElevated,
+        contentTextStyle: const TextStyle(color: NordColors.textPrimary),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
 
     return base.copyWith(textTheme: _readableText(base.textTheme, NordColors.textPrimary));
@@ -63,9 +106,10 @@ abstract final class NordSignalTheme {
       colorScheme: const ColorScheme.light(
         primary: NordColors.accentDim,
         onPrimary: Colors.white,
-        secondary: NordColors.lightSurfaceElevated,
+        secondary: NordColors.cyanDim,
         surface: NordColors.lightSurface,
         onSurface: NordColors.lightTextPrimary,
+        error: NordColors.danger,
       ),
       scaffoldBackgroundColor: NordColors.lightBgTop,
       appBarTheme: const AppBarTheme(
@@ -120,17 +164,66 @@ class NordBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? const [NordColors.bgTop, NordColors.bgBottom]
-              : const [NordColors.lightBgTop, NordColors.lightBgBottom],
+    if (!isDark) {
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [NordColors.lightBgTop, NordColors.lightBgBottom],
+          ),
         ),
+        child: child,
+      );
+    }
+    return KpaxSpaceBackground(child: child);
+  }
+}
+
+class KpaxCard extends StatelessWidget {
+  const KpaxCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    this.onTap,
+    this.glow = false,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+  final bool glow;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(18);
+    final box = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        color: (isDark ? NordColors.surface : NordColors.lightSurface)
+            .withValues(alpha: isDark ? 0.92 : 0.96),
+        border: Border.all(
+          color: glow
+              ? NordColors.cyan.withValues(alpha: 0.35)
+              : (isDark ? NordColors.border : NordColors.lightBorder),
+        ),
+        boxShadow: glow && isDark
+            ? [
+                BoxShadow(
+                  color: NordColors.cyan.withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  spreadRadius: 0,
+                ),
+              ]
+            : null,
       ),
-      child: child,
+      child: Padding(padding: padding, child: child),
+    );
+    if (onTap == null) return box;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(borderRadius: radius, onTap: onTap, child: box),
     );
   }
 }

@@ -12,13 +12,21 @@ var _checking = false;
 
 Future<File?> _downloadSetup(Uri url) async {
   final file = File('${Directory.systemTemp.path}\\K-Pax-Setup-update.exe');
-  final client = HttpClient();
+  final client = HttpClient()..autoUncompress = true;
   try {
     final request = await client.getUrl(url).timeout(const Duration(seconds: 20));
-    final response = await request.close().timeout(const Duration(minutes: 3));
+    request.followRedirects = true;
+    request.maxRedirects = 8;
+    request.headers.set(HttpHeaders.userAgentHeader, 'K-Pax');
+    final response = await request.close().timeout(const Duration(minutes: 5));
     if (response.statusCode != 200) return null;
     final sink = file.openWrite();
     await response.pipe(sink);
+    await sink.close();
+    if (!await file.exists() || await file.length() < 1024 * 100) {
+      if (await file.exists()) await file.delete();
+      return null;
+    }
     return file;
   } catch (_) {
     return null;

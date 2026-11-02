@@ -3,7 +3,7 @@
 ; Then: ISCC.exe windows\installer\k-pax.iss
 
 #define MyAppName "K-Pax"
-#define MyAppVersion "1.0.15"
+#define MyAppVersion "1.0.29"
 #define MyAppPublisher "K-Pax"
 #define MyAppURL "https://k-pax.space"
 #define MyAppExeName "KPax.exe"
@@ -55,6 +55,13 @@ Source: "{#ReleaseDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Registry]
+; Open app after email confirm (kpax://confirmed), same idea as Android.
+Root: HKCR; Subkey: "kpax"; ValueType: string; ValueName: ""; ValueData: "URL:K-Pax"; Flags: uninsdeletekey
+Root: HKCR; Subkey: "kpax"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCR; Subkey: "kpax\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCR; Subkey: "kpax\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec

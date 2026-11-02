@@ -8,7 +8,6 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/split_tunnel.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
-const kClashSecret = 'kpax-local';
 const kClashPort = 9090;
 
 String buildTunnelConfig(
@@ -16,6 +15,7 @@ String buildTunnelConfig(
   ProSettings settings, {
   AppSettings? appSettings,
   bool enableStats = false,
+  String? clashSecret,
 }) {
   final ipv4Only = settings.ipv6Mode != Ipv6Mode.enabled;
   final outbound = Map<String, Object?>.from(node.outbound);
@@ -65,11 +65,11 @@ String buildTunnelConfig(
       outbound,
       {'type': 'direct', 'tag': 'direct'},
     ],
-    if (enableStats)
+    if (enableStats && clashSecret != null && clashSecret.isNotEmpty)
       'experimental': {
         'clash_api': {
           'external_controller': '127.0.0.1:$kClashPort',
-          'secret': kClashSecret,
+          'secret': clashSecret,
         },
       },
     'route': {

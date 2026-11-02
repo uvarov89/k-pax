@@ -30,6 +30,49 @@ class AppStartResult {
   final String? error;
 }
 
+class AppLoginResult {
+  const AppLoginResult({
+    required this.session,
+    required this.channel,
+    required this.publicId,
+    this.botUrl,
+    this.hint,
+    this.error,
+  });
+
+  final String session;
+  final String channel;
+  final String publicId;
+  final String? botUrl;
+  final String? hint;
+  final String? error;
+
+  bool get isTelegram => channel == 'telegram';
+  bool get isEmail => channel == 'email';
+}
+
+class AppLoginStatus {
+  const AppLoginStatus({
+    required this.status,
+    this.url,
+    this.publicId,
+    this.expiresAt,
+    this.active = true,
+    this.error,
+  });
+
+  final String status;
+  final Uri? url;
+  final String? publicId;
+  final int? expiresAt;
+  final bool active;
+  final String? error;
+
+  bool get isPending => status == 'pending';
+  bool get isReady => status == 'ready' && url != null;
+  bool get isExpired => status == 'expired';
+}
+
 class FetchedSubscription {
   const FetchedSubscription({
     required this.body,
@@ -100,10 +143,26 @@ bool looksLikeShare(String raw) {
 
 Uri? subscriptionAddress(String raw) {
   final text = raw.trim();
+  // Plain emails / telegram nicks must not be treated as http(s) URLs.
+  if (text.contains('@') && !text.contains('://')) return null;
   final uri = Uri.tryParse(text);
   if (uri == null || uri.host.isEmpty) return null;
   if (uri.scheme != 'https' && uri.scheme != 'http') return null;
   return uri;
+}
+
+/// Normalize profile input before /app/login (email, @nick, t.me links).
+String normalizeContactInput(String raw) {
+  var text = raw.replaceAll('\u200b', '').replaceAll('\u00a0', ' ').trim();
+  text = text.replaceAll('＠', '@');
+  if (text.toLowerCase().startsWith('mailto:')) {
+    text = text.substring(7).trim();
+  }
+  final angled = RegExp(r'<([^>]+@[^>]+)>').firstMatch(text);
+  if (angled != null) {
+    text = angled.group(1)!.trim();
+  }
+  return text;
 }
 
 SubscriptionProfile parseSubscription(String body, {String? userinfo}) {

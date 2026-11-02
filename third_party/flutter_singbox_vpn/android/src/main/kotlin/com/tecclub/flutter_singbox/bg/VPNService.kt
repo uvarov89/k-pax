@@ -31,22 +31,12 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
     var systemProxyEnabled = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        android.util.Log.e("VPNService", "onStartCommand called with intent: ${intent?.action}")
-        
-        // Extract config content if available
         if (intent != null && intent.action == BoxService.ACTION_START) {
             val configContent = intent.getStringExtra(BoxService.EXTRA_CONFIG_CONTENT)
-            android.util.Log.e("VPNService", "Config content received: ${configContent?.length ?: 0} bytes")
-            
             if (configContent != null) {
-                // Save to SimpleConfigManager for use in BoxService
-                android.util.Log.e("VPNService", "Saving received config to SimpleConfigManager")
                 com.tecclub.flutter_singbox.config.SimpleConfigManager.saveConfig(configContent)
-            } else {
-                android.util.Log.e("VPNService", "WARNING: No config content received in intent")
             }
         }
-        
         return service.onStartCommand()
     }
 

@@ -192,7 +192,7 @@ class AppStrings {
   String get sectionNotifications => isRu ? 'Уведомления' : 'Notifications';
   String get sectionAccount => isRu ? 'Аккаунт' : 'Account';
   String get sectionAppearance => isRu ? 'Внешний вид' : 'Appearance';
-  String get sectionAbout => 'About $appName';
+  String get sectionAbout => isRu ? 'О приложении' : 'About';
   String get autoConnectLaunch =>
       isRu ? 'Автоподключение при запуске' : 'Connect on launch';
   String get launchWithWindows =>
@@ -225,12 +225,20 @@ class AppStrings {
   String get refreshSubscriptionAction => isRu ? 'Обновить' : 'Refresh';
   String get dismissNotice => isRu ? 'Скрыть' : 'Dismiss';
   String get pasteLinkTitle => isRu ? 'Войти или вставить ссылку' : 'Sign in or paste a link';
-  String get pasteLinkBody => isRu
-      ? 'Почта или @ник Telegram — придёт подтверждение, ссылка подгрузится сама. Можно вставить ссылку $appName или подписку другого провайдера — вход не нужен.'
-      : 'Email or @Telegram nick — confirm ownership, then the link loads itself. Or paste a $appName / other-provider subscription link — no sign-in needed.';
-  String get pasteLinkHint => isRu
-      ? 'Почта, @ник, ${_brand.subExample} или ссылка другого провайдера'
-      : 'Email, @nick, ${_brand.subExample} or another provider link';
+  String get pasteLinkBody => _brand.allowsTelegram
+      ? (isRu
+          ? 'Почта или @ник Telegram — придёт подтверждение, ссылка подгрузится сама. Можно вставить ссылку $appName или подписку другого провайдера — вход не нужен.'
+          : 'Email or @Telegram nick — confirm ownership, then the link loads itself. Or paste a $appName / other-provider subscription link — no sign-in needed.')
+      : (isRu
+          ? 'Укажите почту — придёт письмо с подтверждением, ссылка подгрузится сама. Можно вставить ссылку $appName или подписку другого провайдера — вход не нужен.'
+          : 'Enter your email — confirm ownership, then the link loads itself. Or paste a $appName / other-provider subscription link — no sign-in needed.');
+  String get pasteLinkHint => _brand.allowsTelegram
+      ? (isRu
+          ? 'Почта, @ник, ${_brand.subExample} или ссылка другого провайдера'
+          : 'Email, @nick, ${_brand.subExample} or another provider link')
+      : (isRu
+          ? 'Почта, ${_brand.subExample} или ссылка другого провайдера'
+          : 'Email, ${_brand.subExample} or another provider link');
   String get saveLink => isRu ? 'Продолжить' : 'Continue';
   String get loginWithContact => isRu ? 'Войти' : 'Sign in';
   String get pasteOwnLink => isRu ? 'Вставить свою ссылку' : 'Paste your link';
@@ -245,19 +253,30 @@ class AppStrings {
   String get loginTimedOut => isRu
       ? 'Время подтверждения вышло. Запросите вход ещё раз.'
       : 'Confirmation timed out. Start sign-in again.';
-  String get openProfileForAccess => isRu
-      ? 'Войдите почтой или @ником в профиле'
-      : 'Sign in with email or @nick in the profile';
+  String get openProfileForAccess => _brand.allowsTelegram
+      ? (isRu
+          ? 'Войдите почтой или @ником в профиле'
+          : 'Sign in with email or @nick in the profile')
+      : (isRu
+          ? 'Войдите почтой в профиле'
+          : 'Sign in with email in the profile');
   String get linkReadyTitle => isRu ? 'Доступ включён' : 'Access is on';
   String get linkReadyBody => isRu
       ? 'Ссылка сохранена в приложении. Скопируйте её для компьютера: второй раз мы её не покажем.'
       : 'The link is saved in the app. Copy it for your computer: it will not be shown again.';
-  String get badLink => isRu
-      ? 'Не похоже на почту, @ник или ссылку подписки.'
-      : 'Does not look like an email, @nick, or subscription link.';
+  String get badLink => _brand.allowsTelegram
+      ? (isRu
+          ? 'Не похоже на почту, @ник или ссылку подписки.'
+          : 'Does not look like an email, @nick, or subscription link.')
+      : (isRu
+          ? 'Не похоже на почту или ссылку подписки.'
+          : 'Does not look like an email or subscription link.');
+  String get emailOnlyContact => isRu
+      ? 'В $appName вход только по почте: name@mail.ru'
+      : '$appName sign-in is email only: name@mail.ru';
   String get linkOpenFailed => isRu
-      ? 'Ссылка не открылась. Проверьте интернет и попробуйте ещё раз.'
-      : 'The link did not open. Check the internet and try again.';
+      ? 'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.'
+      : 'Could not reach the server. Check the internet and try again.';
   String get replaceLink => isRu ? 'Заменить ссылку' : 'Replace link';
   String get serversUpdated =>
       isRu ? 'Серверы обновлены' : 'Servers updated';
@@ -265,12 +284,10 @@ class AppStrings {
   String get theme => isRu ? 'Тема' : 'Theme';
   String get themeDark => isRu ? 'Тёмная' : 'Dark';
   String get themeLight => isRu ? 'Светлая' : 'Light';
-  String get about => 'About $appName';
-  String get aboutPlanet =>
-      _brand.isXplm ? appName : 'Planet K-Pax';
+  String get about => isRu ? 'О приложении' : 'About';
   String get aboutLead => isRu
-      ? '$appName создаёт спокойное соединение между вашим устройством и сетью. Без лишнего шума и без автопродления.'
-      : '$appName makes a calm link between your device and the network. Less noise, and no auto-renewal.';
+      ? 'Спокойное соединение между устройством и сетью. Без лишнего шума и без автопродления.'
+      : 'A calm link between your device and the network. Less noise, and no auto-renewal.';
   String get aboutThesisQuietTitle => _brand.isXplm
       ? (isRu ? 'Тише в ленте' : 'Quieter feed')
       : (isRu ? 'Чистый эфир' : 'Clear airwaves');
@@ -322,23 +339,41 @@ class AppStrings {
   String get privacySoon => isRu
       ? 'Какие данные хранятся'
       : 'What data is stored';
-  List<String> get privacyParagraphs => isRu
-      ? [
-          'Чтобы выдать доступ, мы храним почту или ник Telegram, номер счёта, срок и технический ключ подключения.',
-          'Этого хватает, чтобы создать доступ, вернуть ссылку и подключить приложение.',
-          'Содержимое сайтов и переписки в туннеле мы не читаем. Эти данные не продаём.',
-          'На серверах могут оставаться технические записи о сбоях соединения. Это не список сайтов, которые вы открывали.',
-          'Если вы пишете боту или на почту, мы видим это сообщение, чтобы отправить ссылку обратно.',
-          'Удалить доступ можно письмом на ${_brand.supportEmail} с той же почты или сообщением с того же Telegram.',
-        ]
-      : [
-          'To give you access we store an email or Telegram nick, the account number, the expiry date and the technical key used to connect.',
-          'That is enough to create access, return the link and connect the app.',
-          'We do not read the sites and messages inside the tunnel. We do not sell this data.',
-          'Servers may keep technical notes about failed connections. That is not a list of the sites you opened.',
-          'If you write to the bot or by email, we see that message so we can send the link back.',
-          'To delete access, write to ${_brand.supportEmail} from the same email, or from the same Telegram.',
-        ];
+  List<String> get privacyParagraphs => _brand.allowsTelegram
+      ? (isRu
+          ? [
+              'Чтобы выдать доступ, мы храним почту или ник Telegram, номер счёта, срок и технический ключ подключения.',
+              'Этого хватает, чтобы создать доступ, вернуть ссылку и подключить приложение.',
+              'Содержимое сайтов и переписки в туннеле мы не читаем. Эти данные не продаём.',
+              'На серверах могут оставаться технические записи о сбоях соединения. Это не список сайтов, которые вы открывали.',
+              'Если вы пишете боту или на почту, мы видим это сообщение, чтобы отправить ссылку обратно.',
+              'Удалить доступ можно письмом на ${_brand.supportEmail} с той же почты или сообщением с того же Telegram.',
+            ]
+          : [
+              'To give you access we store an email or Telegram nick, the account number, the expiry date and the technical key used to connect.',
+              'That is enough to create access, return the link and connect the app.',
+              'We do not read the sites and messages inside the tunnel. We do not sell this data.',
+              'Servers may keep technical notes about failed connections. That is not a list of the sites you opened.',
+              'If you write to the bot or by email, we see that message so we can send the link back.',
+              'To delete access, write to ${_brand.supportEmail} from the same email, or from the same Telegram.',
+            ])
+      : (isRu
+          ? [
+              'Чтобы выдать доступ, мы храним почту, номер счёта, срок и технический ключ подключения.',
+              'Этого хватает, чтобы создать доступ, вернуть ссылку и подключить приложение.',
+              'Содержимое сайтов и переписки в туннеле мы не читаем. Эти данные не продаём.',
+              'На серверах могут оставаться технические записи о сбоях соединения. Это не список сайтов, которые вы открывали.',
+              'Если вы пишете на почту, мы видим это сообщение, чтобы отправить ссылку обратно.',
+              'Удалить доступ можно письмом на ${_brand.supportEmail} с той же почты.',
+            ]
+          : [
+              'To give you access we store an email, the account number, the expiry date and the technical key used to connect.',
+              'That is enough to create access, return the link and connect the app.',
+              'We do not read the sites and messages inside the tunnel. We do not sell this data.',
+              'Servers may keep technical notes about failed connections. That is not a list of the sites you opened.',
+              'If you write by email, we see that message so we can send the link back.',
+              'To delete access, write to ${_brand.supportEmail} from the same email.',
+            ]);
   String updateTitle(String version) => isRu
       ? 'Доступна версия $version'
       : 'Version $version is available';
@@ -448,9 +483,13 @@ class AppStrings {
   String get loginWaitingHome => isRu
       ? 'Ждём подтверждение входа…'
       : 'Waiting for sign-in confirmation…';
-  String get lostAccessHelp => isRu
-      ? 'Потеряли доступ — введите ту же почту или @ник выше: для почты придёт письмо, для Telegram откроется бот.'
-      : 'Lost access — enter the same email or @nick above: email gets a letter, Telegram opens the bot.';
+  String get lostAccessHelp => _brand.allowsTelegram
+      ? (isRu
+          ? 'Потеряли доступ — введите ту же почту или @ник выше: для почты придёт письмо, для Telegram откроется бот.'
+          : 'Lost access — enter the same email or @nick above: email gets a letter, Telegram opens the bot.')
+      : (isRu
+          ? 'Потеряли доступ — введите ту же почту выше: придёт письмо с подтверждением.'
+          : 'Lost access — enter the same email above: you will get a confirmation letter.');
   String get userId => isRu ? 'ID пользователя' : 'User ID';
   String get legal => isRu ? 'Документы' : 'Legal';
   String get terms => isRu ? 'Пользовательское соглашение' : 'Terms of use';
@@ -458,20 +497,28 @@ class AppStrings {
       ? [
           '$appName — личный VPN. Первые 14 дней карта не нужна. Когда срок кончится, доступ остановится, пока не появится оплата.',
           'Подписка одна для всех. Одновременно работают два устройства. Если страну не выбирать, приложение само берёт ту, что отвечает быстрее.',
-          'Ссылка показывается один раз и дальше не меняется. Номер счёта сам по себе не подключает. Потерянную ссылку присылает бот с того же Telegram или письмо с той же почты.',
+          _brand.allowsTelegram
+              ? 'Ссылка показывается один раз и дальше не меняется. Номер счёта сам по себе не подключает. Потерянную ссылку присылает бот с того же Telegram или письмо с той же почты.'
+              : 'Ссылка показывается один раз и дальше не меняется. Номер счёта сам по себе не подключает. Потерянную ссылку пришлём письмом с той же почты.',
           'Ссылку не передавайте другим людям. Доступ можно остановить, если ей пользуются явно чужие, или если сервер временно недоступен.',
           '${_brand.priceLabel} продлевают ту же ссылку на 30 дней. Оплата не создаёт новую ссылку и не продлевается сама.',
         ]
       : [
           '$appName is a personal VPN. The first 14 days do not need a card. After that a subscription is ${_brand.priceLabel} for 30 days. When the term ends, access stops until it is extended.',
           'Everyone has the same subscription. Two devices can be online at once. If you do not pick a country, the app uses the one that answers fastest.',
-          'The link is shown once and stays the same. The account number alone does not connect. A lost link comes back from the bot on the same Telegram, or from a message sent from the same email.',
+          _brand.allowsTelegram
+              ? 'The link is shown once and stays the same. The account number alone does not connect. A lost link comes back from the bot on the same Telegram, or from a message sent from the same email.'
+              : 'The link is shown once and stays the same. The account number alone does not connect. A lost link comes back from a message sent from the same email.',
           'Do not give the link to other people. Access can be stopped if strangers are clearly using it, or if a server is temporarily down.',
           '${_brand.priceLabel} extends the same link by 30 days. Payment does not create a new link.',
         ];
-  String get noAccessYet => isRu
-      ? 'Подписки нет. Укажите почту, ник или ссылку выше.'
-      : 'No subscription yet. Enter an email, nick or link above.';
+  String get noAccessYet => _brand.allowsTelegram
+      ? (isRu
+          ? 'Подписки нет. Укажите почту, ник или ссылку выше.'
+          : 'No subscription yet. Enter an email, nick or link above.')
+      : (isRu
+          ? 'Подписки нет. Укажите почту или ссылку выше.'
+          : 'No subscription yet. Enter an email or link above.');
   String get emptySubscription => isRu
       ? 'В ссылке нет подходящих серверов. Подходят подписки списком, Clash или JSON и ссылки vless, vmess, trojan, ss, hy2, tuic.'
       : 'The link has no usable servers. Subscriptions as a list, Clash or JSON work, and vless, vmess, trojan, ss, hy2, tuic links.';

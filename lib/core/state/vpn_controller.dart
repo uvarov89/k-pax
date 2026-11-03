@@ -510,6 +510,12 @@ class VpnController extends ChangeNotifier {
     loginChannel = null;
     loginSession = null;
     notifyListeners();
+    if (!AppBrand.current.allowsTelegram && !_looksLikeEmail(contact)) {
+      linkError = strings.emailOnlyContact;
+      linkState = SubscriptionLinkState.failed;
+      notifyListeners();
+      return;
+    }
     try {
       final result = await _subscriptions.loginWithContact(contact);
       if (result.error != null || result.session.isEmpty) {
@@ -1151,6 +1157,14 @@ class VpnController extends ChangeNotifier {
         TunnelKind.tuic => 3,
         TunnelKind.message => 4,
       };
+
+  static bool _looksLikeEmail(String raw) {
+    final text = raw.trim();
+    if (!text.contains('@') || text.startsWith('@')) return false;
+    return RegExp(
+      r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$',
+    ).hasMatch(text);
+  }
 
   Future<void> _persistSession() async {
     final locationId = appSettings.rememberLastCountry

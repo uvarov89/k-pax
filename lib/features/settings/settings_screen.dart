@@ -313,7 +313,7 @@ class SettingsScreen extends StatelessWidget {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   title: Text(s.about),
                   subtitle: Text(
-                    s.aboutPlanet,
+                    AppBrand.current.host,
                     style: TextStyle(color: muted, fontSize: 13),
                   ),
                   trailing: Icon(Icons.chevron_right, color: muted),

@@ -49,11 +49,25 @@ class SubscriptionClient {
       request.add(bytes);
       final response = await request.close().timeout(const Duration(seconds: 30));
       final body = await response.transform(utf8.decoder).join();
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) throw const HttpException('json');
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map) {
+          return {
+            'status': response.statusCode,
+            'body': Map<String, dynamic>.from(decoded),
+          };
+        }
+      } catch (_) {
+        // Non-JSON error pages (proxy/edge) — surface plain text when present.
+      }
+      final trimmed = body.trim();
       return {
         'status': response.statusCode,
-        'body': Map<String, dynamic>.from(decoded),
+        'body': <String, dynamic>{
+          'error': trimmed.isEmpty
+              ? 'Сервер вернул ошибку ${response.statusCode}.'
+              : (trimmed.length > 240 ? '${trimmed.substring(0, 240)}…' : trimmed),
+        },
       };
     } finally {
       client.close(force: true);

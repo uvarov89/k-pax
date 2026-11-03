@@ -31,6 +31,9 @@ final class AppBrand {
   bool get isXplm => id == 'xplm';
   bool get isKpax => id == 'kpax';
 
+  /// X-Plm is email-only; K-Pax also accepts Telegram nicks.
+  bool get allowsTelegram => isKpax;
+
   String get supportEmail => 'support@$host';
   String get siteUrl => 'https://$host/';
   String get payUrl => 'https://$host/pay';

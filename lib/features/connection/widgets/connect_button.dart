@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:pulse_vpn/core/models/connection_models.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
+import 'package:pulse_vpn/core/models/connection_models.dart';
 
 class ConnectButton extends StatelessWidget {
   const ConnectButton({
@@ -29,6 +31,7 @@ class ConnectButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connected = state == VpnConnectionState.connected;
     final busy = state == VpnConnectionState.connecting ||
@@ -41,43 +44,55 @@ class ConnectButton extends StatelessWidget {
 
     switch (state) {
       case VpnConnectionState.connected:
-        ringColor = NordColors.accent;
-        fillColor = NordColors.accentDim;
-        glowColor = NordColors.accent;
+        ringColor = xplm ? XplmColors.accent : NordColors.accent;
+        fillColor = xplm ? XplmColors.accentHover : NordColors.accentDim;
+        glowColor = ringColor;
         label = disconnectLabel;
       case VpnConnectionState.connecting:
-        ringColor = NordColors.connecting;
-        fillColor = isDark
-            ? NordColors.disconnectFill
-            : NordColors.lightDisconnectFill;
-        glowColor = NordColors.connecting;
+        ringColor = xplm ? XplmColors.connecting : NordColors.connecting;
+        fillColor = xplm
+            ? XplmColors.disconnectFill
+            : (isDark
+                ? NordColors.disconnectFill
+                : NordColors.lightDisconnectFill);
+        glowColor = ringColor;
         label = connectingLabel;
       case VpnConnectionState.disconnecting:
-        ringColor = NordColors.connecting;
-        fillColor = isDark
-            ? NordColors.disconnectFill
-            : NordColors.lightDisconnectFill;
-        glowColor = NordColors.connecting;
+        ringColor = xplm ? XplmColors.connecting : NordColors.connecting;
+        fillColor = xplm
+            ? XplmColors.disconnectFill
+            : (isDark
+                ? NordColors.disconnectFill
+                : NordColors.lightDisconnectFill);
+        glowColor = ringColor;
         label = disconnectingLabel;
       case VpnConnectionState.error:
-        ringColor = NordColors.danger;
-        fillColor = isDark
-            ? NordColors.disconnectFill
-            : NordColors.lightDisconnectFill;
-        glowColor = NordColors.danger;
+        ringColor = xplm ? XplmColors.danger : NordColors.danger;
+        fillColor = xplm
+            ? XplmColors.disconnectFill
+            : (isDark
+                ? NordColors.disconnectFill
+                : NordColors.lightDisconnectFill);
+        glowColor = ringColor;
         label = retryLabel;
       case VpnConnectionState.disconnected:
-        ringColor = isDark ? NordColors.cyan : NordColors.cyanDim;
-        fillColor = isDark
-            ? NordColors.disconnectFill
-            : NordColors.lightDisconnectFill;
-        glowColor = NordColors.cyan;
+        ringColor = xplm
+            ? XplmColors.accent
+            : (isDark ? NordColors.cyan : NordColors.cyanDim);
+        fillColor = xplm
+            ? XplmColors.disconnectFill
+            : (isDark
+                ? NordColors.disconnectFill
+                : NordColors.lightDisconnectFill);
+        glowColor = ringColor;
         label = connectLabel;
     }
 
     final labelColor = connected
-        ? Colors.white
-        : (isDark ? NordColors.textPrimary : NordColors.lightTextPrimary);
+        ? (xplm ? XplmColors.onAccent : Colors.white)
+        : (xplm
+            ? XplmColors.ink
+            : (isDark ? NordColors.textPrimary : NordColors.lightTextPrimary));
 
     return Semantics(
       button: true,

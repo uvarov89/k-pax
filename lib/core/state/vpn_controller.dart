@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/l10n/app_strings.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -100,10 +101,10 @@ class VpnController extends ChangeNotifier {
   bool get isLoginWaiting =>
       loginSession != null && linkState == SubscriptionLinkState.loading;
 
-  /// Payment, referrals and the account number exist only for K-Pax links.
+  /// Payment, referrals and the account number exist only for owned-brand links.
   bool get isKPaxSubscription {
     final url = subscriptionUrl;
-    return url != null && kPaxSubscriptionUri(url) != null;
+    return url != null && brandSubscriptionUri(url) != null;
   }
 
   /// Other providers may give a link without an end date.
@@ -121,7 +122,7 @@ class VpnController extends ChangeNotifier {
   }
 
   String subscriptionLabel(SavedSubscription item) {
-    if (kPaxSubscriptionUri(item.url) != null) return 'K-Pax';
+    if (brandSubscriptionUri(item.url) != null) return AppBrand.current.appName;
     if (item.name.isNotEmpty) return item.name;
     if (looksLikeShare(item.url)) return strings.ownServer;
     final host = Uri.tryParse(item.url)?.host ?? '';

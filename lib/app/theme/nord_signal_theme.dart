@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/kpax_space_background.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
+import 'package:pulse_vpn/app/theme/xplm_paper_background.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 
 /// K-Pax brand palette: deep navy, cyan glow, green signal.
@@ -125,7 +128,78 @@ abstract final class NordSignalTheme {
     return base.copyWith(textTheme: _readableText(base.textTheme, NordColors.lightTextPrimary));
   }
 
+  static ThemeData get xplmLight {
+    final base = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      fontFamily: 'Roboto',
+      colorScheme: const ColorScheme.light(
+        primary: XplmColors.accent,
+        onPrimary: XplmColors.onAccent,
+        secondary: XplmColors.accentHover,
+        surface: XplmColors.surface,
+        onSurface: XplmColors.ink,
+        error: XplmColors.danger,
+      ),
+      scaffoldBackgroundColor: XplmColors.paper,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        foregroundColor: XplmColors.ink,
+      ),
+      dividerColor: XplmColors.line,
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return Colors.white;
+          return XplmColors.ink2;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return XplmColors.accent;
+          return XplmColors.lineStrong;
+        }),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: XplmColors.accent,
+          foregroundColor: XplmColors.onAccent,
+          disabledBackgroundColor: XplmColors.lineStrong,
+          disabledForegroundColor: XplmColors.ink3,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: XplmColors.surface,
+        hintStyle: const TextStyle(color: XplmColors.ink3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: XplmColors.line),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: XplmColors.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: XplmColors.accent, width: 1.4),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: XplmColors.ink,
+        contentTextStyle: const TextStyle(color: XplmColors.paper),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+    return base.copyWith(textTheme: _readableText(base.textTheme, XplmColors.ink));
+  }
+
   static ThemeData forPreference(AppThemePreference preference) {
+    if (AppBrand.current.isXplm) return xplmLight;
     return preference == AppThemePreference.light ? light : dark;
   }
 
@@ -163,6 +237,9 @@ class NordBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppBrand.current.isXplm) {
+      return XplmPaperBackground(child: child);
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (!isDark) {
       return DecoratedBox(
@@ -196,19 +273,25 @@ class KpaxCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final radius = BorderRadius.circular(18);
+    final surface = xplm
+        ? XplmColors.surface
+        : (isDark ? NordColors.surface : NordColors.lightSurface);
+    final border = xplm
+        ? (glow
+            ? XplmColors.accent.withValues(alpha: 0.35)
+            : XplmColors.line)
+        : (glow
+            ? NordColors.cyan.withValues(alpha: 0.35)
+            : (isDark ? NordColors.border : NordColors.lightBorder));
     final box = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
-        color: (isDark ? NordColors.surface : NordColors.lightSurface)
-            .withValues(alpha: isDark ? 0.92 : 0.96),
-        border: Border.all(
-          color: glow
-              ? NordColors.cyan.withValues(alpha: 0.35)
-              : (isDark ? NordColors.border : NordColors.lightBorder),
-        ),
-        boxShadow: glow && isDark
+        color: surface.withValues(alpha: isDark && !xplm ? 0.92 : 0.96),
+        border: Border.all(color: border),
+        boxShadow: glow && isDark && !xplm
             ? [
                 BoxShadow(
                   color: NordColors.cyan.withValues(alpha: 0.12),

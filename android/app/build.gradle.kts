@@ -40,6 +40,24 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        resValue("string", "app_name", "K-Pax")
+        manifestPlaceholders["deepLinkScheme"] = "kpax"
+    }
+
+    flavorDimensions += "brand"
+    productFlavors {
+        create("kpax") {
+            dimension = "brand"
+            applicationId = "space.kpax.app"
+            resValue("string", "app_name", "K-Pax")
+            manifestPlaceholders["deepLinkScheme"] = "kpax"
+        }
+        create("xplm") {
+            dimension = "brand"
+            applicationId = "online.xplm.app"
+            resValue("string", "app_name", "X-Plm")
+            manifestPlaceholders["deepLinkScheme"] = "xplm"
+        }
     }
 
     packaging {

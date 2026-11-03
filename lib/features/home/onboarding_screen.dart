@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/services/settings_repository.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -46,7 +47,7 @@ class OnboardingScreen extends StatelessWidget {
               children: [
                 const Spacer(flex: 2),
                 Image.asset(
-                  'assets/brand/logo.png',
+                  AppBrand.current.logoAsset,
                   width: 112,
                   height: 112,
                   fit: BoxFit.contain,
@@ -56,17 +57,17 @@ class OnboardingScreen extends StatelessWidget {
                   s.onboardingTitle,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: NordColors.accent,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.6,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'K-Pax',
+                Text(
+                  AppBrand.current.appName,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,

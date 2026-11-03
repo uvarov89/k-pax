@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/services/android_update.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -19,14 +20,15 @@ Future<Directory> _androidCacheDir() async {
 }
 
 Future<File?> _downloadApk(Uri url) async {
+  final brand = AppBrand.current;
   final dir = await _androidCacheDir();
-  final file = File('${dir.path}/K-Pax-update.apk');
+  final file = File('${dir.path}/${brand.updateApkName}');
   final client = HttpClient()..autoUncompress = true;
   try {
     final request = await client.getUrl(url).timeout(const Duration(seconds: 20));
     request.followRedirects = true;
     request.maxRedirects = 8;
-    request.headers.set(HttpHeaders.userAgentHeader, 'K-Pax');
+    request.headers.set(HttpHeaders.userAgentHeader, brand.appName);
     final response = await request.close().timeout(const Duration(minutes: 5));
     if (response.statusCode != 200) return null;
     final sink = file.openWrite();

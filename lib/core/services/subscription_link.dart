@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:yaml/yaml.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
 part 'subscription_formats.dart';
@@ -118,17 +119,21 @@ class UnsupportedLink implements Exception {
   final String reason;
 }
 
-Uri? kPaxSubscriptionUri(String raw) {
+Uri? brandSubscriptionUri(String raw) {
   final text = raw.trim();
   if (text.isEmpty) return null;
   final uri = Uri.tryParse(text);
-  if (uri == null || uri.scheme != 'https' || uri.host != 'sub.k-pax.space') {
+  final host = AppBrand.current.subHost;
+  if (uri == null || uri.scheme != 'https' || uri.host != host) {
     return null;
   }
   final token = uri.path.startsWith('/s/') ? uri.path.substring(3) : '';
   if (token.length < 16 || token.contains('/')) return null;
   return uri.replace(query: '', fragment: '');
 }
+
+/// Legacy alias — owned-brand subscription URL for the active flavor.
+Uri? kPaxSubscriptionUri(String raw) => brandSubscriptionUri(raw);
 
 bool looksLikeShare(String raw) {
   final text = raw.trim().toLowerCase();

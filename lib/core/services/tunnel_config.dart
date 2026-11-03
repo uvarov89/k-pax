@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/split_tunnel.dart';
@@ -42,7 +43,7 @@ String buildTunnelConfig(
       ],
       'rules': [
         {
-          'domain_suffix': ['k-pax.space'],
+          'domain_suffix': [AppBrand.current.host],
           'server': 'dns-direct',
         },
       ],

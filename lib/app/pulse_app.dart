@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/services/deep_link_service.dart';
 import 'package:pulse_vpn/core/services/network_auto_connect.dart';
@@ -108,11 +110,12 @@ class _PulseAppState extends State<PulseApp> {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = _theme == AppThemePreference.light;
+    final brand = AppBrand.current;
+    final isLight = brand.isXplm || _theme == AppThemePreference.light;
     return ChangeNotifierProvider.value(
       value: widget.controller,
       child: MaterialApp(
-        title: 'K-Pax',
+        title: brand.appName,
         debugShowCheckedModeBanner: false,
         theme: _themeForWindow(NordSignalTheme.forPreference(_theme)),
         builder: (context, child) {
@@ -120,8 +123,11 @@ class _PulseAppState extends State<PulseApp> {
             statusBarColor: Colors.transparent,
             statusBarIconBrightness:
                 isLight ? Brightness.dark : Brightness.light,
-            systemNavigationBarColor:
-                isLight ? NordColors.lightBgBottom : NordColors.bgBottom,
+            systemNavigationBarColor: brand.isXplm
+                ? XplmColors.paper
+                : isLight
+                    ? NordColors.lightBgBottom
+                    : NordColors.bgBottom,
             systemNavigationBarIconBrightness:
                 isLight ? Brightness.dark : Brightness.light,
           );

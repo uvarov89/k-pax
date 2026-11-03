@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/services/windows_update.dart';
 
 class AndroidRelease {
@@ -13,11 +14,17 @@ class AndroidRelease {
 }
 
 bool isTrustedAndroidApkUrl(Uri uri) {
-  return uri.scheme == 'https' &&
-      uri.host == 'github.com' &&
-      uri.path.startsWith('/uvarov89/k-pax/releases/download/') &&
-      uri.path.toLowerCase().endsWith('.apk') &&
-      !uri.path.contains('..');
+  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
+  final lower = uri.path.toLowerCase();
+  if (!lower.endsWith('.apk')) return false;
+  final brand = AppBrand.current;
+  if (uri.host == brand.host) return true;
+  if (uri.host != 'github.com') return false;
+  if (brand.isXplm) {
+    return uri.path.startsWith('/uvarov89/x-plm/releases/download/') ||
+        uri.path.startsWith('/uvarov89/xplm/releases/download/');
+  }
+  return uri.path.startsWith('/uvarov89/k-pax/releases/download/');
 }
 
 enum AndroidUpdateStatus { newer, current, unavailable }
@@ -55,16 +62,17 @@ AndroidUpdateLookup interpretAndroidUpdate(String body, String currentVersion) {
 class AndroidUpdateCheck {
   const AndroidUpdateCheck();
 
-  static final Uri endpoint = Uri.parse('https://k-pax.space/app/android');
+  static Uri get endpoint => AppBrand.current.androidUpdateEndpoint;
 
   Future<AndroidUpdateLookup> lookup(String currentVersion) async {
     if (kIsWeb || !Platform.isAndroid) {
       return const AndroidUpdateLookup(status: AndroidUpdateStatus.unavailable);
     }
+    final brand = AppBrand.current;
     final client = HttpClient();
     try {
       final request = await client.getUrl(endpoint).timeout(const Duration(seconds: 8));
-      request.headers.set(HttpHeaders.userAgentHeader, 'K-Pax');
+      request.headers.set(HttpHeaders.userAgentHeader, brand.appName);
       final response = await request.close().timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
         return const AndroidUpdateLookup(status: AndroidUpdateStatus.unavailable);

@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/services/subscription_link.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 
-/// Handles `kpax://` links from the site, bot, and payment return.
+/// Handles brand deep links from the site, bot, and payment return.
 class DeepLinkService {
   DeepLinkService(this._controller);
 
@@ -27,7 +28,8 @@ class DeepLinkService {
   }
 
   Future<void> handle(Uri uri) async {
-    if (uri.scheme != 'kpax') return;
+    final scheme = AppBrand.current.deepLinkScheme;
+    if (uri.scheme != scheme) return;
     final host = uri.host.toLowerCase();
     final path = uri.path.toLowerCase();
 
@@ -53,8 +55,8 @@ class DeepLinkService {
               ? path.substring(5)
               : (uri.queryParameters['token'] ?? '');
       if (token.isNotEmpty) {
-        final link = 'https://sub.k-pax.space/s/$token';
-        if (kPaxSubscriptionUri(link) != null) {
+        final link = AppBrand.current.subscriptionUrl(token);
+        if (brandSubscriptionUri(link) != null) {
           await _controller.submitSubscriptionLink(link);
         }
       }

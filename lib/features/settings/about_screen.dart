@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
@@ -44,7 +45,7 @@ class AboutScreen extends StatelessWidget {
           children: [
             Center(
               child: Image.asset(
-                'assets/brand/logo.png',
+                AppBrand.current.logoAsset,
                 width: 88,
                 height: 88,
                 fit: BoxFit.contain,
@@ -55,7 +56,7 @@ class AboutScreen extends StatelessWidget {
               s.aboutPlanet,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: NordColors.accent,
+                color: Theme.of(context).colorScheme.primary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.4,
@@ -63,7 +64,7 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'K-Pax',
+              AppBrand.current.appName,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 28,
@@ -173,35 +174,41 @@ class AboutScreen extends StatelessWidget {
                     ),
                   _AboutLink(
                     title: s.aboutOpenSite,
-                    subtitle: 'k-pax.space',
+                    subtitle: AppBrand.current.host,
                     onTap: () => launchUrl(
-                      Uri.parse('https://k-pax.space/'),
+                      Uri.parse(AppBrand.current.siteUrl),
                       mode: LaunchMode.externalApplication,
                     ),
                   ),
                   _AboutLink(
                     title: s.terms,
-                    subtitle: 'k-pax.space/terms',
+                    subtitle: '${AppBrand.current.host}/terms',
                     onTap: () => launchUrl(
-                      Uri.parse('https://k-pax.space/terms'),
+                      Uri.parse(AppBrand.current.termsUrl),
                       mode: LaunchMode.externalApplication,
                     ),
                   ),
                   _AboutLink(
                     title: s.privacy,
-                    subtitle: 'k-pax.space/privacy',
+                    subtitle: '${AppBrand.current.host}/privacy',
                     onTap: () => launchUrl(
-                      Uri.parse('https://k-pax.space/privacy'),
+                      Uri.parse(AppBrand.current.privacyUrl),
                       mode: LaunchMode.externalApplication,
                     ),
                   ),
                   _AboutLink(
                     title: s.support,
                     subtitle: s.supportSoon,
-                    onTap: () => launchUrl(
-                      Uri.parse('https://t.me/k_pax_space'),
-                      mode: LaunchMode.externalApplication,
-                    ),
+                    onTap: () {
+                      final channel = AppBrand.current.channelUrl;
+                      final uri = channel != null
+                          ? Uri.parse(channel)
+                          : Uri(
+                              scheme: 'mailto',
+                              path: AppBrand.current.supportEmail,
+                            );
+                      launchUrl(uri, mode: LaunchMode.externalApplication);
+                    },
                     last: true,
                   ),
                 ],

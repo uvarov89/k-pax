@@ -1,3 +1,4 @@
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 
@@ -8,7 +9,9 @@ class AppStrings {
 
   bool get isRu => lang == AppLanguage.ru;
 
-  String get appName => 'K-Pax';
+  AppBrand get _brand => AppBrand.current;
+
+  String get appName => _brand.appName;
   String get settings => isRu ? 'Настройки' : 'Settings';
   String get simple => isRu ? 'Простой' : 'Simple';
   String get pro => isRu ? 'Подробно' : 'Details';
@@ -35,13 +38,15 @@ class AppStrings {
   String get loginConfirmedFlash => isRu
       ? 'Вход подтверждён — доступ обновлён'
       : 'Sign-in confirmed — access refreshed';
-  String get updateDownloading =>
-      isRu ? 'Обновляем K-Pax…' : 'Updating K-Pax…';
+  String get updateDownloading => isRu
+      ? 'Обновляем $appName…'
+      : 'Updating $appName…';
   String connectedTo(String place) =>
       isRu ? 'На орбите · $place' : 'In orbit · $place';
   String get connectedTagline =>
       isRu ? 'Чистый эфир' : 'Clear airwaves';
-  String get onboardingTitle => 'Planet K-Pax';
+  String get onboardingTitle =>
+      _brand.isXplm ? appName : 'Planet K-Pax';
   String get onboardingBody => isRu
       ? 'Интернет без лишнего шума. 14 дней бесплатно, без карты. Одна ссылка на телефон и компьютер.'
       : 'Internet with less noise. 14 days free, no card. One link for phone and computer.';
@@ -160,7 +165,7 @@ class AppStrings {
   String get sectionNotifications => isRu ? 'Уведомления' : 'Notifications';
   String get sectionAccount => isRu ? 'Аккаунт' : 'Account';
   String get sectionAppearance => isRu ? 'Внешний вид' : 'Appearance';
-  String get sectionAbout => 'About K-Pax';
+  String get sectionAbout => 'About $appName';
   String get autoConnectLaunch =>
       isRu ? 'Автоподключение при запуске' : 'Connect on launch';
   String get launchWithWindows =>
@@ -194,11 +199,11 @@ class AppStrings {
   String get dismissNotice => isRu ? 'Скрыть' : 'Dismiss';
   String get pasteLinkTitle => isRu ? 'Войти или вставить ссылку' : 'Sign in or paste a link';
   String get pasteLinkBody => isRu
-      ? 'Почта или @ник Telegram — придёт подтверждение, ссылка подгрузится сама. Можно вставить ссылку K-Pax или подписку другого провайдера — вход не нужен.'
-      : 'Email or @Telegram nick — confirm ownership, then the link loads itself. Or paste a K-Pax / other-provider subscription link — no sign-in needed.';
+      ? 'Почта или @ник Telegram — придёт подтверждение, ссылка подгрузится сама. Можно вставить ссылку $appName или подписку другого провайдера — вход не нужен.'
+      : 'Email or @Telegram nick — confirm ownership, then the link loads itself. Or paste a $appName / other-provider subscription link — no sign-in needed.';
   String get pasteLinkHint => isRu
-      ? 'Почта, @ник, https://sub.k-pax.space/s/… или ссылка другого провайдера'
-      : 'Email, @nick, https://sub.k-pax.space/s/… or another provider link';
+      ? 'Почта, @ник, ${_brand.subExample} или ссылка другого провайдера'
+      : 'Email, @nick, ${_brand.subExample} or another provider link';
   String get saveLink => isRu ? 'Продолжить' : 'Continue';
   String get loginWithContact => isRu ? 'Войти' : 'Sign in';
   String get pasteOwnLink => isRu ? 'Вставить свою ссылку' : 'Paste your link';
@@ -233,11 +238,12 @@ class AppStrings {
   String get theme => isRu ? 'Тема' : 'Theme';
   String get themeDark => isRu ? 'Тёмная' : 'Dark';
   String get themeLight => isRu ? 'Светлая' : 'Light';
-  String get about => 'About K-Pax';
-  String get aboutPlanet => 'Planet K-Pax';
+  String get about => 'About $appName';
+  String get aboutPlanet =>
+      _brand.isXplm ? appName : 'Planet K-Pax';
   String get aboutLead => isRu
-      ? 'K-Pax создаёт спокойное соединение между вашим устройством и сетью. Без лишнего шума и без автопродления.'
-      : 'K-Pax makes a calm link between your device and the network. Less noise, and no auto-renewal.';
+      ? '$appName создаёт спокойное соединение между вашим устройством и сетью. Без лишнего шума и без автопродления.'
+      : '$appName makes a calm link between your device and the network. Less noise, and no auto-renewal.';
   String get aboutThesisQuietTitle =>
       isRu ? 'Чистый эфир' : 'Clear airwaves';
   String get aboutThesisQuietBody => isRu
@@ -251,8 +257,8 @@ class AppStrings {
   String get aboutThesisPayTitle =>
       isRu ? 'Без автопродления' : 'No auto-renewal';
   String get aboutThesisPayBody => isRu
-      ? 'Карту не привязываем. Понравится — разово 110 ₽ через СБП. Не понравится — просто не продлеваете.'
-      : 'No card on file. Like it — pay 110 ₽ once via SBP. If not — just do not renew.';
+      ? 'Карту не привязываем. Понравится — разово ${_brand.priceLabel} через СБП. Не понравится — просто не продлеваете.'
+      : 'No card on file. Like it — pay ${_brand.priceLabel} once via SBP. If not — just do not renew.';
   String get aboutChangelogTitle => isRu ? 'Что нового' : 'What is new';
   List<String> get aboutChangelog => isRu
       ? const [
@@ -267,35 +273,36 @@ class AppStrings {
           'Android and Windows auto-update: install from the app (APK / Setup).',
           'Space backdrop, About K-Pax, orbit statuses and onboarding — on phone and PC.',
         ];
-  String get aboutOpenSite => isRu ? 'Сайт k-pax.space' : 'Site k-pax.space';
+  String get aboutOpenSite =>
+      isRu ? 'Сайт ${_brand.host}' : 'Site ${_brand.host}';
   String get version => isRu ? 'Версия' : 'Version';
   String get privacy => isRu ? 'Политика приватности' : 'Privacy policy';
   String get privacySoon => isRu
       ? 'Какие данные хранятся'
       : 'What data is stored';
   List<String> get privacyParagraphs => isRu
-      ? const [
+      ? [
           'Чтобы выдать доступ, мы храним почту или ник Telegram, номер счёта, срок и технический ключ подключения.',
           'Этого хватает, чтобы создать доступ, вернуть ссылку и подключить приложение.',
           'Содержимое сайтов и переписки в туннеле мы не читаем. Эти данные не продаём.',
           'На серверах могут оставаться технические записи о сбоях соединения. Это не список сайтов, которые вы открывали.',
           'Если вы пишете боту или на почту, мы видим это сообщение, чтобы отправить ссылку обратно.',
-          'Удалить доступ можно письмом на support@k-pax.space с той же почты или сообщением с того же Telegram.',
+          'Удалить доступ можно письмом на ${_brand.supportEmail} с той же почты или сообщением с того же Telegram.',
         ]
-      : const [
+      : [
           'To give you access we store an email or Telegram nick, the account number, the expiry date and the technical key used to connect.',
           'That is enough to create access, return the link and connect the app.',
           'We do not read the sites and messages inside the tunnel. We do not sell this data.',
           'Servers may keep technical notes about failed connections. That is not a list of the sites you opened.',
           'If you write to the bot or by email, we see that message so we can send the link back.',
-          'To delete access, write to support@k-pax.space from the same email, or from the same Telegram.',
+          'To delete access, write to ${_brand.supportEmail} from the same email, or from the same Telegram.',
         ];
   String updateTitle(String version) => isRu
       ? 'Доступна версия $version'
       : 'Version $version is available';
   String get updateBody => isRu
-      ? 'K-Pax обновится сам и откроется снова. Подключение на это время прервётся, ссылка подписки останется той же.'
-      : 'K-Pax will update itself and open again. The connection pauses for that, and the subscription link stays the same.';
+      ? '$appName обновится сам и откроется снова. Подключение на это время прервётся, ссылка подписки останется той же.'
+      : '$appName will update itself and open again. The connection pauses for that, and the subscription link stays the same.';
   String get updateNow => isRu ? 'Обновить' : 'Update';
   String get updateLater => isRu ? 'Позже' : 'Later';
   String get checkUpdates => isRu ? 'Проверить обновления' : 'Check for updates';
@@ -305,28 +312,34 @@ class AppStrings {
       ? 'Не удалось проверить обновление. Проверьте интернет и повторите.'
       : 'Could not check for an update. Check the internet and try again.';
   String get updateApplyFailed => isRu
-      ? 'Не удалось обновить K-Pax. Проверьте интернет и повторите.'
-      : 'Could not update K-Pax. Check the internet and try again.';
+      ? 'Не удалось обновить $appName. Проверьте интернет и повторите.'
+      : 'Could not update $appName. Check the internet and try again.';
   String get updateInstallPermission => isRu
-      ? 'Разрешите установку из K-Pax в настройках Android и повторите обновление.'
-      : 'Allow installs from K-Pax in Android settings, then try the update again.';
+      ? 'Разрешите установку из $appName в настройках Android и повторите обновление.'
+      : 'Allow installs from $appName in Android settings, then try the update again.';
   String get quitApp => isRu ? 'Закрыть приложение' : 'Quit the app';
   String get quitAppHint => isRu
       ? 'Крестик убирает окно в трей. Эта кнопка завершает программу.'
       : 'The close button hides the window in the tray. This quits the app.';
   String get support => isRu ? 'Поддержка' : 'Support';
-  String get supportSoon => isRu
-      ? 'Telegram @k_pax_space и support@k-pax.space'
-      : 'Telegram @k_pax_space and support@k-pax.space';
+  String get supportSoon {
+    final tg = _brand.telegramHandle;
+    if (tg == null || tg.isEmpty) {
+      return _brand.supportEmail;
+    }
+    return isRu
+        ? 'Telegram $tg и ${_brand.supportEmail}'
+        : 'Telegram $tg and ${_brand.supportEmail}';
+  }
   String get alwaysOnHelpTitle =>
       isRu ? 'Always-on VPN' : 'Always-on VPN';
   String get alwaysOnHelpBody => isRu
-      ? 'Откройте Настройки Android → Сеть и интернет → VPN → K-Pax → включите «VPN всегда включён» и при необходимости «Блокировать подключения без VPN».'
-      : 'Open Android Settings → Network & internet → VPN → K-Pax → enable “Always-on VPN” and optionally “Block connections without VPN”.';
+      ? 'Откройте Настройки Android → Сеть и интернет → VPN → $appName → включите «VPN всегда включён» и при необходимости «Блокировать подключения без VPN».'
+      : 'Open Android Settings → Network & internet → VPN → $appName → enable “Always-on VPN” and optionally “Block connections without VPN”.';
   String get gotIt => isRu ? 'Понятно' : 'Got it';
 
   // Subscription / paywall
-  String get planName => 'K-Pax';
+  String get planName => appName;
   String get planExpired => isRu ? 'Истёк' : 'Expired';
   String get subscription => isRu ? 'Подписка' : 'Subscription';
   String get account => isRu ? 'Аккаунт' : 'Account';
@@ -337,15 +350,15 @@ class AppStrings {
       ? 'Срок подписки закончился'
       : 'Your subscription has ended';
   String get paywallSubtitle => isRu
-      ? 'Подписка одна: 110 ₽ за 30 дней и 2 устройства. Оплата продлевает ту же ссылку.'
-      : 'One subscription: 110 ₽ for 30 days and 2 devices. Payment extends the same link.';
+      ? 'Подписка одна: ${_brand.priceLabel} за 30 дней и 2 устройства. Оплата продлевает ту же ссылку.'
+      : 'One subscription: ${_brand.priceLabel} for 30 days and 2 devices. Payment extends the same link.';
   String get trialActiveTitle => isRu ? 'Пробный период' : 'Free trial';
   String daysLeft(int n) => isRu ? 'Осталось $n дн.' : '$n days left';
   String activeUntil(String date) =>
       isRu ? 'Доступ до $date' : 'Access until $date';
   String get paymentNote => isRu
-      ? '110 ₽ за 30 дней, разовая оплата через СБП на сайте. Без автопродления. Оплата продлевает ту же ссылку.'
-      : '110 ₽ for 30 days, a one-time SBP payment on the site. No auto-renewal. Payment extends the same link.';
+      ? '${_brand.priceLabel} за 30 дней, разовая оплата через СБП на сайте. Без автопродления. Оплата продлевает ту же ссылку.'
+      : '${_brand.priceLabel} for 30 days, a one-time SBP payment on the site. No auto-renewal. Payment extends the same link.';
   String get buyOnSite => isRu ? 'Открыть оплату' : 'Open payment';
   String get subscriptionRequired => isRu
       ? 'Нужна активная подписка'
@@ -357,7 +370,7 @@ class AppStrings {
   String get referralBody => isRu
       ? 'Отправьте ссылку. Когда человек впервые получит доступ, к вашей подписке добавится 15 дней. Ему откроются обычные 14.'
       : 'Send the link. When someone gets access for the first time, you receive 15 days. They get the usual 14.';
-  String inviteLink(String id) => 'https://k-pax.space/?ref=$id';
+  String inviteLink(String id) => _brand.inviteLink(id);
   String get referralProgress => isRu
       ? 'Приглашённых'
       : 'People invited';
@@ -400,19 +413,19 @@ class AppStrings {
   String get legal => isRu ? 'Документы' : 'Legal';
   String get terms => isRu ? 'Пользовательское соглашение' : 'Terms of use';
   List<String> get termsParagraphs => isRu
-      ? const [
-          'K-Pax — личный VPN. Первые 14 дней карта не нужна. Когда срок кончится, доступ остановится, пока не появится оплата.',
+      ? [
+          '$appName — личный VPN. Первые 14 дней карта не нужна. Когда срок кончится, доступ остановится, пока не появится оплата.',
           'Подписка одна для всех. Одновременно работают два устройства. Если страну не выбирать, приложение само берёт ту, что отвечает быстрее.',
           'Ссылка показывается один раз и дальше не меняется. Номер счёта сам по себе не подключает. Потерянную ссылку присылает бот с того же Telegram или письмо с той же почты.',
           'Ссылку не передавайте другим людям. Доступ можно остановить, если ей пользуются явно чужие, или если сервер временно недоступен.',
-          '110 ₽ продлевают ту же ссылку на 30 дней. Оплата не создаёт новую ссылку и не продлевается сама.',
+          '${_brand.priceLabel} продлевают ту же ссылку на 30 дней. Оплата не создаёт новую ссылку и не продлевается сама.',
         ]
-      : const [
-          'K-Pax is a personal VPN. The first 14 days do not need a card. After that a subscription is 110 ₽ for 30 days. When the term ends, access stops until it is extended.',
+      : [
+          '$appName is a personal VPN. The first 14 days do not need a card. After that a subscription is ${_brand.priceLabel} for 30 days. When the term ends, access stops until it is extended.',
           'Everyone has the same subscription. Two devices can be online at once. If you do not pick a country, the app uses the one that answers fastest.',
           'The link is shown once and stays the same. The account number alone does not connect. A lost link comes back from the bot on the same Telegram, or from a message sent from the same email.',
           'Do not give the link to other people. Access can be stopped if strangers are clearly using it, or if a server is temporarily down.',
-          '110 ₽ extends the same link by 30 days. Payment does not create a new link.',
+          '${_brand.priceLabel} extends the same link by 30 days. Payment does not create a new link.',
         ];
   String get noAccessYet => isRu
       ? 'Подписки нет. Укажите почту, ник или ссылку выше.'

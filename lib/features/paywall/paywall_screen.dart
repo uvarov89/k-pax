@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 
@@ -36,7 +37,7 @@ class PaywallScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           children: [
             Image.asset(
-              'assets/brand/logo.png',
+              AppBrand.current.logoAsset,
               width: 96,
               height: 96,
               fit: BoxFit.contain,
@@ -92,7 +93,7 @@ class PaywallScreen extends StatelessWidget {
               width: double.infinity,
               child: FilledButton(
                 onPressed: () => launchUrl(
-                  Uri.parse('https://k-pax.space/pay'),
+                  Uri.parse(AppBrand.current.payUrl),
                   mode: LaunchMode.externalApplication,
                 ),
                 child: Text(s.buyOnSite),

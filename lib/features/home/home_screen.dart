@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
-import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/features/connection/widgets/connect_button.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
@@ -105,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   children: [
                     Image.asset(
-                      'assets/brand/logo.png',
+                      AppBrand.current.logoAsset,
                       width: 36,
                       height: 36,
                       fit: BoxFit.contain,

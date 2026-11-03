@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_singbox_vpn/flutter_singbox.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
@@ -57,7 +58,7 @@ class SingboxVpnService implements VpnService {
       throw StateError('Не удалось сохранить конфигурацию туннеля');
     }
 
-    await _singbox.setNotificationTitle('K-Pax');
+    await _singbox.setNotificationTitle(AppBrand.current.appName);
     await _singbox.setNotificationDescription('Защищённое подключение');
     await _applySplitTunnel(appSettings);
 

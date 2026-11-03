@@ -18,4 +18,12 @@ abstract final class XplmColors {
   static const ok = Color(0xFF1E5B31);
   static const onAccent = Color(0xFFFAF7F1);
   static const disconnectFill = Color(0xFFF0E8DC);
+
+  /// Connected "sun" — yellow core, orange rim, soft red corona.
+  static const sunCore = Color(0xFFFFF2A8);
+  static const sunHot = Color(0xFFFFCC33);
+  static const sunMid = Color(0xFFFF9A1F);
+  static const sunRim = Color(0xFFFF5A12);
+  static const sunCorona = Color(0xFFE83B00);
+  static const onSun = Color(0xFF3A1608);
 }

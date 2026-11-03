@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
 import 'package:pulse_vpn/features/connection/widgets/connect_button.dart';
@@ -230,7 +231,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontSize: 18,
                                       fontWeight: FontWeight.w600,
                                       color: controller.isConnected
-                                          ? NordColors.accent
+                                          ? (AppBrand.current.isXplm
+                                              ? XplmColors.sunRim
+                                              : NordColors.accent)
                                           : secondary,
                                     ),
                                   ),
@@ -243,7 +246,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
                                         letterSpacing: 0.8,
-                                        color: NordColors.accent.withValues(alpha: 0.9),
+                                        color: (AppBrand.current.isXplm
+                                                ? XplmColors.sunMid
+                                                : NordColors.accent)
+                                            .withValues(alpha: 0.9),
                                       ),
                                     ),
                                     const SizedBox(height: 6),
@@ -357,10 +363,13 @@ class _PlanBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
     return Material(
       color: warning
           ? const Color(0xFFB45309).withValues(alpha: 0.25)
-          : NordColors.accentDim.withValues(alpha: 0.35),
+          : (xplm
+              ? XplmColors.accentSoft
+              : NordColors.accentDim.withValues(alpha: 0.35)),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -377,7 +386,9 @@ class _PlanBadge extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: warning ? NordColors.connecting : NordColors.accent,
+                  color: warning
+                      ? NordColors.connecting
+                      : (xplm ? XplmColors.accent : NordColors.accent),
                 ),
               ),
             ),

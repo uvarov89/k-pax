@@ -36,6 +36,7 @@ class ConnectButton extends StatelessWidget {
     final connected = state == VpnConnectionState.connected;
     final busy = state == VpnConnectionState.connecting ||
         state == VpnConnectionState.disconnecting;
+    final sun = xplm && connected;
 
     final Color ringColor;
     final Color fillColor;
@@ -44,9 +45,9 @@ class ConnectButton extends StatelessWidget {
 
     switch (state) {
       case VpnConnectionState.connected:
-        ringColor = xplm ? XplmColors.accent : NordColors.accent;
-        fillColor = xplm ? XplmColors.accentHover : NordColors.accentDim;
-        glowColor = ringColor;
+        ringColor = xplm ? XplmColors.sunRim : NordColors.accent;
+        fillColor = xplm ? XplmColors.sunHot : NordColors.accentDim;
+        glowColor = xplm ? XplmColors.sunMid : ringColor;
         label = disconnectLabel;
       case VpnConnectionState.connecting:
         ringColor = xplm ? XplmColors.connecting : NordColors.connecting;
@@ -88,11 +89,72 @@ class ConnectButton extends StatelessWidget {
         label = connectLabel;
     }
 
-    final labelColor = connected
-        ? (xplm ? XplmColors.onAccent : Colors.white)
-        : (xplm
-            ? XplmColors.ink
-            : (isDark ? NordColors.textPrimary : NordColors.lightTextPrimary));
+    final labelColor = sun
+        ? XplmColors.onSun
+        : connected
+            ? (xplm ? XplmColors.onAccent : Colors.white)
+            : (xplm
+                ? XplmColors.ink
+                : (isDark
+                    ? NordColors.textPrimary
+                    : NordColors.lightTextPrimary));
+
+    final Gradient? fillGradient = sun
+        ? const RadialGradient(
+            center: Alignment(-0.18, -0.22),
+            radius: 0.95,
+            colors: [
+              XplmColors.sunCore,
+              XplmColors.sunHot,
+              XplmColors.sunMid,
+              XplmColors.sunRim,
+            ],
+            stops: [0.0, 0.38, 0.72, 1.0],
+          )
+        : connected
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF4AE8A8), NordColors.accentDim],
+              )
+            : null;
+
+    final List<BoxShadow> shadows = sun
+        ? [
+            BoxShadow(
+              color: XplmColors.sunCorona.withValues(alpha: 0.55),
+              blurRadius: 18,
+              spreadRadius: 1,
+            ),
+            BoxShadow(
+              color: XplmColors.sunMid.withValues(alpha: 0.55),
+              blurRadius: 36,
+              spreadRadius: 6,
+            ),
+            BoxShadow(
+              color: XplmColors.sunHot.withValues(alpha: 0.35),
+              blurRadius: 64,
+              spreadRadius: 14,
+            ),
+            BoxShadow(
+              color: XplmColors.sunRim.withValues(alpha: 0.22),
+              blurRadius: 90,
+              spreadRadius: 22,
+            ),
+          ]
+        : [
+            BoxShadow(
+              color: glowColor.withValues(alpha: connected ? 0.38 : 0.22),
+              blurRadius: connected ? 36 : 28,
+              spreadRadius: connected ? 4 : 1,
+            ),
+            if (isDark)
+              BoxShadow(
+                color: glowColor.withValues(alpha: 0.12),
+                blurRadius: 60,
+                spreadRadius: 8,
+              ),
+          ];
 
     return Semantics(
       button: true,
@@ -104,43 +166,32 @@ class ConnectButton extends StatelessWidget {
           height: diameter,
           child: Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
+              if (sun)
+                CustomPaint(
+                  size: Size.square(diameter * 1.35),
+                  painter: const _SunFlarePainter(),
+                ),
               if (busy)
                 _OrbitRing(
                   diameter: diameter,
                   color: ringColor,
                 ),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
                 width: diameter,
                 height: diameter,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: fillColor,
+                  color: fillGradient == null ? fillColor : null,
+                  gradient: fillGradient,
                   border: Border.all(
                     color: ringColor,
-                    width: connected ? 4 : 2.5,
+                    width: connected ? (sun ? 3.5 : 4) : 2.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: glowColor.withValues(alpha: connected ? 0.38 : 0.22),
-                      blurRadius: connected ? 36 : 28,
-                      spreadRadius: connected ? 4 : 1,
-                    ),
-                    if (isDark)
-                      BoxShadow(
-                        color: glowColor.withValues(alpha: 0.12),
-                        blurRadius: 60,
-                        spreadRadius: 8,
-                      ),
-                  ],
-                  gradient: connected
-                      ? const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFF4AE8A8), NordColors.accentDim],
-                        )
-                      : null,
+                  boxShadow: shadows,
                 ),
                 child: Center(
                   child: busy
@@ -160,7 +211,9 @@ class ConnectButton extends StatelessWidget {
                             Icon(
                               Icons.power_settings_new_rounded,
                               size: 40,
-                              color: connected ? Colors.white : ringColor,
+                              color: sun
+                                  ? XplmColors.onSun
+                                  : (connected ? Colors.white : ringColor),
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -182,6 +235,66 @@ class ConnectButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Soft diagonal rays behind the connected sun disc.
+class _SunFlarePainter extends CustomPainter {
+  const _SunFlarePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final long = size.shortestSide * 0.72;
+    final short = size.shortestSide * 0.10;
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-math.pi / 5);
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.transparent,
+          XplmColors.sunHot.withValues(alpha: 0.28),
+          XplmColors.sunCore.withValues(alpha: 0.45),
+          XplmColors.sunHot.withValues(alpha: 0.28),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.28, 0.5, 0.72, 1.0],
+      ).createShader(Rect.fromCenter(center: Offset.zero, width: long * 2, height: short * 2));
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset.zero, width: long * 2, height: short),
+      paint,
+    );
+    canvas.rotate(math.pi / 2.35);
+    final cross = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.transparent,
+          XplmColors.sunMid.withValues(alpha: 0.18),
+          XplmColors.sunHot.withValues(alpha: 0.32),
+          XplmColors.sunMid.withValues(alpha: 0.18),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.28, 0.5, 0.72, 1.0],
+      ).createShader(
+        Rect.fromCenter(center: Offset.zero, width: long * 1.55, height: short),
+      );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: long * 1.55,
+        height: short * 0.7,
+      ),
+      cross,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _OrbitRing extends StatefulWidget {

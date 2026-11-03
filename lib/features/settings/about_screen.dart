@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/brand/brand_logo.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
@@ -43,14 +44,7 @@ class AboutScreen extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
           children: [
-            Center(
-              child: Image.asset(
-                AppBrand.current.logoAsset,
-                width: 88,
-                height: 88,
-                fit: BoxFit.contain,
-              ),
-            ),
+            const Center(child: BrandLogo(size: 88)),
             const SizedBox(height: 16),
             Text(
               s.aboutLead,

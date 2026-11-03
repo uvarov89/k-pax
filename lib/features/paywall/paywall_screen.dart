@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/brand/brand_logo.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 
@@ -36,12 +37,7 @@ class PaywallScreen extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           children: [
-            Image.asset(
-              AppBrand.current.logoAsset,
-              width: 96,
-              height: 96,
-              fit: BoxFit.contain,
-            ),
+            const BrandLogo(size: 96),
             const SizedBox(height: 16),
             Text(
               title,

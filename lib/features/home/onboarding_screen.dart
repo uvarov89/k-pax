@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/brand/brand_logo.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/services/settings_repository.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -46,24 +47,21 @@ class OnboardingScreen extends StatelessWidget {
             child: Column(
               children: [
                 const Spacer(flex: 2),
-                Image.asset(
-                  AppBrand.current.logoAsset,
-                  width: 112,
-                  height: 112,
-                  fit: BoxFit.contain,
-                ),
+                const BrandLogo(size: 112),
                 const SizedBox(height: 22),
-                Text(
-                  s.onboardingTitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.6,
+                if (!AppBrand.current.isXplm) ...[
+                  Text(
+                    s.onboardingTitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.6,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
                 Text(
                   AppBrand.current.appName,
                   textAlign: TextAlign.center,

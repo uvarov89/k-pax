@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/brand/brand_logo.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -106,12 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Row(
                   children: [
-                    Image.asset(
-                      AppBrand.current.logoAsset,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.contain,
-                    ),
+                    const BrandLogo(size: 36),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

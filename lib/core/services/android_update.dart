@@ -20,11 +20,16 @@ bool isTrustedAndroidApkUrl(Uri uri) {
   final brand = AppBrand.current;
   if (uri.host == brand.host) return true;
   if (uri.host != 'github.com') return false;
-  if (brand.isXplm) {
-    return uri.path.startsWith('/uvarov89/x-plm/releases/download/') ||
-        uri.path.startsWith('/uvarov89/xplm/releases/download/');
+  if (!uri.path.startsWith('/uvarov89/k-pax/releases/download/')) {
+    return false;
   }
-  return uri.path.startsWith('/uvarov89/k-pax/releases/download/');
+  final name = uri.pathSegments.isEmpty
+      ? ''
+      : uri.pathSegments.last.toLowerCase();
+  if (brand.isXplm) {
+    return name.startsWith('x-plm-') || name.startsWith('xplm-');
+  }
+  return name.startsWith('k-pax-');
 }
 
 enum AndroidUpdateStatus { newer, current, unavailable }

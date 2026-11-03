@@ -68,7 +68,9 @@ class MainActivity : FlutterActivity() {
             throw IllegalArgumentException("APK not found")
         }
         // Reuse flutter_singbox FileProvider (${applicationId}.cache + cache_paths).
-        val staged = File(cacheDir, "K-Pax-update.apk")
+        val updateName =
+            if (packageName.contains("xplm")) "X-Plm-update.apk" else "K-Pax-update.apk"
+        val staged = File(cacheDir, updateName)
         if (source.absolutePath != staged.absolutePath) {
             source.copyTo(staged, overwrite = true)
         }

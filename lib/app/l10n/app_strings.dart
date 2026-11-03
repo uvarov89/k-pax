@@ -15,36 +15,63 @@ class AppStrings {
   String get settings => isRu ? 'Настройки' : 'Settings';
   String get simple => isRu ? 'Простой' : 'Simple';
   String get pro => isRu ? 'Подробно' : 'Details';
-  String get connect => isRu ? 'В эфир' : 'Enter orbit';
-  String get disconnect => isRu ? 'Покинуть' : 'Leave';
-  String get connecting => isRu ? 'Стыковка' : 'Docking';
-  String get disconnecting => isRu ? 'Сход' : 'Leaving';
+  String get connect => _brand.isXplm
+      ? (isRu ? 'Подключить' : 'Connect')
+      : (isRu ? 'В эфир' : 'Enter orbit');
+  String get disconnect => _brand.isXplm
+      ? (isRu ? 'Отключить' : 'Disconnect')
+      : (isRu ? 'Покинуть' : 'Leave');
+  String get connecting => _brand.isXplm
+      ? (isRu ? 'Подключение…' : 'Connecting…')
+      : (isRu ? 'Стыковка' : 'Docking');
+  String get disconnecting => _brand.isXplm
+      ? (isRu ? 'Отключение…' : 'Disconnecting…')
+      : (isRu ? 'Сход' : 'Leaving');
   String get retry => isRu ? 'Ещё раз' : 'Try again';
-  String get notConnected => isRu ? 'Вне эфира' : 'Off the air';
-  String get connectingStatus => isRu ? 'Стыковка…' : 'Docking…';
-  String get reconnectingStatus =>
-      isRu ? 'Возврат на орбиту…' : 'Returning to orbit…';
-  String get reconnectFailed => isRu
-      ? 'Не удалось вернуться. Нажмите «В эфир».'
-      : 'Could not return. Tap Enter orbit.';
-  String get disconnectingStatus => isRu ? 'Сход с орбиты…' : 'Leaving orbit…';
-  String get connectionError =>
-      isRu ? 'Стыковка не вышла' : 'Docking failed';
-  String get connectFailed =>
-      isRu ? 'Не удалось выйти в эфир' : 'Could not enter orbit';
-  String get killSwitchHeld => isRu
-      ? 'Связь оборвалась. Трафик закрыт, пока снова не выйдете в эфир.'
-      : 'The link dropped. Traffic stays blocked until you enter orbit again.';
+  String get notConnected => _brand.isXplm
+      ? (isRu ? 'Не подключено' : 'Not connected')
+      : (isRu ? 'Вне эфира' : 'Off the air');
+  String get connectingStatus => _brand.isXplm
+      ? (isRu ? 'Подключение…' : 'Connecting…')
+      : (isRu ? 'Стыковка…' : 'Docking…');
+  String get reconnectingStatus => _brand.isXplm
+      ? (isRu ? 'Переподключение…' : 'Reconnecting…')
+      : (isRu ? 'Возврат на орбиту…' : 'Returning to orbit…');
+  String get reconnectFailed => _brand.isXplm
+      ? (isRu
+          ? 'Не удалось переподключиться. Нажмите «Подключить».'
+          : 'Could not reconnect. Tap Connect.')
+      : (isRu
+          ? 'Не удалось вернуться. Нажмите «В эфир».'
+          : 'Could not return. Tap Enter orbit.');
+  String get disconnectingStatus => _brand.isXplm
+      ? (isRu ? 'Отключение…' : 'Disconnecting…')
+      : (isRu ? 'Сход с орбиты…' : 'Leaving orbit…');
+  String get connectionError => _brand.isXplm
+      ? (isRu ? 'Не удалось подключиться' : 'Could not connect')
+      : (isRu ? 'Стыковка не вышла' : 'Docking failed');
+  String get connectFailed => _brand.isXplm
+      ? (isRu ? 'Подключение не удалось' : 'Connection failed')
+      : (isRu ? 'Не удалось выйти в эфир' : 'Could not enter orbit');
+  String get killSwitchHeld => _brand.isXplm
+      ? (isRu
+          ? 'Связь оборвалась. Трафик закрыт, пока снова не подключитесь.'
+          : 'The link dropped. Traffic stays blocked until you connect again.')
+      : (isRu
+          ? 'Связь оборвалась. Трафик закрыт, пока снова не выйдете в эфир.'
+          : 'The link dropped. Traffic stays blocked until you enter orbit again.');
   String get loginConfirmedFlash => isRu
       ? 'Вход подтверждён — доступ обновлён'
       : 'Sign-in confirmed — access refreshed';
   String get updateDownloading => isRu
       ? 'Обновляем $appName…'
       : 'Updating $appName…';
-  String connectedTo(String place) =>
-      isRu ? 'На орбите · $place' : 'In orbit · $place';
-  String get connectedTagline =>
-      isRu ? 'Чистый эфир' : 'Clear airwaves';
+  String connectedTo(String place) => _brand.isXplm
+      ? (isRu ? 'Подключено · $place' : 'Connected · $place')
+      : (isRu ? 'На орбите · $place' : 'In orbit · $place');
+  String get connectedTagline => _brand.isXplm
+      ? (isRu ? 'Без лишнего шума' : 'Less noise')
+      : (isRu ? 'Чистый эфир' : 'Clear airwaves');
   String get onboardingTitle =>
       _brand.isXplm ? appName : 'Planet K-Pax';
   String get onboardingBody => isRu
@@ -244,8 +271,9 @@ class AppStrings {
   String get aboutLead => isRu
       ? '$appName создаёт спокойное соединение между вашим устройством и сетью. Без лишнего шума и без автопродления.'
       : '$appName makes a calm link between your device and the network. Less noise, and no auto-renewal.';
-  String get aboutThesisQuietTitle =>
-      isRu ? 'Чистый эфир' : 'Clear airwaves';
+  String get aboutThesisQuietTitle => _brand.isXplm
+      ? (isRu ? 'Тише в ленте' : 'Quieter feed')
+      : (isRu ? 'Чистый эфир' : 'Clear airwaves');
   String get aboutThesisQuietBody => isRu
       ? 'Рекламные сети и счётчики отключаются на подключении. Меньше шума в ленте и на сайтах.'
       : 'Ad networks and trackers drop on connect. Less noise in feeds and on sites.';
@@ -260,19 +288,33 @@ class AppStrings {
       ? 'Карту не привязываем. Понравится — разово ${_brand.priceLabel} через СБП. Не понравится — просто не продлеваете.'
       : 'No card on file. Like it — pay ${_brand.priceLabel} once via SBP. If not — just do not renew.';
   String get aboutChangelogTitle => isRu ? 'Что нового' : 'What is new';
-  List<String> get aboutChangelog => isRu
-      ? const [
-          'Обновление серверов и стабильности — обновите подписку в приложении, если трафик оборвался.',
-          'Список устройств и отключение лишнего с телефона или компьютера.',
-          'Автообновление Android и Windows: установка из приложения (APK / Setup).',
-          'Фон космоса, экран «О КаПэкс», статусы эфира и онбординг — на телефоне и на ПК.',
-        ]
-      : const [
-          'Server and stability update — refresh the subscription in the app if traffic dropped.',
-          'Device list and the option to kick an extra session from phone or computer.',
-          'Android and Windows auto-update: install from the app (APK / Setup).',
-          'Space backdrop, About K-Pax, orbit statuses and onboarding — on phone and PC.',
-        ];
+  List<String> get aboutChangelog => _brand.isXplm
+      ? (isRu
+          ? [
+              'Обновление серверов и стабильности — обновите подписку в приложении, если трафик оборвался.',
+              'Список устройств и отключение лишнего с телефона или компьютера.',
+              'Автообновление Android: установка APK из приложения.',
+              'Светлый интерфейс X-Plm, оплата и ссылки только на x-plm.online.',
+            ]
+          : [
+              'Server and stability update — refresh the subscription in the app if traffic dropped.',
+              'Device list and the option to kick an extra session from phone or computer.',
+              'Android auto-update: install the APK from the app.',
+              'X-Plm light UI; payment and links only on x-plm.online.',
+            ])
+      : (isRu
+          ? const [
+              'Обновление серверов и стабильности — обновите подписку в приложении, если трафик оборвался.',
+              'Список устройств и отключение лишнего с телефона или компьютера.',
+              'Автообновление Android и Windows: установка из приложения (APK / Setup).',
+              'Фон космоса, экран «О КаПэкс», статусы эфира и онбординг — на телефоне и на ПК.',
+            ]
+          : const [
+              'Server and stability update — refresh the subscription in the app if traffic dropped.',
+              'Device list and the option to kick an extra session from phone or computer.',
+              'Android and Windows auto-update: install from the app (APK / Setup).',
+              'Space backdrop, About K-Pax, orbit statuses and onboarding — on phone and PC.',
+            ]);
   String get aboutOpenSite =>
       isRu ? 'Сайт ${_brand.host}' : 'Site ${_brand.host}';
   String get version => isRu ? 'Версия' : 'Version';

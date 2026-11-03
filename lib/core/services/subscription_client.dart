@@ -23,8 +23,11 @@ class SubscriptionClient {
       return FetchedSubscription(
         body: body,
         userinfo: response.headers.value('subscription-userinfo'),
-        publicId: response.headers.value('x-kpax-id') ??
-            response.headers.value('x-xplm-id'),
+        publicId: AppBrand.current.isXplm
+            ? (response.headers.value('x-xplm-id') ??
+                response.headers.value('x-kpax-id'))
+            : (response.headers.value('x-kpax-id') ??
+                response.headers.value('x-xplm-id')),
         title: profileTitle(response.headers.value('profile-title')),
         webPage: providerPage(
           response.headers.value('profile-web-page-url') ?? response.headers.value('support-url'),

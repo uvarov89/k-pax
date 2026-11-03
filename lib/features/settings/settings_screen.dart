@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/split_tunnel.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
-import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/features/connection/widgets/pro_settings_sheet.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
@@ -268,38 +269,39 @@ class SettingsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(s.theme)),
-                      const SizedBox(width: 12),
-                      DropdownButtonHideUnderline(
-                        child: DropdownButton<AppThemePreference>(
-                          value: settings.theme,
-                          isDense: true,
-                          dropdownColor: surface,
-                          items: [
-                            DropdownMenuItem(
-                              value: AppThemePreference.dark,
-                              child: Text(s.themeDark),
-                            ),
-                            DropdownMenuItem(
-                              value: AppThemePreference.light,
-                              child: Text(s.themeLight),
-                            ),
-                          ],
-                          onChanged: (theme) {
-                            if (theme == null) return;
-                            controller.updateAppSettings(
-                              settings.copyWith(theme: theme),
-                            );
-                          },
+                if (!AppBrand.current.isXplm)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(s.theme)),
+                        const SizedBox(width: 12),
+                        DropdownButtonHideUnderline(
+                          child: DropdownButton<AppThemePreference>(
+                            value: settings.theme,
+                            isDense: true,
+                            dropdownColor: surface,
+                            items: [
+                              DropdownMenuItem(
+                                value: AppThemePreference.dark,
+                                child: Text(s.themeDark),
+                              ),
+                              DropdownMenuItem(
+                                value: AppThemePreference.light,
+                                child: Text(s.themeLight),
+                              ),
+                            ],
+                            onChanged: (theme) {
+                              if (theme == null) return;
+                              controller.updateAppSettings(
+                                settings.copyWith(theme: theme),
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
             _SectionHeader(s.sectionAbout),

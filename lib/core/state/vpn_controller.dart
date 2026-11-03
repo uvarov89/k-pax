@@ -646,8 +646,9 @@ class VpnController extends ChangeNotifier {
 
   Future<void> _rememberAccountNumber(String? id) async {
     final number = id?.trim() ?? '';
+    final prefix = RegExp.escape(AppBrand.current.accountPrefix);
     if (!isKPaxSubscription ||
-        !RegExp(r'^KP-\d{5,8}$').hasMatch(number) ||
+        !RegExp('^$prefix-\\d{5,8}\$').hasMatch(number) ||
         account.userId == number) {
       return;
     }

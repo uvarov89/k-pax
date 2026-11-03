@@ -3,9 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/core/models/subscription.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
-import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -300,7 +301,9 @@ class _AccountScreenState extends State<AccountScreen> {
                 ],
               ),
             ),
-            if (kpax && RegExp(r'^KP-\d{5,8}$').hasMatch(account.userId)) ...[
+            if (kpax &&
+                RegExp('^${RegExp.escape(AppBrand.current.accountPrefix)}-\\d{5,8}\$')
+                    .hasMatch(account.userId)) ...[
               const SizedBox(height: 12),
               _Card(
                 surface: surface,

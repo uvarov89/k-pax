@@ -57,9 +57,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (controller == null || !mounted) return;
     final flash = controller.takeUiFlash();
     if (flash == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(flash.message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(flash.message)));
     if (flash.openAccount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -74,7 +74,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => const AccountScreen(),
+        builder: (_) => AccountScreen(
+          accountDetails: context.read<VpnController>().needsLink,
+        ),
       ),
     );
   }
@@ -102,7 +104,8 @@ class _HomeScreenState extends State<HomeScreen> {
         text: controller.loginChannel == 'telegram'
             ? s.waitingTelegramConfirm
             : s.waitingEmailConfirm,
-        actionLabel: controller.loginChannel == 'telegram' &&
+        actionLabel:
+            controller.loginChannel == 'telegram' &&
                 (controller.loginBotUrl ?? '').isNotEmpty
             ? s.openBotConfirm
             : s.account,
@@ -167,8 +170,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final account = controller.account;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final muted = isDark ? NordColors.textMuted : NordColors.lightTextMuted;
-    final secondary =
-        isDark ? NordColors.textSecondary : NordColors.lightTextSecondary;
+    final secondary = isDark
+        ? NordColors.textSecondary
+        : NordColors.lightTextSecondary;
 
     if (AppBrand.current.isXplm) {
       final body = XplmHomeLayout(
@@ -230,7 +234,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         label: account.hasAccess
                             ? s.daysLeft(account.daysRemaining)
                             : s.planExpired,
-                        warning: !account.hasAccess || account.daysRemaining <= 3,
+                        warning:
+                            !account.hasAccess || account.daysRemaining <= 3,
                         onTap: _openProfile,
                       ),
                       const SizedBox(width: 4),
@@ -257,7 +262,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 Expanded(
-                  child: controller.linkState == SubscriptionLinkState.loading &&
+                  child:
+                      controller.linkState == SubscriptionLinkState.loading &&
                           !controller.isLoginWaiting &&
                           controller.profile == null
                       ? const Center(child: CircularProgressIndicator())
@@ -270,21 +276,27 @@ class _HomeScreenState extends State<HomeScreen> {
                                   const SizedBox(height: 20),
                                   if (controller.isLoginWaiting)
                                     _SubscriptionBanner(
-                                      text: controller.loginChannel == 'telegram'
+                                      text:
+                                          controller.loginChannel == 'telegram'
                                           ? s.waitingTelegramConfirm
                                           : s.waitingEmailConfirm,
-                                      actionLabel: controller.loginChannel == 'telegram' &&
-                                              (controller.loginBotUrl ?? '').isNotEmpty
+                                      actionLabel:
+                                          controller.loginChannel ==
+                                                  'telegram' &&
+                                              (controller.loginBotUrl ?? '')
+                                                  .isNotEmpty
                                           ? s.openBotConfirm
                                           : s.account,
                                       onAction: () async {
                                         final bot = controller.loginBotUrl;
-                                        if (controller.loginChannel == 'telegram' &&
+                                        if (controller.loginChannel ==
+                                                'telegram' &&
                                             bot != null &&
                                             bot.isNotEmpty) {
                                           await launchUrl(
                                             Uri.parse(bot),
-                                            mode: LaunchMode.externalApplication,
+                                            mode:
+                                                LaunchMode.externalApplication,
                                           );
                                           return;
                                         }
@@ -297,12 +309,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                       actionLabel: s.account,
                                       onAction: _openProfile,
                                     )
-                                  else if (!account.hasAccess && controller.isKPaxSubscription)
+                                  else if (!account.hasAccess &&
+                                      controller.isKPaxSubscription)
                                     _SubscriptionBanner(
                                       text: s.paywallTitle,
                                       actionLabel: s.seePlans,
                                       danger: true,
-                                      onAction: () => openPaywall(context, fromExpired: true),
+                                      onAction: () => openPaywall(
+                                        context,
+                                        fromExpired: true,
+                                      ),
                                     )
                                   else if (!account.hasAccess)
                                     _SubscriptionBanner(
@@ -311,17 +327,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                       danger: true,
                                       onAction: _openProfile,
                                     )
-                                  else if (controller.showRefreshSubscriptionNotice)
+                                  else if (controller
+                                      .showRefreshSubscriptionNotice)
                                     _SubscriptionBanner(
                                       text: s.refreshSubscriptionNotice,
-                                      actionLabel: controller.isRefreshingServers
+                                      actionLabel:
+                                          controller.isRefreshingServers
                                           ? '…'
                                           : s.refreshSubscriptionAction,
                                       onAction: controller.isRefreshingServers
                                           ? () {}
-                                          : () => controller.refreshSubscriptionFromNotice(),
-                                      onDismiss: () =>
-                                          controller.dismissRefreshSubscriptionNotice(),
+                                          : () => controller
+                                                .refreshSubscriptionFromNotice(),
+                                      onDismiss: () => controller
+                                          .dismissRefreshSubscriptionNotice(),
                                       dismissLabel: s.dismissNotice,
                                     ),
                                   const Spacer(),
@@ -343,8 +362,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                             fontWeight: FontWeight.w600,
                                             color: controller.isConnected
                                                 ? (AppBrand.current.isXplm
-                                                    ? XplmColors.ok
-                                                    : NordColors.accent)
+                                                      ? XplmColors.ok
+                                                      : NordColors.accent)
                                                 : secondary,
                                           ),
                                         ),
@@ -357,10 +376,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                               fontSize: 13,
                                               fontWeight: FontWeight.w600,
                                               letterSpacing: 0.8,
-                                              color: (AppBrand.current.isXplm
-                                                      ? XplmColors.cyan
-                                                      : NordColors.accent)
-                                                  .withValues(alpha: 0.9),
+                                              color:
+                                                  (AppBrand.current.isXplm
+                                                          ? XplmColors.cyan
+                                                          : NordColors.accent)
+                                                      .withValues(alpha: 0.9),
                                             ),
                                           ),
                                           const SizedBox(height: 6),
@@ -394,7 +414,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   const SizedBox(height: 24),
                                   Center(
                                     child: ConnectButton(
-                                      diameter: MediaQuery.sizeOf(context).width < 360
+                                      diameter:
+                                          MediaQuery.sizeOf(context).width < 360
                                           ? 148
                                           : 168,
                                       state: controller.connectionState,
@@ -403,7 +424,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       connectingLabel: s.connecting,
                                       disconnectingLabel: s.disconnecting,
                                       retryLabel: s.retry,
-                                      onPressed: () => _onConnectPressed(controller),
+                                      onPressed: () =>
+                                          _onConnectPressed(controller),
                                     ),
                                   ),
                                   const Spacer(),
@@ -412,7 +434,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     onTap: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute<void>(
-                                          builder: (_) => const CountryPickerScreen(),
+                                          builder: (_) =>
+                                              const CountryPickerScreen(),
                                         ),
                                       );
                                     },
@@ -420,27 +443,40 @@ class _HomeScreenState extends State<HomeScreen> {
                                       children: [
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(
                                                 s.location,
-                                                style: TextStyle(color: muted, fontSize: 13),
+                                                style: TextStyle(
+                                                  color: muted,
+                                                  fontSize: 13,
+                                                ),
                                               ),
                                               const SizedBox(height: 2),
                                               Text(
-                                                controller.selectedLocation.isAuto
+                                                controller
+                                                        .selectedLocation
+                                                        .isAuto
                                                     ? s.auto
-                                                    : controller.selectedLocation.nameRu,
+                                                    : controller
+                                                          .selectedLocation
+                                                          .nameRu,
                                                 style: const TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                               ),
-                                              if (controller.selectedLocation.isAuto) ...[
+                                              if (controller
+                                                  .selectedLocation
+                                                  .isAuto) ...[
                                                 const SizedBox(height: 2),
                                                 Text(
                                                   s.bestServerAuto,
-                                                  style: TextStyle(color: muted, fontSize: 13),
+                                                  style: TextStyle(
+                                                    color: muted,
+                                                    fontSize: 13,
+                                                  ),
                                                 ),
                                               ],
                                             ],
@@ -504,7 +540,9 @@ class _HeaderIconButton extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: XplmColors.cyan.withValues(alpha: 0.35)),
+              border: Border.all(
+                color: XplmColors.cyan.withValues(alpha: 0.35),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: XplmColors.cyan.withValues(alpha: 0.18),
@@ -538,8 +576,8 @@ class _PlanBadge extends StatelessWidget {
       color: warning
           ? const Color(0xFFB45309).withValues(alpha: 0.25)
           : (xplm
-              ? XplmColors.accentSoft
-              : NordColors.accentDim.withValues(alpha: 0.35)),
+                ? XplmColors.accentSoft
+                : NordColors.accentDim.withValues(alpha: 0.35)),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -595,20 +633,20 @@ class _SubscriptionBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: danger
             ? (xplm
-                ? XplmColors.danger.withValues(alpha: 0.18)
-                : NordColors.danger.withValues(alpha: 0.16))
+                  ? XplmColors.danger.withValues(alpha: 0.18)
+                  : NordColors.danger.withValues(alpha: 0.16))
             : (xplm
-                ? XplmColors.cyan.withValues(alpha: 0.12)
-                : NordColors.cyan.withValues(alpha: 0.10)),
+                  ? XplmColors.cyan.withValues(alpha: 0.12)
+                  : NordColors.cyan.withValues(alpha: 0.10)),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: danger
               ? (xplm
-                  ? XplmColors.danger.withValues(alpha: 0.55)
-                  : NordColors.danger.withValues(alpha: 0.55))
+                    ? XplmColors.danger.withValues(alpha: 0.55)
+                    : NordColors.danger.withValues(alpha: 0.55))
               : (xplm
-                  ? XplmColors.cyan.withValues(alpha: 0.45)
-                  : NordColors.cyan.withValues(alpha: 0.35)),
+                    ? XplmColors.cyan.withValues(alpha: 0.45)
+                    : NordColors.cyan.withValues(alpha: 0.35)),
         ),
       ),
       child: Row(
@@ -616,7 +654,11 @@ class _SubscriptionBanner extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 13, height: 1.45, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           TextButton(

@@ -8,15 +8,53 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_codex_widgets.dart';
+import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
+import 'package:pulse_vpn/features/account/account_screen.dart';
 
 enum _RegionChip { all, europe, asia, northAmerica }
 
 const _europe = {
-  'DE', 'FI', 'BG', 'FR', 'NL', 'GB', 'UK', 'SE', 'PL', 'IT', 'ES', 'TR', 'RU',
-  'AT', 'CH', 'CZ', 'RO', 'UA', 'LV', 'LT', 'EE', 'PT', 'IE', 'NO', 'DK', 'HU',
+  'DE',
+  'FI',
+  'BG',
+  'FR',
+  'NL',
+  'GB',
+  'UK',
+  'SE',
+  'PL',
+  'IT',
+  'ES',
+  'TR',
+  'RU',
+  'AT',
+  'CH',
+  'CZ',
+  'RO',
+  'UA',
+  'LV',
+  'LT',
+  'EE',
+  'PT',
+  'IE',
+  'NO',
+  'DK',
+  'HU',
 };
 const _asia = {
-  'SG', 'JP', 'KR', 'CN', 'MY', 'AU', 'IN', 'HK', 'TW', 'TH', 'VN', 'ID', 'PH',
+  'SG',
+  'JP',
+  'KR',
+  'CN',
+  'MY',
+  'AU',
+  'IN',
+  'HK',
+  'TW',
+  'TH',
+  'VN',
+  'ID',
+  'PH',
 };
 const _northAmerica = {'US', 'CA', 'MX'};
 
@@ -63,16 +101,18 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
     final xplm = AppBrand.current.isXplm;
     final selectedId =
         controller.locationMode == LocationMode.auto ||
-                controller.selectedLocation.isAuto
-            ? ServerLocation.auto.id
-            : controller.selectedLocation.id;
+            controller.selectedLocation.isAuto
+        ? ServerLocation.auto.id
+        : controller.selectedLocation.id;
 
     final surface = xplm
         ? XplmColors.surface
         : (isDark ? NordColors.surface : NordColors.lightSurface);
     final elevated = xplm
         ? XplmColors.surfaceElevated
-        : (isDark ? NordColors.surfaceElevated : NordColors.lightSurfaceElevated);
+        : (isDark
+              ? NordColors.surfaceElevated
+              : NordColors.lightSurfaceElevated);
     final border = xplm
         ? XplmColors.line
         : (isDark ? NordColors.border : NordColors.lightBorder);
@@ -89,134 +129,138 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
     final accentFill = xplm ? XplmColors.accent : NordColors.accentDim;
 
     final q = _search.text.trim().toLowerCase();
-    // Codex mock countries when subscription nodes are not loaded yet (UI parity).
-    const demo = <ServerLocation>[
-      ServerLocation(id: 'de', countryCode: 'DE', nameRu: 'Германия', latencyMs: 28),
-      ServerLocation(id: 'fi', countryCode: 'FI', nameRu: 'Финляндия', latencyMs: 34),
-      ServerLocation(id: 'bg', countryCode: 'BG', nameRu: 'Болгария', latencyMs: 42),
-      ServerLocation(id: 'fr', countryCode: 'FR', nameRu: 'Франция', latencyMs: 48),
-      ServerLocation(id: 'nl', countryCode: 'NL', nameRu: 'Нидерланды', latencyMs: 52),
-      ServerLocation(id: 'us', countryCode: 'US', nameRu: 'США', latencyMs: 76),
-      ServerLocation(id: 'gb', countryCode: 'GB', nameRu: 'Великобритания', latencyMs: 80),
-      ServerLocation(id: 'sg', countryCode: 'SG', nameRu: 'Сингапур', latencyMs: 112),
-    ];
-    final source = xplm && controller.locations.length <= 1
-        ? <ServerLocation>[ServerLocation.auto, ...demo]
-        : controller.locations;
-    final locations = (xplm ? source.where(_matches) : source).where((l) {
-      if (q.isEmpty) return true;
-      return l.nameRu.toLowerCase().contains(q) ||
-          l.countryCode.toLowerCase().contains(q);
-    }).toList();
+    final source = controller.locations;
+    final locations =
+        (xplm ? source.where((l) => !l.isAuto && _matches(l)) : source).where((
+          l,
+        ) {
+          if (q.isEmpty) return true;
+          return l.nameRu.toLowerCase().contains(q) ||
+              l.countryCode.toLowerCase().contains(q);
+        }).toList();
 
     if (xplm) {
-      final scaffold = Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: const Text('Серверы'),
-          automaticallyImplyLeading: !widget.embeddedInShell,
-          leading: widget.embeddedInShell
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-          actions: [
-            IconButton(
-              tooltip: 'Поиск',
-              onPressed: () => setState(() => _searchOpen = !_searchOpen),
-              icon: const Text(
-                '⌕',
-                style: TextStyle(color: Color(0xFF96B3D1), fontSize: 20),
-              ),
-            ),
-          ],
+      return XplmHtmlPage(
+        title: 'Серверы',
+        action: XplmHtmlIconButton(
+          icon: Icons.search_rounded,
+          tooltip: 'Поиск серверов',
+          onPressed: () => setState(() {
+            _searchOpen = !_searchOpen;
+            if (!_searchOpen) _search.clear();
+          }),
         ),
-        body: Stack(
+        child: Stack(
           children: [
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: -40,
-              height: 220,
-              child: Opacity(
-                opacity: 0.55,
-                child: XplmEarthBackdrop(
-                  width: 400,
-                  height: 240,
-                  rotate: -6,
-                ),
-              ),
-            ),
+            const Positioned.fill(child: XplmHtmlEarth(screen: 'servers')),
             Column(
               children: [
                 SizedBox(
-                  height: 42,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                    children: [
-                      for (final entry in [
-                        (_RegionChip.all, 'Все страны'),
-                        (_RegionChip.europe, 'Европа'),
-                        (_RegionChip.asia, 'Азия'),
-                        (_RegionChip.northAmerica, 'Северная Америка'),
-                      ]) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(right: 5),
-                          child: _CodexChip(
-                            label: entry.$2,
-                            selected: _chip == entry.$1,
-                            onTap: () => setState(() => _chip = entry.$1),
+                  height:
+                      60 +
+                      (MediaQuery.textScalerOf(context).scale(12) - 12).clamp(
+                        0,
+                        30,
+                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(0, 12, 0, 18),
+                      children: [
+                        for (final entry in [
+                          (_RegionChip.all, 'Все страны'),
+                          (_RegionChip.europe, 'Европа'),
+                          (_RegionChip.asia, 'Азия'),
+                          (_RegionChip.northAmerica, 'Северная Америка'),
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 7),
+                            child: _CodexChip(
+                              label: entry.$2,
+                              selected: _chip == entry.$1,
+                              onTap: () => setState(() => _chip = entry.$1),
+                            ),
                           ),
+                        _CodexChip(
+                          label: s.auto,
+                          selected: selectedId == ServerLocation.auto.id,
+                          onTap: () =>
+                              controller.selectLocation(ServerLocation.auto),
                         ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
                 if (_searchOpen)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
                     child: TextField(
                       controller: _search,
                       autofocus: true,
                       onChanged: (_) => setState(() {}),
-                      style: const TextStyle(fontSize: 14),
+                      style: const TextStyle(
+                        fontFamily: 'XplmArial',
+                        fontSize: 14,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Найти страну',
                         filled: true,
-                        fillColor: const Color(0xFF06172D),
+                        fillColor: const Color(0xFF0B2540),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide:
-                              const BorderSide(color: Color(0xFF1B466B)),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
+                        contentPadding: const EdgeInsets.all(10),
                       ),
                     ),
                   ),
                 Expanded(
                   child: locations.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'Страна не найдена',
-                            style: TextStyle(color: XplmColors.ink3),
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (controller.isRefreshingServers)
+                                  const CircularProgressIndicator()
+                                else
+                                  Text(
+                                    source.where((l) => !l.isAuto).isEmpty
+                                        ? 'Добавьте подписку в профиле, чтобы загрузить серверы'
+                                        : 'Страна не найдена',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: XplmColors.ink3,
+                                    ),
+                                  ),
+                                if (source.where((l) => !l.isAuto).isEmpty &&
+                                    !controller.isRefreshingServers)
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => const AccountScreen(
+                                          accountDetails: true,
+                                        ),
+                                      ),
+                                    ),
+                                    child: const Text('Добавить подписку'),
+                                  ),
+                              ],
+                            ),
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                           itemCount: locations.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 5),
+                          separatorBuilder: (_, index) => SizedBox(
+                            height: locations[index].id == selectedId ? 5 : 0,
+                          ),
                           itemBuilder: (context, index) {
                             final server = locations[index];
-                            final selected = server.id == selectedId;
                             return _CodexServerRow(
                               server: server,
-                              selected: selected,
+                              selected: server.id == selectedId,
                               autoLabel: s.auto,
                               onTap: () {
                                 controller.selectLocation(server);
@@ -234,8 +278,6 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
           ],
         ),
       );
-      if (widget.embeddedInShell) return scaffold;
-      return NordBackground(child: scaffold);
     }
 
     final scaffold = Scaffold(
@@ -255,10 +297,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
           Expanded(
             child: locations.isEmpty
                 ? Center(
-                    child: Text(
-                      'Нет серверов',
-                      style: TextStyle(color: muted),
-                    ),
+                    child: Text('Нет серверов', style: TextStyle(color: muted)),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
@@ -286,9 +325,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                               border: Border(
                                 left: BorderSide(
                                   width: 3,
-                                  color: selected
-                                      ? accent
-                                      : Colors.transparent,
+                                  color: selected ? accent : Colors.transparent,
                                 ),
                               ),
                             ),
@@ -302,9 +339,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        server.isAuto
-                                            ? s.auto
-                                            : server.nameRu,
+                                        server.isAuto ? s.auto : server.nameRu,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w600,
                                           fontSize: 16,
@@ -422,7 +457,7 @@ class _CodexChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: selected
@@ -449,8 +484,8 @@ class _CodexChip extends StatelessWidget {
             label,
             style: TextStyle(
               color: selected ? Colors.white : const Color(0xFF9BABBE),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ),
@@ -466,129 +501,102 @@ class _CodexServerRow extends StatelessWidget {
     required this.autoLabel,
     required this.onTap,
   });
-
   final ServerLocation server;
   final bool selected;
   final String autoLabel;
   final VoidCallback onTap;
-
   @override
-  Widget build(BuildContext context) {
-    return Material(
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      border: selected
+          ? Border.all(color: const Color(0xFF30BAFF))
+          : const Border(bottom: BorderSide(color: Color(0xFF152A42))),
+      gradient: LinearGradient(
+        begin: const Alignment(-.8, 0),
+        end: const Alignment(.9, 0),
+        colors: selected
+            ? const [Color(0xFF06416A), Color(0xFF002345)]
+            : const [Color(0x550C2441), Color(0x55020D1E)],
+      ),
+      boxShadow: selected
+          ? const [BoxShadow(color: Color(0xFF009DFF), blurRadius: 8)]
+          : null,
+    ),
+    child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: Ink(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? const Color(0xFF30BAFF) : Colors.transparent,
-            ),
-            gradient: selected
-                ? const LinearGradient(
-                    begin: Alignment(-0.8, 0),
-                    end: Alignment(0.9, 0),
-                    colors: [Color(0xFF06416A), Color(0xFF002345)],
-                  )
-                : LinearGradient(
-                    begin: Alignment(-0.8, 0),
-                    end: Alignment(0.9, 0),
-                    colors: [
-                      const Color(0xFF0C2441).withValues(alpha: 0.33),
-                      const Color(0xFF020D1E).withValues(alpha: 0.33),
-                    ],
-                  ),
-            boxShadow: selected
-                ? [
-                    const BoxShadow(
-                      color: Color(0xFF009DFF),
-                      blurRadius: 8,
-                    ),
-                    BoxShadow(
-                      color: const Color(0xFF0088FF).withValues(alpha: 0.53),
-                      blurRadius: 8,
-                      spreadRadius: -2,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              XplmFlagCircle(
-                code: server.isAuto ? 'auto' : server.countryCode,
-                size: 34,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      server.isAuto ? autoLabel : server.nameRu,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (!server.isAuto && server.latencyMs >= 0)
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: selected ? 63 : 64),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            child: Row(
+              children: [
+                XplmHtmlFlag(code: server.countryCode),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        '${server.latencyMs} ms',
+                        server.isAuto ? autoLabel : server.nameRu,
                         style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF91A5BF),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
-                  ],
-                ),
-              ),
-              if (!server.isAuto && server.latencyMs >= 0)
-                XplmSignalBars(latencyMs: server.latencyMs),
-              const SizedBox(width: 8),
-              if (selected)
-                Container(
-                  width: 22,
-                  height: 22,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFF06BAFF),
-                    boxShadow: [
-                      BoxShadow(color: Color(0xFF00BFFF), blurRadius: 8),
+                      if (!server.isAuto && server.latencyMs >= 0) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          '${server.latencyMs} ms',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF91A5BF),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  child: const Text(
-                    '✓',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      height: 1,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(
-                  width: 17,
-                  child: Text(
-                    '›',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF8AA4C2),
-                      fontSize: 23,
-                      height: 1,
-                    ),
-                  ),
                 ),
-            ],
+                if (server.latencyMs >= 0)
+                  XplmSignalBars(latencyMs: server.latencyMs),
+                const SizedBox(width: 12),
+                if (selected)
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF06BAFF),
+                      boxShadow: [
+                        BoxShadow(color: Color(0xFF00BFFF), blurRadius: 8),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  )
+                else
+                  const SizedBox(
+                    width: 17,
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 21,
+                      color: Color(0xFF8AA4C2),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _FlagMark extends StatelessWidget {

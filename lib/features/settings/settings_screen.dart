@@ -75,7 +75,10 @@ class SettingsScreen extends StatelessWidget {
                       return;
                     }
                     Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const AccountScreen()),
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            const AccountScreen(accountDetails: true),
+                      ),
                     );
                   },
                 ),
@@ -83,14 +86,17 @@ class SettingsScreen extends StatelessWidget {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   title: Text(s.account),
                   subtitle: Text(
-                    controller.isKPaxSubscription ? account.userId : controller.subscriptionName,
+                    controller.isKPaxSubscription
+                        ? account.userId
+                        : controller.subscriptionName,
                     style: TextStyle(color: muted, fontSize: 13),
                   ),
                   trailing: Icon(Icons.chevron_right, color: muted),
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => const AccountScreen(),
+                        builder: (_) =>
+                            const AccountScreen(accountDetails: true),
                       ),
                     );
                   },
@@ -138,14 +144,11 @@ class SettingsScreen extends StatelessWidget {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     title: Text(s.splitTunneling),
                     subtitle: Text(
-                      s.splitSubtitle(
-                        switch (settings.splitTunnelMode) {
-                          SplitTunnelMode.allApps => s.splitModeAll,
-                          SplitTunnelMode.excludeSelected => s.splitModeExclude,
-                          SplitTunnelMode.includeOnly => s.splitModeInclude,
-                        },
-                        settings.splitTunnelPackages.length,
-                      ),
+                      s.splitSubtitle(switch (settings.splitTunnelMode) {
+                        SplitTunnelMode.allApps => s.splitModeAll,
+                        SplitTunnelMode.excludeSelected => s.splitModeExclude,
+                        SplitTunnelMode.includeOnly => s.splitModeInclude,
+                      }, settings.splitTunnelPackages.length),
                       style: TextStyle(color: muted, fontSize: 13),
                     ),
                     trailing: Icon(Icons.chevron_right, color: muted),
@@ -169,14 +172,11 @@ class SettingsScreen extends StatelessWidget {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     title: Text(s.splitTunneling),
                     subtitle: Text(
-                      s.splitSubtitle(
-                        switch (settings.splitTunnelMode) {
-                          SplitTunnelMode.allApps => s.splitModeAll,
-                          SplitTunnelMode.excludeSelected => s.splitModeExclude,
-                          SplitTunnelMode.includeOnly => s.splitModeInclude,
-                        },
-                        settings.splitTunnelPackages.length,
-                      ),
+                      s.splitSubtitle(switch (settings.splitTunnelMode) {
+                        SplitTunnelMode.allApps => s.splitModeAll,
+                        SplitTunnelMode.excludeSelected => s.splitModeExclude,
+                        SplitTunnelMode.includeOnly => s.splitModeInclude,
+                      }, settings.splitTunnelPackages.length),
                       style: TextStyle(color: muted, fontSize: 13),
                     ),
                     trailing: Icon(Icons.chevron_right, color: muted),
@@ -198,7 +198,11 @@ class SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           s.alwaysOnVpnHint,
-                          style: TextStyle(color: muted, fontSize: 13, height: 1.35),
+                          style: TextStyle(
+                            color: muted,
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
                         ),
                         Align(
                           alignment: Alignment.centerLeft,
@@ -208,7 +212,8 @@ class SettingsScreen extends StatelessWidget {
                               minimumSize: const Size(0, 36),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: () => _showAlwaysOnHelp(context, controller),
+                            onPressed: () =>
+                                _showAlwaysOnHelp(context, controller),
                             child: Text(s.openSystemVpnSettings),
                           ),
                         ),
@@ -247,7 +252,10 @@ class SettingsScreen extends StatelessWidget {
               border: border,
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   child: Row(
                     children: [
                       Expanded(child: Text(s.language)),
@@ -278,7 +286,10 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 if (!AppBrand.current.isXplm)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     child: Row(
                       children: [
                         Expanded(child: Text(s.theme)),
@@ -340,7 +351,11 @@ class SettingsScreen extends StatelessWidget {
                       children: [
                         Text(
                           s.quitAppHint,
-                          style: TextStyle(color: muted, fontSize: 13, height: 1.35),
+                          style: TextStyle(
+                            color: muted,
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         OutlinedButton(
@@ -409,7 +424,9 @@ class _SectionHeader extends StatelessWidget {
           fontSize: 13,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.3,
-          color: isDark ? NordColors.textSecondary : NordColors.lightTextSecondary,
+          color: isDark
+              ? NordColors.textSecondary
+              : NordColors.lightTextSecondary,
         ),
       ),
     );

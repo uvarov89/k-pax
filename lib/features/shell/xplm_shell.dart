@@ -6,6 +6,7 @@ import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/home/home_screen.dart';
 import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
+import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 
 /// X-Plm root shell: bottom tabs from Codex `bottom-nav` (home/globe/crown/gear).
 class XplmShell extends StatefulWidget {
@@ -23,17 +24,20 @@ class _XplmShellState extends State<XplmShell> {
     return NordBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: IndexedStack(
-          index: _index,
-          children: [
-            TickerMode(
-              enabled: _index == 0,
-              child: const HomeScreen(embeddedInShell: true),
-            ),
-            const CountryPickerScreen(embeddedInShell: true),
-            const PaywallScreen(embeddedInShell: true),
-            const AccountScreen(embeddedInShell: true),
-          ],
+        body: XplmTabNavigation(
+          select: (i) => setState(() => _index = i),
+          child: IndexedStack(
+            index: _index,
+            children: [
+              TickerMode(
+                enabled: _index == 0,
+                child: const HomeScreen(embeddedInShell: true),
+              ),
+              const CountryPickerScreen(embeddedInShell: true),
+              const PaywallScreen(embeddedInShell: true),
+              const AccountScreen(embeddedInShell: true),
+            ],
+          ),
         ),
         bottomNavigationBar: XplmBottomNav(
           index: _index,
@@ -70,7 +74,7 @@ class XplmBottomNav extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: index == 0 ? 72 : 56,
+          height: 72,
           child: Row(
             children: [
               for (var i = 0; i < items.length; i++)
@@ -78,38 +82,21 @@ class XplmBottomNav extends StatelessWidget {
                   child: InkWell(
                     onTap: () => onChanged(i),
                     child: Padding(
-                      padding: EdgeInsets.only(bottom: index == 0 ? 10 : 0),
+                      padding: const EdgeInsets.only(bottom: 10),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          if (index == 0)
-                            CustomPaint(
-                              size: const Size(24, 24),
-                              painter: _HtmlNavIcon(i, active: i == index),
-                            )
-                          else
-                            Icon(
-                              items[i].$1,
-                              size: index == 0 ? 24 : 22,
-                              color: i == index
-                                  ? const Color(0xFF00B8FF)
-                                  : XplmColors.navMuted,
-                              shadows: i == index
-                                  ? const [
-                                      Shadow(
-                                        color: Color(0xFF00AAFF),
-                                        blurRadius: 6,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
+                          CustomPaint(
+                            size: const Size(24, 24),
+                            painter: _HtmlNavIcon(i, active: i == index),
+                          ),
                           const SizedBox(height: 3),
                           Text(
                             items[i].$2,
                             style: TextStyle(
-                              fontSize: index == 0 ? 11 : 10,
+                              fontSize: 11,
                               fontWeight: FontWeight.w400,
-                              fontFamily: index == 0 ? 'XplmArial' : null,
+                              fontFamily: 'XplmArial',
                               color: i == index
                                   ? const Color(0xFF00B8FF)
                                   : XplmColors.navMuted,

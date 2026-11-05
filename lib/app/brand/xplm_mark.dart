@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 
-/// Vector X-Plm mark (same geometry as assets/brand/xplm_mark.svg).
+/// Vector X-Plm mark — interlocking X with diamond void (matches site logo.svg).
 class XplmMark extends StatelessWidget {
   const XplmMark({
     super.key,
@@ -40,23 +40,28 @@ class _XplmMarkPainter extends CustomPainter {
       ..style = PaintingStyle.fill
       ..isAntiAlias = true;
     final path = Path()
-      ..moveTo(22.2, 24.4)
-      ..cubicTo(24.1, 22.1, 27.6, 21.8, 30.2, 23.6)
-      ..lineTo(61.4, 48.8)
-      ..lineTo(94.8, 22.1)
-      ..cubicTo(97.5, 20, 101.2, 20.4, 103.2, 22.9)
-      ..cubicTo(105.3, 25.5, 104.9, 29.3, 102.4, 31.4)
-      ..lineTo(70.6, 56.9)
-      ..lineTo(103.1, 96.4)
-      ..cubicTo(105.4, 99.1, 104.9, 103.1, 102.1, 105.3)
-      ..cubicTo(99.4, 107.5, 95.5, 107, 93.3, 104.3)
-      ..lineTo(62.1, 66.5)
-      ..lineTo(30.6, 105.1)
-      ..cubicTo(28.3, 107.8, 24.3, 107.9, 21.7, 105.4)
-      ..cubicTo(19.1, 102.9, 19.2, 98.9, 21.7, 96.4)
-      ..lineTo(54.8, 56.1)
-      ..lineTo(23.4, 31.2)
-      ..cubicTo(20.9, 29.1, 20.4, 25.4, 22.2, 24.4)
+      ..fillType = PathFillType.evenOdd
+      ..moveTo(20, 22)
+      ..lineTo(36, 16)
+      ..lineTo(64, 48)
+      ..lineTo(92, 16)
+      ..lineTo(108, 22)
+      ..lineTo(108, 38)
+      ..lineTo(76, 64)
+      ..lineTo(108, 90)
+      ..lineTo(108, 106)
+      ..lineTo(92, 112)
+      ..lineTo(64, 80)
+      ..lineTo(36, 112)
+      ..lineTo(20, 106)
+      ..lineTo(20, 90)
+      ..lineTo(52, 64)
+      ..lineTo(20, 38)
+      ..close()
+      ..moveTo(58, 64)
+      ..lineTo(64, 58)
+      ..lineTo(70, 64)
+      ..lineTo(64, 70)
       ..close();
     canvas.drawPath(path, paint);
     canvas.restore();

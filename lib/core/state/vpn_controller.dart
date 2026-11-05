@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -908,15 +909,17 @@ class VpnController extends ChangeNotifier {
     if (pool.isEmpty) {
       throw StateError('no node');
     }
-    return _autoServerAndType(pool, order);
+    // Spread load across near-best countries only in Автовыбор (not manual country).
+    return _autoServerAndType(pool, order, spreadLoad: countryId == null);
   }
 
-  /// Fastest reachable server. Message lines stay out of the race unless
-  /// they are the only allowed profile.
+  /// Reachable server among near-best RTTs. Message lines stay out of the race
+  /// unless they are the only allowed profile.
   Future<TunnelNode> _autoServerAndType(
     List<TunnelNode> pool,
-    List<TunnelKind> order,
-  ) async {
+    List<TunnelKind> order, {
+    bool spreadLoad = true,
+  }) async {
     final messagesOnly = pool.every((node) => node.kind == TunnelKind.message);
     final race = messagesOnly
         ? pool
@@ -928,7 +931,7 @@ class VpnController extends ChangeNotifier {
         source.where((node) => node.kind == kind).toList(),
       );
       if (same.isEmpty) continue;
-      return _fastest(same);
+      return _pickNearBest(same, spreadLoad: spreadLoad);
     }
     return _preferType(pool, order);
   }
@@ -951,7 +954,13 @@ class VpnController extends ChangeNotifier {
   }
 
   /// UDP lines (Hy2, TUIC) cannot be timed over TCP; they keep subscription order.
-  Future<TunnelNode> _fastest(List<TunnelNode> nodes) async {
+  ///
+  /// TCP races: pick randomly among nodes within a small RTT slack of the best
+  /// (not pure least-ping), so Автовыбор spreads load across DE/FI/BG.
+  Future<TunnelNode> _pickNearBest(
+    List<TunnelNode> nodes, {
+    bool spreadLoad = true,
+  }) async {
     if (nodes.length == 1) return nodes.first;
     if (nodes.first.kind == TunnelKind.hy2 || nodes.first.kind == TunnelKind.tuic) {
       return nodes.first;
@@ -964,19 +973,37 @@ class VpnController extends ChangeNotifier {
         .toList();
     final race = group.isEmpty ? ranked : group;
     final seen = <String>{};
-    TunnelNode? best;
-    var bestMs = 1 << 30;
+    final timed = <({TunnelNode node, int ms})>[];
     for (final node in race) {
       final port = node.port == 0 ? 443 : node.port;
       if (!seen.add('${node.host}:$port')) continue;
       final ms = await measureTcp(node.host, port);
-      if (ms != null && ms < bestMs) {
-        best = node;
-        bestMs = ms;
-      }
+      if (ms != null) timed.add((node: node, ms: ms));
     }
-    return best ?? race.first;
+    if (timed.isEmpty) return race.first;
+
+    timed.sort((a, b) => a.ms.compareTo(b.ms));
+    final bestMs = timed.first.ms;
+    // Slack: at least +50 ms, or +30% of best — still "near best", not random junk.
+    final slack = math.max(50, (bestMs * 0.3).round());
+    var pool = timed
+        .where((item) => item.ms <= bestMs + slack)
+        .map((item) => item.node)
+        .toList();
+
+    if (spreadLoad && pool.length > 1) {
+      // Soft-avoid FI (VPSPay girl_round throttle) when another near-best exists.
+      final withoutHot = pool
+          .where((node) => node.countryId.toLowerCase() != 'fi')
+          .toList();
+      if (withoutHot.isNotEmpty) pool = withoutHot;
+    }
+
+    if (pool.length == 1) return pool.first;
+    return pool[_autoPickRandom.nextInt(pool.length)];
   }
+
+  static final _autoPickRandom = math.Random();
 
   TunnelNode _preferType(List<TunnelNode> nodes, List<TunnelKind> order) {
     for (final kind in order) {

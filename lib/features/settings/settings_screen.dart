@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/split_tunnel.dart';
@@ -29,10 +30,16 @@ class SettingsScreen extends StatelessWidget {
     final settings = controller.appSettings;
     final account = controller.account;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final muted = isDark ? NordColors.textMuted : NordColors.lightTextMuted;
-    final border = isDark ? NordColors.border : NordColors.lightBorder;
-    final surface =
-        isDark ? NordColors.surface : NordColors.lightSurface;
+    final xplm = AppBrand.current.isXplm;
+    final muted = xplm
+        ? XplmColors.ink3
+        : (isDark ? NordColors.textMuted : NordColors.lightTextMuted);
+    final border = xplm
+        ? XplmColors.line
+        : (isDark ? NordColors.border : NordColors.lightBorder);
+    final surface = xplm
+        ? XplmColors.surface
+        : (isDark ? NordColors.surface : NordColors.lightSurface);
 
     return NordBackground(
       child: Scaffold(
@@ -422,11 +429,22 @@ class _SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
     return Container(
       decoration: BoxDecoration(
-        color: surface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
+        color: surface.withValues(alpha: xplm ? 0.88 : 0.92),
+        borderRadius: BorderRadius.circular(xplm ? 16 : 14),
+        border: Border.all(
+          color: xplm ? XplmColors.cyan.withValues(alpha: 0.28) : border,
+        ),
+        boxShadow: xplm
+            ? [
+                BoxShadow(
+                  color: XplmColors.cyan.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                ),
+              ]
+            : null,
       ),
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(children: children),

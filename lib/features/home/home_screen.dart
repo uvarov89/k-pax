@@ -14,11 +14,15 @@ import 'package:pulse_vpn/features/connection/widgets/connect_button.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
 import 'package:pulse_vpn/features/home/onboarding_screen.dart';
+import 'package:pulse_vpn/features/home/widgets/xplm_home_layout.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.embeddedInShell = false});
+
+  /// When true (X-Plm shell tab), skip outer NordBackground — shell provides it.
+  final bool embeddedInShell;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -65,6 +69,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openProfile() {
+    if (widget.embeddedInShell) {
+      // Profile tab lives in XplmShell; still allow push for deep-link flashes.
+    }
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => const AccountScreen(),
@@ -87,6 +94,72 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget? _xplmBanner(VpnController controller) {
+    final s = controller.strings;
+    final account = controller.account;
+    if (controller.isLoginWaiting) {
+      return _SubscriptionBanner(
+        text: controller.loginChannel == 'telegram'
+            ? s.waitingTelegramConfirm
+            : s.waitingEmailConfirm,
+        actionLabel: controller.loginChannel == 'telegram' &&
+                (controller.loginBotUrl ?? '').isNotEmpty
+            ? s.openBotConfirm
+            : s.account,
+        onAction: () async {
+          final bot = controller.loginBotUrl;
+          if (controller.loginChannel == 'telegram' &&
+              bot != null &&
+              bot.isNotEmpty) {
+            await launchUrl(
+              Uri.parse(bot),
+              mode: LaunchMode.externalApplication,
+            );
+            return;
+          }
+          await _openProfile();
+        },
+      );
+    }
+    if (controller.needsLink) {
+      return _SubscriptionBanner(
+        text: s.openProfileForAccess,
+        actionLabel: s.account,
+        onAction: _openProfile,
+      );
+    }
+    if (!account.hasAccess && controller.isKPaxSubscription) {
+      return _SubscriptionBanner(
+        text: s.paywallTitle,
+        actionLabel: s.seePlans,
+        danger: true,
+        onAction: () => openPaywall(context, fromExpired: true),
+      );
+    }
+    if (!account.hasAccess) {
+      return _SubscriptionBanner(
+        text: s.providerExpired,
+        actionLabel: s.account,
+        danger: true,
+        onAction: _openProfile,
+      );
+    }
+    if (controller.showRefreshSubscriptionNotice) {
+      return _SubscriptionBanner(
+        text: s.refreshSubscriptionNotice,
+        actionLabel: controller.isRefreshingServers
+            ? '…'
+            : s.refreshSubscriptionAction,
+        onAction: controller.isRefreshingServers
+            ? () {}
+            : () => controller.refreshSubscriptionFromNotice(),
+        onDismiss: () => controller.dismissRefreshSubscriptionNotice(),
+        dismissLabel: s.dismissNotice,
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<VpnController>();
@@ -96,6 +169,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final muted = isDark ? NordColors.textMuted : NordColors.lightTextMuted;
     final secondary =
         isDark ? NordColors.textSecondary : NordColors.lightTextSecondary;
+
+    if (AppBrand.current.isXplm) {
+      final body = XplmHomeLayout(
+        onConnectPressed: () => _onConnectPressed(controller),
+        onOpenProfile: _openProfile,
+        topBanner: _xplmBanner(controller),
+      );
+      if (widget.embeddedInShell) {
+        return Scaffold(backgroundColor: Colors.transparent, body: body);
+      }
+      return NordBackground(
+        child: Scaffold(backgroundColor: Colors.transparent, body: body),
+      );
+    }
 
     return NordBackground(
       child: Scaffold(
@@ -110,15 +197,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     const BrandLogo(size: 36),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        s.appName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.2,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s.appName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          if (AppBrand.current.isXplm)
+                            Text(
+                              'Premium connection',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: XplmColors.cyan.withValues(alpha: 0.9),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     if (!controller.needsLink &&
@@ -132,13 +235,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(width: 4),
                     ],
-                    IconButton(
+                    _HeaderIconButton(
                       tooltip: s.account,
+                      icon: Icons.person_outline,
+                      color: secondary,
                       onPressed: _openProfile,
-                      icon: Icon(Icons.person_outline, color: secondary),
                     ),
-                    IconButton(
+                    const SizedBox(width: 4),
+                    _HeaderIconButton(
                       tooltip: s.settings,
+                      icon: Icons.settings_outlined,
+                      color: secondary,
                       onPressed: () {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -146,7 +253,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         );
                       },
-                      icon: Icon(Icons.settings_outlined, color: secondary),
                     ),
                   ],
                 ),
@@ -219,56 +325,72 @@ class _HomeScreenState extends State<HomeScreen> {
                                       dismissLabel: s.dismissNotice,
                                     ),
                                   const Spacer(),
-                                  Text(
-                                    controller.statusLine,
-                                    textAlign: TextAlign.center,
-                                    maxLines: 4,
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
-                                      color: controller.isConnected
-                                          ? (AppBrand.current.isXplm
-                                              ? XplmColors.sunRim
-                                              : NordColors.accent)
-                                          : secondary,
+                                  // Fixed slot so the connect button never jumps when
+                                  // connected details appear above it.
+                                  SizedBox(
+                                    height: 118,
+                                    width: double.infinity,
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          controller.statusLine,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w600,
+                                            color: controller.isConnected
+                                                ? (AppBrand.current.isXplm
+                                                    ? XplmColors.ok
+                                                    : NordColors.accent)
+                                                : secondary,
+                                          ),
+                                        ),
+                                        if (controller.isConnected) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            s.connectedTagline,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.8,
+                                              color: (AppBrand.current.isXplm
+                                                      ? XplmColors.cyan
+                                                      : NordColors.accent)
+                                                  .withValues(alpha: 0.9),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            controller.sessionLabel,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: muted,
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '↓ ${_formatRate(controller.downloadBytesPerSec)}   ↑ ${_formatRate(controller.uploadBytesPerSec)}',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: muted,
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ),
-                                  if (controller.isConnected) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      s.connectedTagline,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.8,
-                                        color: (AppBrand.current.isXplm
-                                                ? XplmColors.sunMid
-                                                : NordColors.accent)
-                                            .withValues(alpha: 0.9),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      controller.sessionLabel,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: muted,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '↓ ${_formatRate(controller.downloadBytesPerSec)}   ↑ ${_formatRate(controller.uploadBytesPerSec)}',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: muted,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
-                                      ),
-                                    ),
-                                  ],
                                   const SizedBox(height: 24),
                                   Center(
                                     child: ConnectButton(
@@ -346,6 +468,58 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
+    if (!xplm) {
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon, color: color),
+      );
+    }
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: XplmColors.surface.withValues(alpha: 0.55),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: XplmColors.cyan.withValues(alpha: 0.35)),
+              boxShadow: [
+                BoxShadow(
+                  color: XplmColors.cyan.withValues(alpha: 0.18),
+                  blurRadius: 14,
+                ),
+              ],
+            ),
+            child: Icon(icon, size: 20, color: XplmColors.cyan),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PlanBadge extends StatelessWidget {
   const _PlanBadge({
     required this.label,
@@ -384,7 +558,7 @@ class _PlanBadge extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: warning
                       ? NordColors.connecting
-                      : (xplm ? XplmColors.accent : NordColors.accent),
+                      : (xplm ? XplmColors.cyan : NordColors.accent),
                 ),
               ),
             ),
@@ -414,18 +588,27 @@ class _SubscriptionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: danger
-            ? NordColors.danger.withValues(alpha: 0.16)
-            : NordColors.cyan.withValues(alpha: 0.10),
+            ? (xplm
+                ? XplmColors.danger.withValues(alpha: 0.18)
+                : NordColors.danger.withValues(alpha: 0.16))
+            : (xplm
+                ? XplmColors.cyan.withValues(alpha: 0.12)
+                : NordColors.cyan.withValues(alpha: 0.10)),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: danger
-              ? NordColors.danger.withValues(alpha: 0.55)
-              : NordColors.cyan.withValues(alpha: 0.35),
+              ? (xplm
+                  ? XplmColors.danger.withValues(alpha: 0.55)
+                  : NordColors.danger.withValues(alpha: 0.55))
+              : (xplm
+                  ? XplmColors.cyan.withValues(alpha: 0.45)
+                  : NordColors.cyan.withValues(alpha: 0.35)),
         ),
       ),
       child: Row(
@@ -439,14 +622,18 @@ class _SubscriptionBanner extends StatelessWidget {
           TextButton(
             onPressed: onAction,
             style: TextButton.styleFrom(
-              foregroundColor: danger ? NordColors.danger : NordColors.cyan,
+              foregroundColor: danger
+                  ? (xplm ? XplmColors.danger : NordColors.danger)
+                  : (xplm ? XplmColors.cyan : NordColors.cyan),
             ),
             child: Text(actionLabel),
           ),
           if (onDismiss != null)
             TextButton(
               onPressed: onDismiss,
-              style: TextButton.styleFrom(foregroundColor: NordColors.textMuted),
+              style: TextButton.styleFrom(
+                foregroundColor: xplm ? XplmColors.ink3 : NordColors.textMuted,
+              ),
               child: Text(dismissLabel ?? 'OK'),
             ),
         ],

@@ -37,9 +37,6 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
         resValue("string", "app_name", "K-Pax")
         manifestPlaceholders["deepLinkScheme"] = "kpax"
     }
@@ -66,7 +63,6 @@ android {
             excludes += setOf(
                 "lib/armeabi-v7a/**",
                 "lib/x86/**",
-                "lib/x86_64/**",
             )
         }
     }
@@ -83,8 +79,25 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Emulator (x86_64) + device (arm64) for local visual checks.
+            ndk {
+                abiFilters.clear()
+                abiFilters += listOf("arm64-v8a", "x86_64")
+            }
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
+            // Store/device APKs stay arm64-only.
+            ndk {
+                abiFilters.clear()
+                abiFilters += listOf("arm64-v8a")
+            }
+            packaging {
+                jniLibs {
+                    excludes += setOf("lib/x86_64/**")
+                }
+            }
         }
     }
 }

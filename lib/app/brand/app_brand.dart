@@ -78,13 +78,21 @@ final class AppBrand {
     deepLinkScheme: 'xplm',
     logoAsset: 'assets/brand/xplm_logo.png',
     updateApkName: 'X-Plm-update.apk',
-    telegramHandle: null,
-    channelUrl: null,
+    telegramHandle: '@xplm_vpn',
+    channelUrl: 'https://t.me/xplm_vpn',
   );
 
-  static AppBrand _current = kpax;
+  static AppBrand _current = _fromCompileDefine();
 
   static AppBrand get current => _current;
+
+  static AppBrand _fromCompileDefine() {
+    const fromEnv = String.fromEnvironment('BRAND', defaultValue: '');
+    final normalized = fromEnv.trim().toLowerCase();
+    if (normalized == 'xplm') return xplm;
+    if (normalized == 'kpax') return kpax;
+    return kpax;
+  }
 
   /// Prefer `--dart-define=BRAND=xplm`; else infer from Android applicationId.
   static Future<void> init() async {

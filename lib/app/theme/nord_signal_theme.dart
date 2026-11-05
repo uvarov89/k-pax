@@ -129,14 +129,15 @@ abstract final class NordSignalTheme {
   }
 
   static ThemeData get xplmLight {
+    // Kept name for call sites; X-Plm UI is dark neon (flashy refs).
     final base = ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
-      fontFamily: 'Roboto',
-      colorScheme: const ColorScheme.light(
+      brightness: Brightness.dark,
+      fontFamily: 'Manrope',
+      colorScheme: const ColorScheme.dark(
         primary: XplmColors.accent,
         onPrimary: XplmColors.onAccent,
-        secondary: XplmColors.accentHover,
+        secondary: XplmColors.cyan,
         surface: XplmColors.surface,
         onSurface: XplmColors.ink,
         error: XplmColors.danger,
@@ -166,13 +167,13 @@ abstract final class NordSignalTheme {
           disabledBackgroundColor: XplmColors.lineStrong,
           disabledForegroundColor: XplmColors.ink3,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: XplmColors.surface,
+        fillColor: XplmColors.surfaceElevated,
         hintStyle: const TextStyle(color: XplmColors.ink3),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
@@ -185,12 +186,12 @@ abstract final class NordSignalTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: XplmColors.accent, width: 1.4),
+          borderSide: const BorderSide(color: XplmColors.cyan, width: 1.4),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: XplmColors.ink,
-        contentTextStyle: const TextStyle(color: XplmColors.paper),
+        backgroundColor: XplmColors.surfaceElevated,
+        contentTextStyle: const TextStyle(color: XplmColors.ink),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -275,31 +276,38 @@ class KpaxCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final xplm = AppBrand.current.isXplm;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final radius = BorderRadius.circular(18);
+    final radius = BorderRadius.circular(xplm ? 18 : 16);
     final surface = xplm
-        ? XplmColors.surface
+        ? XplmColors.surface.withValues(alpha: 0.9)
         : (isDark ? NordColors.surface : NordColors.lightSurface);
     final border = xplm
         ? (glow
-            ? XplmColors.accent.withValues(alpha: 0.35)
-            : XplmColors.line)
+            ? XplmColors.cyan.withValues(alpha: 0.7)
+            : XplmColors.cyan.withValues(alpha: 0.28))
         : (glow
             ? NordColors.cyan.withValues(alpha: 0.35)
             : (isDark ? NordColors.border : NordColors.lightBorder));
     final box = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
-        color: surface.withValues(alpha: isDark && !xplm ? 0.92 : 0.96),
-        border: Border.all(color: border),
-        boxShadow: glow && isDark && !xplm
-            ? [
-                BoxShadow(
-                  color: NordColors.cyan.withValues(alpha: 0.12),
-                  blurRadius: 24,
-                  spreadRadius: 0,
-                ),
-              ]
-            : null,
+        color: xplm
+            ? surface
+            : surface.withValues(alpha: isDark ? 0.92 : 0.96),
+        border: Border.all(color: border, width: xplm ? (glow ? 1.5 : 1.2) : 1),
+        boxShadow: [
+          if (xplm)
+            BoxShadow(
+              color: XplmColors.cyan.withValues(alpha: glow ? 0.35 : 0.14),
+              blurRadius: glow ? 30 : 20,
+              spreadRadius: glow ? 1 : 0,
+            ),
+          if (glow && isDark && !xplm)
+            BoxShadow(
+              color: NordColors.cyan.withValues(alpha: 0.12),
+              blurRadius: 24,
+              spreadRadius: 0,
+            ),
+        ],
       ),
       child: Padding(padding: padding, child: child),
     );

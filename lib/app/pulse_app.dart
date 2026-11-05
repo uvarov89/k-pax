@@ -12,6 +12,7 @@ import 'package:pulse_vpn/core/services/deep_link_service.dart';
 import 'package:pulse_vpn/core/services/network_auto_connect.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/home/home_screen.dart';
+import 'package:pulse_vpn/features/shell/xplm_shell.dart';
 
 class PulseApp extends StatefulWidget {
   const PulseApp({super.key, required this.controller});
@@ -111,7 +112,8 @@ class _PulseAppState extends State<PulseApp> {
   @override
   Widget build(BuildContext context) {
     final brand = AppBrand.current;
-    final isLight = brand.isXplm || _theme == AppThemePreference.light;
+    // X-Plm is dark neon; K-Pax follows user theme preference.
+    final isLight = !brand.isXplm && _theme == AppThemePreference.light;
     return ChangeNotifierProvider.value(
       value: widget.controller,
       child: MaterialApp(
@@ -136,7 +138,7 @@ class _PulseAppState extends State<PulseApp> {
             child: child ?? const SizedBox.shrink(),
           );
         },
-        home: const HomeScreen(),
+        home: brand.isXplm ? const XplmShell() : const HomeScreen(),
       ),
     );
   }

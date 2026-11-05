@@ -14,7 +14,7 @@ Future<void> main() async {
   await controller.hydrate();
 
   final brand = AppBrand.current;
-  final isLight = brand.isXplm ||
+  final isLight = !brand.isXplm &&
       controller.appSettings.theme == AppThemePreference.light;
   SystemChrome.setSystemUIOverlayStyle(
     SystemUiOverlayStyle(

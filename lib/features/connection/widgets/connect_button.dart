@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -32,270 +31,6 @@ class ConnectButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (AppBrand.current.isXplm && state == VpnConnectionState.connected) {
-      return _XplmSunConnect(
-        diameter: diameter,
-        label: disconnectLabel,
-        onPressed: onPressed,
-      );
-    }
-    return _ClassicConnect(
-      state: state,
-      onPressed: onPressed,
-      connectLabel: connectLabel,
-      disconnectLabel: disconnectLabel,
-      connectingLabel: connectingLabel,
-      disconnectingLabel: disconnectingLabel,
-      retryLabel: retryLabel,
-      diameter: diameter,
-    );
-  }
-}
-
-/// Living sun for X-Plm connected state: pulsing corona, rotating rays, hot core.
-class _XplmSunConnect extends StatefulWidget {
-  const _XplmSunConnect({
-    required this.diameter,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final double diameter;
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  State<_XplmSunConnect> createState() => _XplmSunConnectState();
-}
-
-class _XplmSunConnectState extends State<_XplmSunConnect>
-    with TickerProviderStateMixin {
-  late final AnimationController _pulse;
-  late final AnimationController _spin;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
-    _spin = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 18),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    _spin.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = widget.diameter;
-    return Semantics(
-      button: true,
-      label: widget.label,
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: SizedBox(
-          width: d * 1.45,
-          height: d * 1.45,
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_pulse, _spin]),
-            builder: (context, _) {
-              final breath = Curves.easeInOut.transform(_pulse.value);
-              return CustomPaint(
-                painter: _SunPainter(
-                  spin: _spin.value * math.pi * 2,
-                  breath: breath,
-                  disc: d,
-                ),
-                child: Center(
-                  child: SizedBox(
-                    width: d,
-                    height: d,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.power_settings_new_rounded,
-                          size: 40,
-                          color: XplmColors.onSun.withValues(alpha: 0.92),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.label,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.3,
-                            color: XplmColors.onSun.withValues(alpha: 0.95),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SunPainter extends CustomPainter {
-  _SunPainter({
-    required this.spin,
-    required this.breath,
-    required this.disc,
-  });
-
-  final double spin;
-  final double breath;
-  final double disc;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = disc / 2;
-    final glowBoost = 0.75 + breath * 0.45;
-
-    // Soft outer corona layers.
-    for (final layer in <(double, Color, double)>[
-      (radius * 1.85, XplmColors.sunHot.withValues(alpha: 0.10 * glowBoost), 28),
-      (radius * 1.55, XplmColors.sunMid.withValues(alpha: 0.18 * glowBoost), 18),
-      (radius * 1.28, XplmColors.sunRim.withValues(alpha: 0.28 * glowBoost), 10),
-      (radius * 1.12, XplmColors.sunCorona.withValues(alpha: 0.35 * glowBoost), 4),
-    ]) {
-      final paint = Paint()
-        ..color = layer.$2
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, layer.$3);
-      canvas.drawCircle(center, layer.$1, paint);
-    }
-
-    // Rotating ray flares.
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(spin);
-    final rayPaint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(-radius * 1.6, 0),
-        Offset(radius * 1.6, 0),
-        [
-          const Color(0x00FFCC33),
-          XplmColors.sunHot.withValues(alpha: 0.22 + breath * 0.12),
-          XplmColors.sunCore.withValues(alpha: 0.35 + breath * 0.15),
-          XplmColors.sunHot.withValues(alpha: 0.22 + breath * 0.12),
-          const Color(0x00FFCC33),
-        ],
-        const [0.0, 0.28, 0.5, 0.72, 1.0],
-      );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset.zero,
-        width: radius * 3.2,
-        height: radius * 0.22 + breath * 4,
-      ),
-      rayPaint,
-    );
-    canvas.rotate(math.pi / 2.4);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset.zero,
-        width: radius * 2.7,
-        height: radius * 0.14 + breath * 3,
-      ),
-      rayPaint,
-    );
-    canvas.restore();
-
-    // Plasma disc.
-    final discPaint = Paint()
-      ..shader = ui.Gradient.radial(
-        center.translate(-radius * 0.18, -radius * 0.22),
-        radius * 1.15,
-        [
-          XplmColors.sunCore,
-          Color.lerp(XplmColors.sunHot, XplmColors.sunMid, breath)!,
-          XplmColors.sunMid,
-          XplmColors.sunRim,
-        ],
-        const [0.0, 0.35, 0.72, 1.0],
-      );
-    canvas.drawCircle(center, radius, discPaint);
-
-    // Hot rim ring.
-    final rim = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.2 + breath * 1.2
-      ..color = XplmColors.sunCorona.withValues(alpha: 0.85)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2);
-    canvas.drawCircle(center, radius - 1.5, rim);
-
-    // Subtle surface grain (static speckles for depth).
-    final speck = Paint()..color = const Color(0x33FFFFFF);
-    final dark = Paint()..color = const Color(0x22C45A12);
-    final rnd = math.Random(7);
-    for (var i = 0; i < 42; i++) {
-      final a = rnd.nextDouble() * math.pi * 2;
-      final r = rnd.nextDouble() * radius * 0.78;
-      final p = center + Offset(math.cos(a) * r, math.sin(a) * r);
-      canvas.drawCircle(p, 1.1 + rnd.nextDouble() * 1.6, i.isEven ? speck : dark);
-    }
-
-    // Moving highlight.
-    final highlight = Paint()
-      ..shader = ui.Gradient.radial(
-        center.translate(-radius * 0.28, -radius * (0.30 - breath * 0.04)),
-        radius * 0.42,
-        [
-          const Color(0xAAFFFFFF),
-          const Color(0x00FFFFFF),
-        ],
-      );
-    canvas.drawCircle(
-      center.translate(-radius * 0.28, -radius * 0.28),
-      radius * 0.38,
-      highlight,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _SunPainter oldDelegate) =>
-      oldDelegate.spin != spin ||
-      oldDelegate.breath != breath ||
-      oldDelegate.disc != disc;
-}
-
-class _ClassicConnect extends StatelessWidget {
-  const _ClassicConnect({
-    required this.state,
-    required this.onPressed,
-    required this.connectLabel,
-    required this.disconnectLabel,
-    required this.connectingLabel,
-    required this.disconnectingLabel,
-    required this.retryLabel,
-    required this.diameter,
-  });
-
-  final VpnConnectionState state;
-  final VoidCallback? onPressed;
-  final String connectLabel;
-  final String disconnectLabel;
-  final String connectingLabel;
-  final String disconnectingLabel;
-  final String retryLabel;
-  final double diameter;
-
-  @override
-  Widget build(BuildContext context) {
     final xplm = AppBrand.current.isXplm;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connected = state == VpnConnectionState.connected;
@@ -306,30 +41,45 @@ class _ClassicConnect extends StatelessWidget {
     final Color fillColor;
     final Color glowColor;
     final String label;
+    final List<Color>? fillGradient;
 
     switch (state) {
       case VpnConnectionState.connected:
-        ringColor = NordColors.accent;
-        fillColor = NordColors.accentDim;
-        glowColor = ringColor;
+        if (xplm) {
+          ringColor = XplmColors.cyan;
+          fillColor = XplmColors.accent;
+          glowColor = XplmColors.cyan;
+          fillGradient = const [
+            XplmColors.neonCore,
+            XplmColors.accent,
+            XplmColors.neonDeep,
+          ];
+        } else {
+          ringColor = NordColors.accent;
+          fillColor = NordColors.accentDim;
+          glowColor = ringColor;
+          fillGradient = const [Color(0xFF4AE8A8), NordColors.accentDim];
+        }
         label = disconnectLabel;
       case VpnConnectionState.connecting:
-        ringColor = xplm ? XplmColors.connecting : NordColors.connecting;
+        ringColor = xplm ? XplmColors.cyan : NordColors.connecting;
         fillColor = xplm
             ? XplmColors.disconnectFill
             : (isDark
                 ? NordColors.disconnectFill
                 : NordColors.lightDisconnectFill);
         glowColor = ringColor;
+        fillGradient = null;
         label = connectingLabel;
       case VpnConnectionState.disconnecting:
-        ringColor = xplm ? XplmColors.connecting : NordColors.connecting;
+        ringColor = xplm ? XplmColors.cyan : NordColors.connecting;
         fillColor = xplm
             ? XplmColors.disconnectFill
             : (isDark
                 ? NordColors.disconnectFill
                 : NordColors.lightDisconnectFill);
         glowColor = ringColor;
+        fillGradient = null;
         label = disconnectingLabel;
       case VpnConnectionState.error:
         ringColor = xplm ? XplmColors.danger : NordColors.danger;
@@ -339,10 +89,11 @@ class _ClassicConnect extends StatelessWidget {
                 ? NordColors.disconnectFill
                 : NordColors.lightDisconnectFill);
         glowColor = ringColor;
+        fillGradient = null;
         label = retryLabel;
       case VpnConnectionState.disconnected:
         ringColor = xplm
-            ? XplmColors.accent
+            ? XplmColors.cyan
             : (isDark ? NordColors.cyan : NordColors.cyanDim);
         fillColor = xplm
             ? XplmColors.disconnectFill
@@ -350,11 +101,14 @@ class _ClassicConnect extends StatelessWidget {
                 ? NordColors.disconnectFill
                 : NordColors.lightDisconnectFill);
         glowColor = ringColor;
+        fillGradient = xplm
+            ? const [Color(0xFF1A3A6A), XplmColors.disconnectFill]
+            : null;
         label = connectLabel;
     }
 
     final labelColor = connected
-        ? Colors.white
+        ? (xplm ? XplmColors.onNeon : Colors.white)
         : (xplm
             ? XplmColors.ink
             : (isDark
@@ -371,9 +125,15 @@ class _ClassicConnect extends StatelessWidget {
           height: diameter,
           child: Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
-              if (busy)
-                _OrbitRing(diameter: diameter, color: ringColor),
+              if (xplm)
+                _XplmHalo(
+                  diameter: diameter,
+                  color: connected ? XplmColors.neon : XplmColors.cyan,
+                  active: connected || busy,
+                ),
+              if (busy) _OrbitRing(diameter: diameter, color: ringColor),
               AnimatedContainer(
                 duration: const Duration(milliseconds: 280),
                 width: diameter,
@@ -383,28 +143,32 @@ class _ClassicConnect extends StatelessWidget {
                   color: fillColor,
                   border: Border.all(
                     color: ringColor,
-                    width: connected ? 4 : 2.5,
+                    width: connected || xplm ? 3.5 : 2.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: glowColor.withValues(alpha: connected ? 0.38 : 0.22),
-                      blurRadius: connected ? 36 : 28,
-                      spreadRadius: connected ? 4 : 1,
+                      color: glowColor.withValues(
+                        alpha: connected || xplm ? 0.45 : 0.22,
+                      ),
+                      blurRadius: connected || xplm ? 40 : 28,
+                      spreadRadius: connected || xplm ? 5 : 1,
                     ),
-                    if (isDark)
+                    if (connected || isDark || xplm)
                       BoxShadow(
-                        color: glowColor.withValues(alpha: 0.12),
-                        blurRadius: 60,
-                        spreadRadius: 8,
+                        color: glowColor.withValues(
+                          alpha: connected || xplm ? 0.22 : 0.12,
+                        ),
+                        blurRadius: connected || xplm ? 80 : 60,
+                        spreadRadius: connected || xplm ? 12 : 8,
                       ),
                   ],
-                  gradient: connected
-                      ? const LinearGradient(
+                  gradient: fillGradient == null
+                      ? null
+                      : LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [Color(0xFF4AE8A8), NordColors.accentDim],
-                        )
-                      : null,
+                          colors: fillGradient,
+                        ),
                 ),
                 child: Center(
                   child: busy
@@ -424,7 +188,9 @@ class _ClassicConnect extends StatelessWidget {
                             Icon(
                               Icons.power_settings_new_rounded,
                               size: 40,
-                              color: connected ? Colors.white : ringColor,
+                              color: connected
+                                  ? (xplm ? XplmColors.onNeon : Colors.white)
+                                  : ringColor,
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -446,6 +212,78 @@ class _ClassicConnect extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Soft concentric rings behind the X-Plm connect disc (ref radar look).
+class _XplmHalo extends StatelessWidget {
+  const _XplmHalo({
+    required this.diameter,
+    required this.color,
+    required this.active,
+  });
+
+  final double diameter;
+  final Color color;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: CustomPaint(
+        size: Size.square(diameter * 1.55),
+        painter: _HaloPainter(color: color, active: active),
+      ),
+    );
+  }
+}
+
+class _HaloPainter extends CustomPainter {
+  _HaloPainter({required this.color, required this.active});
+
+  final Color color;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final base = size.shortestSide / 2;
+    final rings = <(double, double, double)>[
+      (0.72, active ? 0.22 : 0.12, 1.4),
+      (0.88, active ? 0.16 : 0.08, 1.1),
+      (1.0, active ? 0.10 : 0.05, 1.0),
+    ];
+    for (final ring in rings) {
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ring.$3
+        ..color = color.withValues(alpha: ring.$2);
+      canvas.drawCircle(center, base * ring.$1, paint);
+    }
+    if (active) {
+      final dash = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = color.withValues(alpha: 0.28);
+      const count = 42;
+      final r = base * 0.95;
+      for (var i = 0; i < count; i++) {
+        if (i.isOdd) continue;
+        final a0 = (i / count) * math.pi * 2;
+        final a1 = ((i + 0.55) / count) * math.pi * 2;
+        canvas.drawArc(
+          Rect.fromCircle(center: center, radius: r),
+          a0,
+          a1 - a0,
+          false,
+          dash,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HaloPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.active != active;
 }
 
 class _OrbitRing extends StatefulWidget {

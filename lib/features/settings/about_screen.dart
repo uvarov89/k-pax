@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/brand/brand_logo.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
 
@@ -20,11 +21,19 @@ class AboutScreen extends StatelessWidget {
     final controller = context.watch<VpnController>();
     final s = controller.strings;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final muted = isDark ? NordColors.textMuted : NordColors.lightTextMuted;
-    final secondary =
-        isDark ? NordColors.textSecondary : NordColors.lightTextSecondary;
-    final surface = isDark ? NordColors.surface : NordColors.lightSurface;
-    final border = isDark ? NordColors.border : NordColors.lightBorder;
+    final xplm = AppBrand.current.isXplm;
+    final muted = xplm
+        ? XplmColors.ink3
+        : (isDark ? NordColors.textMuted : NordColors.lightTextMuted);
+    final secondary = xplm
+        ? XplmColors.ink2
+        : (isDark ? NordColors.textSecondary : NordColors.lightTextSecondary);
+    final surface = xplm
+        ? XplmColors.surface
+        : (isDark ? NordColors.surface : NordColors.lightSurface);
+    final border = xplm
+        ? XplmColors.line
+        : (isDark ? NordColors.border : NordColors.lightBorder);
     final theses = [
       (s.aboutThesisQuietTitle, s.aboutThesisQuietBody),
       (s.aboutThesisLinkTitle, s.aboutThesisLinkBody),

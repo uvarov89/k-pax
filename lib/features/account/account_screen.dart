@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/subscription.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
+import 'package:pulse_vpn/features/settings/about_screen.dart';
+import 'package:pulse_vpn/features/settings/settings_screen.dart';
+import 'package:pulse_vpn/features/xplm/widgets/xplm_codex_widgets.dart';
 
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({super.key});
+  const AccountScreen({super.key, this.embeddedInShell = false});
+
+  final bool embeddedInShell;
 
   @override
   State<AccountScreen> createState() => _AccountScreenState();
@@ -137,10 +144,16 @@ class _AccountScreenState extends State<AccountScreen> {
     final s = controller.strings;
     final account = controller.account;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final muted = isDark ? NordColors.textMuted : NordColors.lightTextMuted;
-    final surface =
-        isDark ? NordColors.surface : NordColors.lightSurface;
-    final border = isDark ? NordColors.border : NordColors.lightBorder;
+    final xplm = AppBrand.current.isXplm;
+    final muted = xplm
+        ? XplmColors.ink3
+        : (isDark ? NordColors.textMuted : NordColors.lightTextMuted);
+    final surface = xplm
+        ? XplmColors.surface
+        : (isDark ? NordColors.surface : NordColors.lightSurface);
+    final border = xplm
+        ? XplmColors.line
+        : (isDark ? NordColors.border : NordColors.lightBorder);
     final date =
         '${account.accessExpiresAt.day.toString().padLeft(2, '0')}.'
         '${account.accessExpiresAt.month.toString().padLeft(2, '0')}.'
@@ -148,19 +161,217 @@ class _AccountScreenState extends State<AccountScreen> {
     final kpax = controller.isKPaxSubscription;
     final showId = kpax && account.userId.isNotEmpty && !account.userId.startsWith('u_');
 
-    return NordBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(s.account),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-        body: ListView(
+    final scaffold = Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(xplm ? s.settings : s.account),
+        automaticallyImplyLeading: !widget.embeddedInShell,
+        leading: widget.embeddedInShell
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+        actions: xplm
+            ? [
+                IconButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    );
+                  },
+                  icon: Icon(
+                    Icons.settings_rounded,
+                    color: XplmColors.cyan.withValues(alpha: 0.9),
+                  ),
+                ),
+              ]
+            : null,
+      ),
+      body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           children: [
+            if (xplm) ...[
+              const _XplmProfileHeader(),
+              const SizedBox(height: 10),
+              XplmGlass(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Column(
+                  children: [
+                    _XplmMenuRow(
+                      icon: Icons.notifications_none_rounded,
+                      label: 'Уведомления',
+                      trailing: 'Вкл.',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, color: Color(0xFF1C314C)),
+                    _XplmMenuRow(
+                      icon: Icons.shield_outlined,
+                      label: 'Безопасность',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1, color: Color(0xFF1C314C)),
+                    _XplmMenuRow(
+                      icon: Icons.bar_chart_rounded,
+                      label: 'Статистика трафика',
+                      barsIcon: true,
+                      onTap: () {},
+                    ),
+                    const Divider(height: 1, color: Color(0xFF1C314C)),
+                    _XplmMenuRow(
+                      icon: Icons.headphones_rounded,
+                      label: 'Поддержка',
+                      onTap: () => launchUrl(
+                        Uri.parse('mailto:${AppBrand.current.supportEmail}'),
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFF1C314C)),
+                    _XplmMenuRow(
+                      icon: Icons.info_outline_rounded,
+                      label: 'О приложении',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AboutScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 13),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(17),
+                  onTap: () {
+                    final url = AppBrand.current.channelUrl ??
+                        'https://t.me/xplm_vpn';
+                    launchUrl(
+                      Uri.parse(url),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
+                  child: XplmGlass(
+                    padding: const EdgeInsets.fromLTRB(9, 11, 9, 11),
+                    child: Row(
+                      children: [
+                        Transform.rotate(
+                          angle: -18 * 3.14159 / 180,
+                          child: const Text(
+                            '➤',
+                            style: TextStyle(
+                              fontSize: 34,
+                              color: Color(0xFF00BAFF),
+                              shadows: [
+                                Shadow(
+                                  color: Color(0xFF009DFF),
+                                  blurRadius: 9,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              text: 'Присоединяйтесь\nк нашему Telegram-каналу',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text:
+                                      '\nНовости, акции и полезные\nсоветы',
+                                  style: TextStyle(
+                                    color: Color(0xFFA3B3CA),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Text(
+                          '›',
+                          style: TextStyle(
+                            color: Color(0xFF8AA4C2),
+                            fontSize: 22,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 40,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: XplmColors.ink,
+                    backgroundColor: const Color(0x800B1A2C),
+                    side: const BorderSide(color: Color(0xFF66819D)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  icon: const Icon(Icons.logout_rounded, size: 18),
+                  label: const Text('Выйти', style: TextStyle(fontSize: 12)),
+                  onPressed: controller.subscriptionUrl == null
+                      ? null
+                      : () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: Text(s.removeSubscription),
+                              content: Text(
+                                s.removeSubscriptionBody(
+                                  controller.subscriptionName,
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: Text(s.cancel),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, true),
+                                  child: Text(s.remove),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            await controller.forgetSubscriptionLink();
+                          }
+                        },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             _Card(
                 surface: surface,
                 border: border,
@@ -412,8 +623,9 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
           ],
         ),
-      ),
     );
+    if (widget.embeddedInShell) return scaffold;
+    return NordBackground(child: scaffold);
   }
 }
 
@@ -488,6 +700,144 @@ class _SubscriptionList extends StatelessWidget {
   }
 }
 
+class _XplmProfileHeader extends StatelessWidget {
+  const _XplmProfileHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 72,
+          height: 72,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(
+              colors: [Color(0xFF073D6D), Color(0xFF00172F)],
+              stops: [0.0, 0.65],
+            ),
+            border: Border.all(color: const Color(0xFF009AF2)),
+            boxShadow: const [
+              BoxShadow(color: Color(0xFF008FFF), blurRadius: 17),
+              BoxShadow(
+                color: Color(0xFF0087FF),
+                blurRadius: 14,
+                spreadRadius: -6,
+              ),
+            ],
+          ),
+          child: const XplmMetalX(width: 48, height: 39),
+        ),
+        const SizedBox(height: 9),
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (context, snap) {
+            final v = snap.data?.version ?? '…';
+            return Text.rich(
+              TextSpan(
+                text: 'XPLM VPN',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+                children: [
+                  TextSpan(
+                    text: '\nv$v',
+                    style: const TextStyle(
+                      color: Color(0xFF96AAC3),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _XplmMenuRow extends StatelessWidget {
+  const _XplmMenuRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.trailing,
+    this.barsIcon = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? trailing;
+  final VoidCallback onTap;
+  final bool barsIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 42,
+        child: Row(
+          children: [
+            if (barsIcon)
+              const SizedBox(
+                width: 20,
+                child: Text(
+                  '▂▆▅',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF00ADF5),
+                    letterSpacing: -2,
+                    shadows: [
+                      Shadow(color: Color(0xFF009DFF), blurRadius: 8),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Icon(
+                icon,
+                size: 20,
+                color: const Color(0xFF8DBBE9),
+                shadows: const [
+                  Shadow(color: Color(0xFF168CDD), blurRadius: 5),
+                ],
+              ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+            ),
+            if (trailing != null)
+              Text(
+                trailing!,
+                style: const TextStyle(
+                  color: Color(0xFF38A4DC),
+                  fontSize: 10,
+                ),
+              ),
+            const Text(
+              '›',
+              style: TextStyle(
+                color: Color(0xFF8AA4C2),
+                fontSize: 22,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Card extends StatelessWidget {
   const _Card({
     required this.surface,
@@ -501,13 +851,24 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
+        color: surface.withValues(alpha: xplm ? 0.9 : 1),
+        borderRadius: BorderRadius.circular(xplm ? 18 : 16),
+        border: Border.all(
+          color: xplm ? XplmColors.cyan.withValues(alpha: 0.32) : border,
+        ),
+        boxShadow: xplm
+            ? [
+                BoxShadow(
+                  color: XplmColors.cyan.withValues(alpha: 0.14),
+                  blurRadius: 18,
+                ),
+              ]
+            : null,
       ),
       child: child,
     );
@@ -522,19 +883,26 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final xplm = AppBrand.current.isXplm;
+    final accentColor = xplm ? XplmColors.cyan : NordColors.accent;
+    final accentFill = xplm
+        ? XplmColors.accentSoft
+        : NordColors.accentDim.withValues(alpha: 0.35);
+    final mutedBorder = xplm ? XplmColors.line : NordColors.border;
+    final mutedText = xplm ? XplmColors.ink2 : NordColors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: accent ? NordColors.accentDim.withValues(alpha: 0.35) : Colors.transparent,
+        color: accent ? accentFill : Colors.transparent,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent ? NordColors.accent : NordColors.border),
+        border: Border.all(color: accent ? accentColor : mutedBorder),
       ),
       child: Text(
         label,
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w700,
-          color: accent ? NordColors.accent : NordColors.textSecondary,
+          color: accent ? accentColor : mutedText,
         ),
       ),
     );

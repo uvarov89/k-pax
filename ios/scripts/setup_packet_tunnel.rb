@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
-# Adds / updates the PacketTunnel Network Extension target for K-Pax.
-# Run on macOS (Codemagic): ruby ios/scripts/setup_packet_tunnel.rb
+# Adds / updates the PacketTunnel Network Extension target.
+# Run on macOS (Codemagic): BRAND=xplm ruby ios/scripts/setup_packet_tunnel.rb
+# Prefer: BRAND=xplm ruby ios/scripts/apply_ios_brand.rb && ruby ios/scripts/setup_packet_tunnel.rb
 # Requires: gem install xcodeproj
 
 require 'xcodeproj'
@@ -11,9 +12,24 @@ PROJECT_PATH = File.join(ROOT, 'ios', 'Runner.xcodeproj')
 TUNNEL_DIR = File.join(ROOT, 'ios', 'PacketTunnel')
 FRAMEWORKS = File.join(ROOT, 'ios', 'Frameworks', 'Libbox.xcframework')
 
-BUNDLE_APP = 'space.kpax.app'
-BUNDLE_EXT = 'space.kpax.app.extension'
-APP_GROUP = 'group.space.kpax.app'
+BRAND = (ENV['BRAND'] || 'kpax').strip.downcase
+BRAND_IDS = {
+  'kpax' => {
+    app: 'space.kpax.app',
+    ext: 'space.kpax.app.extension',
+    group: 'group.space.kpax.app',
+  },
+  'xplm' => {
+    app: 'online.xplm.app',
+    ext: 'online.xplm.app.extension',
+    group: 'group.online.xplm.app',
+  },
+}.freeze
+ids = BRAND_IDS[BRAND] || BRAND_IDS['kpax']
+
+BUNDLE_APP = ENV['BUNDLE_ID'] || ENV['BUNDLE_ID_APP'] || ids[:app]
+BUNDLE_EXT = ENV['BUNDLE_ID_EXT'] || ids[:ext]
+APP_GROUP = ENV['APP_GROUP'] || ids[:group]
 
 unless File.directory?(TUNNEL_DIR)
   abort "Missing #{TUNNEL_DIR}"

@@ -10,8 +10,10 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
+        BRAND: kpax
         BUNDLE_ID: space.kpax.app
         BUNDLE_ID_EXT: space.kpax.app.extension
+        APP_GROUP: group.space.kpax.app
         LIBBOX_SINGBOX_TAG: v1.12.12
       ios_signing:
         distribution_type: app_store
@@ -27,10 +29,11 @@ workflows:
           export PATH="$PATH:$(go env GOPATH)/bin"
           chmod +x ios/scripts/build_libbox.sh
           ios/scripts/build_libbox.sh
-      - name: Add Packet Tunnel target
+      - name: Apply brand + Packet Tunnel target
         script: |
           set -e
           gem install xcodeproj --no-document
+          ruby ios/scripts/apply_ios_brand.rb
           ruby ios/scripts/setup_packet_tunnel.rb
       - name: Install CocoaPods
         script: |
@@ -44,6 +47,74 @@ workflows:
           BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//')
           BUILD_NUMBER=${PROJECT_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}
           flutter build ipa --release \
+            --dart-define=BRAND=kpax \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  ios-testflight-xplm:
+    name: iOS TestFlight (X-Plm)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: kpax
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        BRAND: xplm
+        BUNDLE_ID: online.xplm.app
+        BUNDLE_ID_EXT: online.xplm.app.extension
+        APP_GROUP: group.online.xplm.app
+        LIBBOX_SINGBOX_TAG: v1.12.12
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: online.xplm.app,online.xplm.app.extension
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+      - name: Ensure X-Plm AppIcon set
+        script: |
+          set -e
+          if [ ! -f ios/Runner/Assets.xcassets/AppIcon-Xplm.appiconset/Icon-App-1024x1024@1x.png ]; then
+            python3 ios/scripts/gen_xplm_appicon.py
+          fi
+      - name: Build Libbox.xcframework
+        script: |
+          set -e
+          brew install go || true
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          chmod +x ios/scripts/build_libbox.sh
+          ios/scripts/build_libbox.sh
+      - name: Apply X-Plm brand + Packet Tunnel target
+        script: |
+          set -e
+          gem install xcodeproj --no-document
+          export BRAND=xplm
+          ruby ios/scripts/apply_ios_brand.rb
+          ruby ios/scripts/setup_packet_tunnel.rb
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+      - name: Flutter build IPA (X-Plm)
+        script: |
+          set -e
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//')
+          BUILD_NUMBER=${PROJECT_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}
+          flutter build ipa --release \
+            --dart-define=BRAND=xplm \
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist

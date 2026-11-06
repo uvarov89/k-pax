@@ -18,9 +18,10 @@ test/             dart tests next to concerns
 
 ## Platforms
 android/app/      Kotlin MainActivity, VPN always-on
-ios/Runner + ios/PacketTunnel + ios/scripts/
+ios/Runner + ios/PacketTunnel + ios/scripts/ (apply_ios_brand, AppIcon-Xplm)
 windows/runner + windows/installer/k-pax.iss
-codemagic.yaml    iOS TestFlight
+codemagic.yaml    ios-testflight (K-Pax) / ios-testflight-xplm (X-Plm)
+docs/ios-apple-setup-xplm.md + ios-testflight-qa-xplm.md
 
 ## Server / edge (edit for billing, sub, nodes, Caddy)
 server/panel.py

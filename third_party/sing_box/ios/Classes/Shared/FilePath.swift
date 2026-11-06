@@ -1,14 +1,22 @@
 import Foundation
 
 public enum FilePath {
-    // Bundle ID for Flutter plugin - needs to be configured for your app
-    public static let packageName = "space.kpax.app"
+    /// App bundle id (strips `.extension` / `.RunnerTests` when running inside those targets).
+    public static var packageName: String {
+        let id = Bundle.main.bundleIdentifier ?? "space.kpax.app"
+        for suffix in [".extension", ".RunnerTests"] where id.hasSuffix(suffix) {
+            return String(id.dropLast(suffix.count))
+        }
+        return id
+    }
 }
 
 public extension FilePath {
-    static let groupName = "group.\(packageName)"
-    
-    private static let defaultSharedDirectory: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: FilePath.groupName)
+    static var groupName: String { "group.\(packageName)" }
+
+    private static var defaultSharedDirectory: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: FilePath.groupName)
+    }
     
     #if os(iOS)
         static var sharedDirectory: URL {

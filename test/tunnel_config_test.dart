@@ -34,6 +34,14 @@ void main() {
     ) as Map<String, Object?>;
   }
 
+  test('sniffing uses route actions supported by Libbox 1.13', () {
+    final built = config();
+    final inbound = (built['inbounds'] as List).first as Map;
+    expect(inbound.containsKey('sniff'), isFalse);
+    final rules = (built['route'] as Map)['rules'] as List;
+    expect(rules.first, {'action': 'sniff'});
+  });
+
   test('kill switch and dns follow the settings', () {
     final on = config();
     final tun = (on['inbounds'] as List).first as Map;

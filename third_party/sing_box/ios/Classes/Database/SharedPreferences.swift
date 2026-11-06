@@ -24,6 +24,9 @@ public enum SharedPreferences {
     public static let autoRouteUseSubRangesByDefault = Preference<Bool>("auto_route_use_sub_ranges_by_default", defaultValue: false)
     public static let excludeAPNsRoute = Preference<Bool>("exclude_apple_push_notification_services", defaultValue: false)
     
+    public static let autoConnectWifi = Preference<Bool>("auto_connect_wifi", defaultValue: false)
+    public static let autoConnectCellular = Preference<Bool>("auto_connect_cellular", defaultValue: false)
+
     // On Demand Rules
     public static let alwaysOn = Preference<Bool>("always_on", defaultValue: false)
     

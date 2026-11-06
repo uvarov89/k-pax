@@ -59,7 +59,6 @@ String buildTunnelConfig(
         'auto_route': true,
         'strict_route': settings.killSwitch,
         'stack': 'mixed',
-        'sniff': true,
       },
     ],
     'outbounds': [

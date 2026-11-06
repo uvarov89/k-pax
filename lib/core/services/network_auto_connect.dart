@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -13,7 +14,8 @@ class NetworkAutoConnect {
   bool _busy = false;
 
   Future<void> start() async {
-    if (kIsWeb) return;
+    // iOS network selection belongs to the persistent native VPN profile.
+    if (kIsWeb || Platform.isIOS) return;
     try {
       _sub = Connectivity().onConnectivityChanged.listen((results) {
         unawaited(_maybeConnect(results));
@@ -29,7 +31,8 @@ class NetworkAutoConnect {
     final settings = _controller.appSettings;
     final wifiOk =
         settings.autoConnectOnWifi && results.contains(ConnectivityResult.wifi);
-    final mobileOk = settings.autoConnectOnMobile &&
+    final mobileOk =
+        settings.autoConnectOnMobile &&
         results.contains(ConnectivityResult.mobile);
     if (!wifiOk && !mobileOk) return;
     if (!_controller.hasAccess) return;

@@ -236,28 +236,29 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
     
     // MARK: - LibboxPlatformInterfaceProtocol
     
-    public func usePlatformAutoDetectControl() -> Bool {
+    // Libbox 1.13+ PlatformInterface (gomobile names from Go).
+    public func usePlatformAutoDetectInterfaceControl() -> Bool {
         false
     }
-    
-    public func autoDetectControl(_: Int32) throws {}
-    
-    public func findConnectionOwner(_: Int32, sourceAddress _: String?, sourcePort _: Int32, destinationAddress _: String?, destinationPort _: Int32, ret0_ _: UnsafeMutablePointer<Int32>?) throws {
+
+    public func autoDetectInterfaceControl(_: Int32) throws {}
+
+    public func findConnectionOwner(
+        _: Int32,
+        sourceAddress _: String?,
+        sourcePort _: Int32,
+        destinationAddress _: String?,
+        destinationPort _: Int32
+    ) throws -> LibboxConnectionOwner {
+        // iOS Network Extension cannot resolve per-connection process owners.
         throw NSError(domain: "not implemented", code: 0)
     }
-    
-    public func packageName(byUid _: Int32, error _: NSErrorPointer) -> String {
-        ""
-    }
-    
-    public func uid(byPackageName _: String?, ret0_ _: UnsafeMutablePointer<Int32>?) throws {
-        throw NSError(domain: "not implemented", code: 0)
-    }
-    
+
     public func useProcFS() -> Bool {
         false
     }
-    
+
+    /// Local helper (WriteLog removed from PlatformInterface in 1.13).
     public func writeLog(_ message: String?) {
         guard let message else {
             return
@@ -396,7 +397,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
             guard let network else {
                 return nil
             }
-            guard let wifiState = LibboxWIFIState(network.ssid, wifiBSSID: network.bssid) else {
+            guard let wifiState = LibboxNewWIFIState(network.ssid, network.bssid) else {
                 NSLog("ExtensionPlatformInterface: Failed to create LibboxWIFIState")
                 return nil
             }
@@ -471,8 +472,14 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
         nil
     }
     
-    // MARK: - LibboxCommandServerHandlerProtocol
-    
+    // MARK: - LibboxPlatformInterfaceProtocol notifications (1.13+)
+
+    public func sendNotification(_ notification: LibboxNotification?) throws {
+        try send(notification)
+    }
+
+    // MARK: - LibboxCommandServerHandlerProtocol / shared notification helper
+
     public func send(_ notification: LibboxNotification?) throws {
         #if !os(tvOS)
             guard let notification else {
@@ -480,7 +487,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
             }
             let center = UNUserNotificationCenter.current()
             let content = UNMutableNotificationContent()
-            
+
             content.title = notification.title
             content.subtitle = notification.subtitle
             content.body = notification.body

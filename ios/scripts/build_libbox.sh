@@ -3,7 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-TAG="${LIBBOX_SINGBOX_TAG:-v1.12.12}"
+# Must match PacketTunnel Swift (LibboxNewCommandServer(handler, platform, &error),
+# StartOrReloadService, WriteMessage(level, message)). v1.12.x uses the old API.
+TAG="${LIBBOX_SINGBOX_TAG:-v1.13.21}"
 WORK="${TMPDIR:-/tmp}/kpax-libbox-build"
 OUT_PLUGIN="$ROOT/third_party/sing_box/ios/Frameworks"
 OUT_IOS="$ROOT/ios/Frameworks"
@@ -16,6 +18,9 @@ if [[ ! -d sing-box/.git ]]; then
   git clone --depth=1 --single-branch --branch="$TAG" https://github.com/SagerNet/sing-box.git
 fi
 cd sing-box
+# A cached clone must not silently build a previously selected version.
+git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+git checkout --detach "$TAG"
 
 export PATH="$PATH:$(go env GOPATH)/bin"
 make lib_install

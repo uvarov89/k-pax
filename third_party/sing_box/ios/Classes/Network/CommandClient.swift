@@ -249,13 +249,17 @@ public class CommandClient: ObservableObject {
             }
         }
         
-        func write(_ message: LibboxConnections?) {
-            guard let message else {
+        func writeConnectionEvents(_ events: LibboxConnectionEvents?) {
+            guard let events else {
                 return
             }
-            let result = commandClient.filterConnections(message)
             DispatchQueue.main.async { [self] in
-                commandClient.rawConnections = message
+                if commandClient.rawConnections == nil {
+                    commandClient.rawConnections = LibboxNewConnections()
+                }
+                guard let message = commandClient.rawConnections else { return }
+                message.applyEvents(events)
+                let result = commandClient.filterConnections(message)
                 commandClient.connections = result.connections
                 commandClient.hasAnyConnection = result.hasAny
             }

@@ -14,7 +14,7 @@ workflows:
         BUNDLE_ID: space.kpax.app
         BUNDLE_ID_EXT: space.kpax.app.extension
         APP_GROUP: group.space.kpax.app
-        LIBBOX_SINGBOX_TAG: v1.12.12
+        LIBBOX_SINGBOX_TAG: v1.13.21
       ios_signing:
         distribution_type: app_store
         bundle_identifier: space.kpax.app,space.kpax.app.extension
@@ -51,6 +51,10 @@ workflows:
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
+      - name: Validate exported IPA and extension
+        script: |
+          set -e
+          python3 ios/scripts/validate_ipa.py --brand kpax build/ios/ipa/*.ipa
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
@@ -74,7 +78,7 @@ workflows:
         BUNDLE_ID: online.xplm.app
         BUNDLE_ID_EXT: online.xplm.app.extension
         APP_GROUP: group.online.xplm.app
-        LIBBOX_SINGBOX_TAG: v1.12.12
+        LIBBOX_SINGBOX_TAG: v1.13.21
       ios_signing:
         distribution_type: app_store
         bundle_identifier: online.xplm.app,online.xplm.app.extension
@@ -118,6 +122,10 @@ workflows:
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
+      - name: Validate exported X-Plm IPA and extension
+        script: |
+          set -e
+          python3 ios/scripts/validate_ipa.py --brand xplm build/ios/ipa/*.ipa
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log

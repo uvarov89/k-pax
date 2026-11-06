@@ -78,15 +78,15 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
         instance.commandClient = CommandClient([.status, .connections], logMaxLines: 300)
     }
     
-    private func initializeExtensionProfile() async {
+    private func initializeExtensionProfile(createIfMissing: Bool = false) async {
         do {
             // Try to load existing profile
             if let profile = try await ExtensionProfile.load() {
                 extensionProfile = profile
                 profile.register()
                 setupStatusObserver(profile)
-            } else {
-                // If profile doesn't exist, create it
+            } else if createIfMissing {
+                // Ask for VPN permission only when the user connects
                 try await ExtensionProfile.install()
                 if let profile = try await ExtensionProfile.load() {
                     extensionProfile = profile
@@ -173,104 +173,10 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                 stats["uploadSpeed"] = Int(status.uplink)
             }
             
-            // Get statistics from connections
-            if let connections = client.rawConnections {
-                var bytesSent: Int64 = 0
-                var bytesReceived: Int64 = 0
-                var minRtt: Int64? = nil
-                
-                let iterator = connections.iterator()
-                if let iter = iterator {
-                    while iter.hasNext() {
-                        guard let conn = iter.next() else {
-                            break
-                        }
-                        bytesSent += conn.upload
-                        bytesReceived += conn.download
-                        
-                        // Get RTT via reflection (like in Android)
-                        // Try to get rtt() or latency() method
-                        do {
-                            let mirror = Mirror(reflecting: conn)
-                            // Try to find rtt or latency property
-                            for child in mirror.children {
-                                if let label = child.label, (label == "rtt" || label == "latency") {
-                                    if let rttValue = child.value as? Int64, rttValue > 0 {
-                                        if let currentMinRtt = minRtt {
-                                            if rttValue < currentMinRtt {
-                                                minRtt = rttValue
-                                            }
-                                        } else {
-                                            minRtt = rttValue
-                                        }
-                                    } else if let rttValue = child.value as? Int, rttValue > 0 {
-                                        let rttLong = Int64(rttValue)
-                                        if let currentMinRtt = minRtt {
-                                            if rttLong < currentMinRtt {
-                                                minRtt = rttLong
-                                            }
-                                        } else {
-                                            minRtt = rttLong
-                                        }
-                                    }
-                                    break
-                                }
-                            }
-                            
-                            // If not found via Mirror, try via runtime
-                            if minRtt == nil {
-                                let connType = type(of: conn)
-                                // Try to get rtt() method
-                                if let rttMethod = class_getInstanceMethod(connType, Selector("rtt")) {
-                                    typealias RTTMethod = @convention(c) (AnyObject, Selector) -> Int64
-                                    let implementation = method_getImplementation(rttMethod)
-                                    let rttFunc = unsafeBitCast(implementation, to: RTTMethod.self)
-                                    let rttValue = rttFunc(conn as AnyObject, Selector("rtt"))
-                                    if rttValue > 0 {
-                                        if let currentMinRtt = minRtt {
-                                            if rttValue < currentMinRtt {
-                                                minRtt = rttValue
-                                            }
-                                        } else {
-                                            minRtt = rttValue
-                                        }
-                                    }
-                                } else if let latencyMethod = class_getInstanceMethod(connType, Selector("latency")) {
-                                    typealias LatencyMethod = @convention(c) (AnyObject, Selector) -> Int64
-                                    let implementation = method_getImplementation(latencyMethod)
-                                    let latencyFunc = unsafeBitCast(implementation, to: LatencyMethod.self)
-                                    let latencyValue = latencyFunc(conn as AnyObject, Selector("latency"))
-                                    if latencyValue > 0 {
-                                        if let currentMinRtt = minRtt {
-                                            if latencyValue < currentMinRtt {
-                                                minRtt = latencyValue
-                                            }
-                                        } else {
-                                            minRtt = latencyValue
-                                        }
-                                    }
-                                }
-                            }
-                        } catch {
-                            // Ignore reflection errors
-                        }
-                    }
-                }
-                
-                stats["bytesSent"] = bytesSent
-                stats["bytesReceived"] = bytesReceived
-                
-                // Ping from connections or from status
-                if let rtt = minRtt {
-                    stats["ping"] = rtt
-                } else if let status = client.status, status.trafficAvailable {
-                    // Use value from status if available
-                    // In Libbox status may contain ping information
-                    // For now leave null if no direct access
-                }
-            }
+            stats["bytesSent"] = status.uplinkTotal
+            stats["bytesReceived"] = status.downlinkTotal
         }
-        
+
         // Calculate connectionDuration (in milliseconds, like Android)
         if let startTime = connectionStartTime {
             let durationSeconds = Date().timeIntervalSince(startTime)
@@ -287,8 +193,22 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "initialize":
-            // Initialization already done in register
-            result(true)
+            guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: FilePath.groupName) != nil else {
+                result(FlutterError(code: "APP_GROUP_UNAVAILABLE", message: "App Group is not provisioned", details: FilePath.groupName))
+                return
+            }
+            let options = LibboxSetupOptions()
+            options.basePath = FilePath.sharedDirectory.path
+            options.workingPath = FilePath.workingDirectory.path
+            options.tempPath = FilePath.cacheDirectory.path
+            options.logMaxLines = 300
+            var setupError: NSError?
+            LibboxSetup(options, &setupError)
+            if let setupError {
+                result(FlutterError(code: "LIBBOX_SETUP_FAILED", message: setupError.localizedDescription, details: nil))
+            } else {
+                result(true)
+            }
         case "getPlatformVersion":
             result("iOS " + UIDevice.current.systemVersion)
         case "connect":
@@ -310,7 +230,7 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                     
                     // Ensure Extension Profile is initialized
                     if extensionProfile == nil {
-                        await initializeExtensionProfile()
+                        await initializeExtensionProfile(createIfMissing: true)
                     }
                     
                     guard let profile = extensionProfile else {
@@ -369,6 +289,34 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                     await MainActor.run {
                         result(FlutterError(code: "DISCONNECTION_FAILED", message: "Failed to disconnect: \(error.localizedDescription)", details: nil))
                     }
+                }
+            }
+        case "clearSavedAccess":
+            Task { @MainActor in
+                do {
+                    if let profile = try await ExtensionProfile.load() {
+                        try await profile.stop()
+                    }
+                    UserDefaults(suiteName: FilePath.groupName)?.removeObject(forKey: "sing_box_current_config")
+                    currentConfig = nil
+                    result(nil)
+                } catch {
+                    result(FlutterError(code: "CLEAR_ACCESS_FAILED", message: error.localizedDescription, details: nil))
+                }
+            }
+        case "configureOnDemand":
+            let args = call.arguments as? [String: Any]
+            guard let wifi = args?["wifi"] as? Bool,
+                  let cellular = args?["cellular"] as? Bool else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "wifi and cellular are required", details: nil))
+                return
+            }
+            Task { @MainActor in
+                do {
+                    try await ExtensionProfile.configureOnDemand(wifi: wifi, cellular: cellular)
+                    result(nil)
+                } catch {
+                    result(FlutterError(code: "ON_DEMAND_FAILED", message: error.localizedDescription, details: nil))
                 }
             }
         case "getConnectionStatus":

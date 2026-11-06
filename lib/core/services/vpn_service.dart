@@ -3,8 +3,17 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
+/// Optional native settings support, separate from the tunnel contract.
+abstract interface class VpnSettingsService {
+  Future<void> applyAppSettings(AppSettings settings);
+  Future<void> clearSavedAccess();
+}
+
 class TunnelSpeed {
-  const TunnelSpeed({required this.upBytesPerSec, required this.downBytesPerSec});
+  const TunnelSpeed({
+    required this.upBytesPerSec,
+    required this.downBytesPerSec,
+  });
 
   final int upBytesPerSec;
   final int downBytesPerSec;

@@ -48,31 +48,78 @@ public class ExtensionProfile: ObservableObject {
     }
     
     private func setOnDemandRules() {
-        let interfaceRule = NEOnDemandRuleConnect()
-        interfaceRule.interfaceTypeMatch = .any
-        let probeRule = NEOnDemandRuleConnect()
-        probeRule.probeURL = URL(string: "http://captive.apple.com")
-        manager.onDemandRules = [interfaceRule, probeRule]
+        var rules: [NEOnDemandRule] = []
+        if SharedPreferences.alwaysOn.getBlocking() {
+            let rule = NEOnDemandRuleConnect()
+            rule.interfaceTypeMatch = .any
+            rules.append(rule)
+        } else {
+            if SharedPreferences.autoConnectWifi.getBlocking() {
+                let rule = NEOnDemandRuleConnect()
+                rule.interfaceTypeMatch = .wiFi
+                rules.append(rule)
+            }
+            if SharedPreferences.autoConnectCellular.getBlocking() {
+                let rule = NEOnDemandRuleConnect()
+                rule.interfaceTypeMatch = .cellular
+                rules.append(rule)
+            }
+        }
+        let fallback = NEOnDemandRuleIgnore()
+        fallback.interfaceTypeMatch = .any
+        rules.append(fallback)
+        manager.onDemandRules = rules
+        manager.isOnDemandEnabled = rules.count > 1
     }
-    
+
+    public static func configureOnDemand(wifi: Bool, cellular: Bool) async throws {
+        let oldWifi = SharedPreferences.autoConnectWifi.getBlocking()
+        let oldCellular = SharedPreferences.autoConnectCellular.getBlocking()
+        let oldAlwaysOn = SharedPreferences.alwaysOn.getBlocking()
+        SharedPreferences.autoConnectWifi.set(wifi)
+        SharedPreferences.autoConnectCellular.set(cellular)
+        // Both network types means automatic reconnection on any network.
+        // This is user-controlled On Demand, not supervised-device Always On VPN.
+        SharedPreferences.alwaysOn.set(wifi && cellular)
+        do {
+            if let profile = try await load() {
+                profile.setOnDemandRules()
+                let defaults = UserDefaults(suiteName: FilePath.groupName)
+                if defaults?.string(forKey: "sing_box_current_config")?.isEmpty != false {
+                    profile.manager.isOnDemandEnabled = false
+                }
+                try await profile.manager.saveToPreferences()
+                try await profile.manager.loadFromPreferences()
+            }
+        } catch {
+            SharedPreferences.autoConnectWifi.set(oldWifi)
+            SharedPreferences.autoConnectCellular.set(oldCellular)
+            SharedPreferences.alwaysOn.set(oldAlwaysOn)
+            throw error
+        }
+    }
+
     public func updateAlwaysOn(_ newState: Bool) async throws {
-        manager.isOnDemandEnabled = newState
-        setOnDemandRules()
-        try await manager.saveToPreferences()
+        try await Self.configureOnDemand(wifi: newState, cellular: newState)
     }
-    
+
     @available(iOS 16.0, macOS 13.0, tvOS 17.0, *)
     public func fetchLastDisconnectError() async throws {
         try await connection.fetchLastDisconnectError()
     }
     
+    private static var preferredDisplayName: String {
+        let info = Bundle.main.infoDictionary
+        return (info?["CFBundleDisplayName"] as? String)
+            ?? (info?["CFBundleName"] as? String)
+            ?? "VPN"
+    }
+
     public func start() async throws {
         await fetchProfile()
         manager.isEnabled = true
-        if SharedPreferences.alwaysOn.getBlocking() {
-            manager.isOnDemandEnabled = true
-            setOnDemandRules()
-        }
+        manager.localizedDescription = Self.preferredDisplayName
+        setOnDemandRules()
         #if !os(tvOS)
             if let protocolConfiguration = manager.protocolConfiguration {
                 let includeAllNetworks = SharedPreferences.includeAllNetworks.getBlocking()
@@ -83,6 +130,7 @@ public class ExtensionProfile: ObservableObject {
             }
         #endif
         try await manager.saveToPreferences()
+        try await manager.loadFromPreferences()
         try manager.connection.startVPNTunnel()
     }
     
@@ -106,6 +154,8 @@ public class ExtensionProfile: ObservableObject {
     }
     
     public func stop() async throws {
+        // Settings may have updated this profile through another manager instance.
+        try await manager.loadFromPreferences()
         if manager.isOnDemandEnabled {
             manager.isOnDemandEnabled = false
             try await manager.saveToPreferences()
@@ -135,16 +185,17 @@ public class ExtensionProfile: ObservableObject {
     
     public static func load() async throws -> ExtensionProfile? {
         let managers = try await NETunnelProviderManager.loadAllFromPreferences()
-        if managers.isEmpty {
-            return nil
-        }
-        let profile = ExtensionProfile(managers[0])
+        guard let manager = managers.first(where: {
+            ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier
+                == "\(FilePath.packageName).extension"
+        }) else { return nil }
+        let profile = ExtensionProfile(manager)
         return profile
     }
     
     public static func install() async throws {
         let manager = NETunnelProviderManager()
-        manager.localizedDescription = "K-Pax" // Variant.applicationName
+        manager.localizedDescription = preferredDisplayName
         let tunnelProtocol = NETunnelProviderProtocol()
         tunnelProtocol.providerBundleIdentifier = "\(FilePath.packageName).extension"
         tunnelProtocol.serverAddress = "sing-box"

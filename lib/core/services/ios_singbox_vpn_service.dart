@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
@@ -7,8 +8,9 @@ import 'package:pulse_vpn/core/services/vpn_service.dart';
 import 'package:sing_box/sing_box.dart';
 
 /// iOS VPN via Packet Tunnel + Libbox (vendored [sing_box] plugin).
-class IosSingboxVpnService implements VpnService {
-  IosSingboxVpnService({SingBox? singBox}) : _singBox = singBox ?? SingBox.instance;
+class IosSingboxVpnService implements VpnService, VpnSettingsService {
+  IosSingboxVpnService({SingBox? singBox})
+    : _singBox = singBox ?? SingBox.instance;
 
   final SingBox _singBox;
   bool _ready = false;
@@ -17,9 +19,31 @@ class IosSingboxVpnService implements VpnService {
     if (_ready) return;
     final ok = await _singBox.initialize();
     if (!ok) {
-      throw StateError('Не удалось инициализировать iOS VPN (Network Extension)');
+      throw StateError(
+        'Не удалось инициализировать iOS VPN (Network Extension)',
+      );
     }
     _ready = true;
+  }
+
+  @override
+  Future<void> applyAppSettings(AppSettings settings) async {
+    await _ensureReady();
+    await const MethodChannel('sing_box').invokeMethod<void>(
+      'configureOnDemand',
+      {
+        'wifi': settings.autoConnectOnWifi,
+        'cellular': settings.autoConnectOnMobile,
+      },
+    );
+  }
+
+  @override
+  Future<void> clearSavedAccess() async {
+    await _ensureReady();
+    await const MethodChannel(
+      'sing_box',
+    ).invokeMethod<void>('clearSavedAccess');
   }
 
   @override
@@ -29,11 +53,11 @@ class IosSingboxVpnService implements VpnService {
   @override
   Stream<TunnelSpeed> get trafficStream =>
       _singBox.watchSingBoxConnectionStats().map(
-            (stats) => TunnelSpeed(
-              upBytesPerSec: stats.uploadSpeed,
-              downBytesPerSec: stats.downloadSpeed,
-            ),
-          );
+        (stats) => TunnelSpeed(
+          upBytesPerSec: stats.uploadSpeed,
+          downBytesPerSec: stats.downloadSpeed,
+        ),
+      );
 
   @override
   Future<void> connect({
@@ -43,6 +67,7 @@ class IosSingboxVpnService implements VpnService {
     required TunnelNode node,
   }) async {
     await _ensureReady();
+    await applyAppSettings(appSettings);
     // Per-app split tunnel is not available on iOS; config is full-tunnel.
     final config = buildTunnelConfig(node, settings, appSettings: appSettings);
     final started = await _singBox.connect(config);

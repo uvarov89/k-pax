@@ -26,13 +26,39 @@ class VpnController extends ChangeNotifier {
     VpnService? service,
     SettingsRepository? repository,
     SubscriptionClient? subscriptions,
-  })  : _service = service ?? defaultVpnService(),
-        _repository = repository ?? SettingsRepository(),
-        _subscriptions = subscriptions ?? SubscriptionClient();
+  }) : _service = service ?? defaultVpnService(),
+       _repository = repository ?? SettingsRepository(),
+       _subscriptions = subscriptions ?? SubscriptionClient();
 
   final VpnService _service;
   final SettingsRepository _repository;
   final SubscriptionClient _subscriptions;
+  int _loginEpoch = 0;
+  bool _disposed = false;
+  (int, String)? _pollingLogin;
+  int _devicesEpoch = 0;
+  int _accountEpoch = 0;
+  Future<void> _accountWrites = Future<void>.value();
+  Future<void> _persistAccountState() {
+    final saved = List<SavedSubscription>.of(subscriptions);
+    final url = subscriptionUrl ?? '';
+    final user = account;
+    final next = _accountWrites.catchError((_) {}).then((_) async {
+      await _repository.saveSubscriptions(saved);
+      await _repository.saveSubscriptionUrl(url);
+      await _repository.saveAccount(user);
+    });
+    _accountWrites = next;
+    return next;
+  }
+
+  Future<void> _pendingLoginWrites = Future<void>.value();
+
+  Future<void> _queueLoginWrite(Future<void> Function() action) {
+    final next = _pendingLoginWrites.catchError((_) {}).then((_) => action());
+    _pendingLoginWrites = next;
+    return next;
+  }
 
   AppSettings appSettings = const AppSettings();
   AppUserMode userMode = AppUserMode.simple;
@@ -141,6 +167,9 @@ class VpnController extends ChangeNotifier {
           id: node.countryId,
           countryCode: node.countryCode,
           nameRu: node.countryName,
+          latencyMs: AppBrand.current.isXplm
+              ? (lastProbeResults?[node.countryName] ?? -1)
+              : -1,
         ),
       );
     }
@@ -176,7 +205,9 @@ class VpnController extends ChangeNotifier {
             ? s.reconnectingStatus
             : s.connectingStatus;
       case VpnConnectionState.connected:
-        return s.connectedTo(connectedNode?.countryName ?? effectiveLocation.nameRu);
+        return s.connectedTo(
+          connectedNode?.countryName ?? effectiveLocation.nameRu,
+        );
       case VpnConnectionState.disconnecting:
         return s.disconnectingStatus;
       case VpnConnectionState.error:
@@ -251,14 +282,14 @@ class VpnController extends ChangeNotifier {
 
   Future<void> _resumePendingLogin() async {
     if (subscriptionUrl != null) {
-      await _repository.clearPendingLogin();
+      await _clearPendingLogin();
       return;
     }
     final pending = await _repository.loadPendingLogin();
     if (pending == null) return;
     final started = DateTime.fromMillisecondsSinceEpoch(pending.startedMs);
     if (DateTime.now().difference(started) > const Duration(minutes: 30)) {
-      await _repository.clearPendingLogin();
+      await _clearPendingLogin();
       return;
     }
     loginSession = pending.session;
@@ -277,20 +308,28 @@ class VpnController extends ChangeNotifier {
     await _pollLoginOnce();
   }
 
-  Future<void> _persistPendingLogin() async {
+  Future<void> _clearPendingLogin() =>
+      _queueLoginWrite(_repository.clearPendingLogin);
+
+  Future<void> _persistPendingLogin() {
     final session = loginSession;
     final started = _loginStartedAt;
     if (session == null || session.isEmpty || started == null) {
-      await _repository.clearPendingLogin();
-      return;
+      return _clearPendingLogin();
     }
-    await _repository.savePendingLogin(
-      session: session,
-      channel: loginChannel ?? '',
-      botUrl: loginBotUrl,
-      hint: loginHint,
-      publicId: oneTimeNumber,
-      startedMs: started.millisecondsSinceEpoch,
+    final channel = loginChannel ?? '';
+    final bot = loginBotUrl;
+    final hint = loginHint;
+    final number = oneTimeNumber;
+    return _queueLoginWrite(
+      () => _repository.savePendingLogin(
+        session: session,
+        channel: channel,
+        botUrl: bot,
+        hint: hint,
+        publicId: number,
+        startedMs: started.millisecondsSinceEpoch,
+      ),
     );
   }
 
@@ -360,8 +399,7 @@ class VpnController extends ChangeNotifier {
       try {
         await _start(node);
       } catch (_) {
-        final spare =
-            proSettings.protocolFallback ? _spareFor(node) : null;
+        final spare = proSettings.protocolFallback ? _spareFor(node) : null;
         if (spare == null) rethrow;
         try {
           await _service.disconnect();
@@ -408,42 +446,90 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> forgetSubscriptionLink() async {
+    cancelLogin();
+    final epoch = ++_accountEpoch;
+    final clearedLogin = _pendingLoginWrites;
     if (isConnected) await disconnect();
+    final settingsService = _service;
+    if (settingsService is VpnSettingsService) {
+      await (settingsService as VpnSettingsService).clearSavedAccess();
+    }
+    if (_disposed || epoch != _accountEpoch) return;
     final url = subscriptionUrl;
+    final previousProfile = profile;
+    final previousAccount = account;
+    final previousProvider = providerWebPage;
+    final previousSubscriptions = subscriptions;
+    final previousState = linkState;
     if (url != null) {
       subscriptions = subscriptions.where((item) => item.url != url).toList();
-      await _repository.saveSubscriptions(subscriptions);
     }
     subscriptionUrl = null;
     profile = null;
     providerWebPage = null;
-    linkError = null;
     connectedNode = null;
+    account = UserAccount.empty();
+    selectedLocation = ServerLocation.auto;
+    locationMode = LocationMode.auto;
+    linkError = null;
+    lastProbeResults = null;
+    oneTimeUrl = null;
+    oneTimeNumber = null;
+    devices = const [];
+    devicesError = null;
+    isLoadingDevices = false;
+    _devicesEpoch++;
     linkState = SubscriptionLinkState.missing;
-    await _repository.saveSubscriptionUrl('');
     notifyListeners();
+    try {
+      await _persistAccountState();
+      await clearedLogin;
+    } catch (_) {
+      if (!_disposed && epoch == _accountEpoch) {
+        subscriptionUrl = url;
+        profile = previousProfile;
+        account = previousAccount;
+        providerWebPage = previousProvider;
+        subscriptions = previousSubscriptions;
+        linkState = previousState;
+        notifyListeners();
+      }
+      rethrow;
+    }
   }
 
   /// Saves the link if it is new and makes it the active one.
   Future<void> _activate(String url) async {
+    final epoch = ++_accountEpoch;
     if (connectionState != VpnConnectionState.disconnected) await disconnect();
+    if (_disposed || epoch != _accountEpoch) return;
     if (subscriptions.every((item) => item.url != url)) {
       subscriptions = [...subscriptions, SavedSubscription(url: url)];
-      await _repository.saveSubscriptions(subscriptions);
     }
     if (subscriptionUrl != url) {
       profile = null;
+      account = UserAccount.empty();
       providerWebPage = null;
       connectedNode = null;
       lastProbeResults = null;
+      devices = const [];
+      devicesError = null;
+      isLoadingDevices = false;
+      _devicesEpoch++;
     }
     subscriptionUrl = url;
-    await _repository.saveSubscriptionUrl(url);
+    linkState = SubscriptionLinkState.loading;
+    notifyListeners();
+    await _persistAccountState();
+    if (_disposed || epoch != _accountEpoch) return;
     await reloadSubscription();
+    if (_disposed || epoch != _accountEpoch) return;
+    await _persistAccountState();
   }
 
   Future<void> switchSubscription(String url) async {
     if (url == subscriptionUrl || isBusy) return;
+    cancelLogin();
     await _activate(url);
   }
 
@@ -454,15 +540,16 @@ class VpnController extends ChangeNotifier {
       return;
     }
     subscriptions = subscriptions.where((item) => item.url != url).toList();
-    await _repository.saveSubscriptions(subscriptions);
+    await _persistAccountState();
     notifyListeners();
   }
 
   Future<void> _rename(String url, String name) async {
     final index = subscriptions.indexWhere((item) => item.url == url);
     if (index < 0 || subscriptions[index].name == name) return;
-    subscriptions = [...subscriptions]..[index] = subscriptions[index].named(name);
-    await _repository.saveSubscriptions(subscriptions);
+    subscriptions = [...subscriptions]
+      ..[index] = subscriptions[index].named(name);
+    await _persistAccountState();
   }
 
   void clearOneTimeLink() {
@@ -472,6 +559,7 @@ class VpnController extends ChangeNotifier {
   }
 
   void cancelLogin() {
+    _loginEpoch++;
     _loginPoll?.cancel();
     _loginPoll = null;
     _loginStartedAt = null;
@@ -479,14 +567,22 @@ class VpnController extends ChangeNotifier {
     loginChannel = null;
     loginBotUrl = null;
     loginHint = null;
-    unawaited(_repository.clearPendingLogin());
-    if (linkState == SubscriptionLinkState.loading && subscriptionUrl == null) {
-      linkState = SubscriptionLinkState.missing;
+    unawaited(_clearPendingLogin().catchError((_) {}));
+    if (linkState == SubscriptionLinkState.loading) {
+      linkState = subscriptionUrl == null
+          ? SubscriptionLinkState.missing
+          : profile == null
+          ? SubscriptionLinkState.failed
+          : profile!.isExpired
+          ? SubscriptionLinkState.expired
+          : SubscriptionLinkState.ready;
     }
     notifyListeners();
   }
 
   Future<void> submitSubscriptionLink(String raw) async {
+    oneTimeUrl = null;
+    oneTimeNumber = null;
     cancelLogin();
     final text = normalizeContactInput(raw);
     final kpax = kPaxSubscriptionUri(text);
@@ -503,7 +599,15 @@ class VpnController extends ChangeNotifier {
     await _beginContactLogin(text);
   }
 
+  SubscriptionLinkState get _loginFailureState =>
+      subscriptionUrl != null && profile != null
+      ? (profile!.isExpired
+            ? SubscriptionLinkState.expired
+            : SubscriptionLinkState.ready)
+      : SubscriptionLinkState.failed;
+
   Future<void> _beginContactLogin(String contact) async {
+    final epoch = _loginEpoch;
     linkState = SubscriptionLinkState.loading;
     linkError = null;
     loginHint = null;
@@ -513,15 +617,16 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
     if (!AppBrand.current.allowsTelegram && !_looksLikeEmail(contact)) {
       linkError = strings.emailOnlyContact;
-      linkState = SubscriptionLinkState.failed;
+      linkState = _loginFailureState;
       notifyListeners();
       return;
     }
     try {
       final result = await _subscriptions.loginWithContact(contact);
+      if (_disposed || epoch != _loginEpoch) return;
       if (result.error != null || result.session.isEmpty) {
         linkError = result.error ?? strings.linkOpenFailed;
-        linkState = SubscriptionLinkState.failed;
+        linkState = _loginFailureState;
         notifyListeners();
         return;
       }
@@ -532,6 +637,7 @@ class VpnController extends ChangeNotifier {
       oneTimeNumber = result.publicId;
       _loginStartedAt = DateTime.now();
       await _persistPendingLogin();
+      if (_disposed || epoch != _loginEpoch) return;
       notifyListeners();
       _loginPoll?.cancel();
       _loginPoll = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -539,8 +645,9 @@ class VpnController extends ChangeNotifier {
       });
       await _pollLoginOnce();
     } catch (_) {
+      if (_disposed || epoch != _loginEpoch) return;
       linkError = strings.linkOpenFailed;
-      linkState = SubscriptionLinkState.failed;
+      linkState = _loginFailureState;
       notifyListeners();
     }
   }
@@ -548,22 +655,28 @@ class VpnController extends ChangeNotifier {
   Future<void> _pollLoginOnce() async {
     final session = loginSession;
     if (session == null || session.isEmpty) return;
+    final epoch = _loginEpoch;
+    final requestKey = (epoch, session);
+    if (_pollingLogin == requestKey) return;
     final started = _loginStartedAt;
-    if (started != null && DateTime.now().difference(started) > const Duration(minutes: 30)) {
+    if (started != null &&
+        DateTime.now().difference(started) > const Duration(minutes: 30)) {
       _loginPoll?.cancel();
       _loginPoll = null;
       loginSession = null;
       loginBotUrl = null;
       loginHint = null;
-      await _repository.clearPendingLogin();
+      await _clearPendingLogin();
+      if (_disposed || epoch != _loginEpoch) return;
       linkError = strings.loginTimedOut;
-      linkState = SubscriptionLinkState.failed;
+      linkState = _loginFailureState;
       notifyListeners();
       return;
     }
+    _pollingLogin = requestKey;
     try {
       final status = await _subscriptions.pollLoginStatus(session);
-      if (loginSession != session) return;
+      if (_disposed || epoch != _loginEpoch || loginSession != session) return;
       if (status.isReady) {
         _loginPoll?.cancel();
         _loginPoll = null;
@@ -571,7 +684,8 @@ class VpnController extends ChangeNotifier {
         loginBotUrl = null;
         loginHint = null;
         loginChannel = null;
-        await _repository.clearPendingLogin();
+        await _clearPendingLogin();
+        if (_disposed || epoch != _loginEpoch) return;
         oneTimeUrl = status.url.toString();
         oneTimeNumber = status.publicId ?? oneTimeNumber;
         await _activate(oneTimeUrl!);
@@ -586,13 +700,16 @@ class VpnController extends ChangeNotifier {
         loginSession = null;
         loginBotUrl = null;
         loginHint = null;
-        await _repository.clearPendingLogin();
+        await _clearPendingLogin();
+        if (_disposed || epoch != _loginEpoch) return;
         linkError = strings.loginTimedOut;
-        linkState = SubscriptionLinkState.failed;
+        linkState = _loginFailureState;
         notifyListeners();
       }
     } catch (_) {
       // Keep waiting: transient network blips should not abort login.
+    } finally {
+      if (_pollingLogin == requestKey) _pollingLogin = null;
     }
   }
 
@@ -615,19 +732,23 @@ class VpnController extends ChangeNotifier {
         profile = parseSubscription(url);
       } else {
         final fetched = await _subscriptions.fetch(Uri.parse(url));
-        if (url != subscriptionUrl) return;
+        if (_disposed || url != subscriptionUrl) return;
         profile = parseSubscription(fetched.body, userinfo: fetched.userinfo);
         providerWebPage = fetched.webPage;
         if (fetched.title != null) await _rename(url, fetched.title!);
+        if (_disposed || url != subscriptionUrl) return;
         await _rememberAccountNumber(fetched.publicId);
+        if (_disposed || url != subscriptionUrl) return;
       }
       _applyProfile();
       _restoreSavedLocation();
     } on FormatException {
+      if (_disposed || url != subscriptionUrl) return;
       profile = null;
       linkError = strings.emptySubscription;
       linkState = SubscriptionLinkState.failed;
     } on SubscriptionRejected {
+      if (_disposed || url != subscriptionUrl) return;
       profile = null;
       linkState = SubscriptionLinkState.expired;
       account = account.copyWith(
@@ -636,6 +757,7 @@ class VpnController extends ChangeNotifier {
       );
       unawaited(_repository.saveAccount(account));
     } catch (_) {
+      if (_disposed || url != subscriptionUrl) return;
       // Fail closed for K-Pax when local access already ended or never loaded.
       final kpaxExpired = isKPaxSubscription && !account.hasAccess;
       if (kept == null || kpaxExpired) {
@@ -661,7 +783,7 @@ class VpnController extends ChangeNotifier {
     }
     account = account.copyWith(userId: number);
     notifyListeners();
-    await _repository.saveAccount(account);
+    await _persistAccountState();
   }
 
   void _applyProfile() {
@@ -696,12 +818,53 @@ class VpnController extends ChangeNotifier {
     await connect();
   }
 
-  Future<void> updateAppSettings(AppSettings settings) async {
-    final launchChanged = settings.launchAtLogin != appSettings.launchAtLogin;
+  Future<void> _appSettingsWrites = Future<void>.value();
+
+  Future<void> updateAppSettings(AppSettings settings) {
+    final next = _appSettingsWrites
+        .catchError((_) {})
+        .then((_) => _updateAppSettings(settings));
+    _appSettingsWrites = next;
+    return next;
+  }
+
+  Future<void> _updateAppSettings(AppSettings settings) async {
+    final previous = appSettings;
+    final launchChanged = settings.launchAtLogin != previous.launchAtLogin;
     appSettings = settings;
     notifyListeners();
-    await _repository.saveAppSettings(settings);
-    if (launchChanged) await WindowsStartup.setEnabled(settings.launchAtLogin);
+    try {
+      if (launchChanged) {
+        await WindowsStartup.setEnabled(settings.launchAtLogin);
+      }
+      final settingsService = _service;
+      if (settingsService is VpnSettingsService) {
+        await (settingsService as VpnSettingsService).applyAppSettings(
+          settings,
+        );
+      }
+      await _repository.saveAppSettings(settings);
+    } catch (_) {
+      final settingsService = _service;
+      if (settingsService is VpnSettingsService) {
+        try {
+          await (settingsService as VpnSettingsService).applyAppSettings(
+            previous,
+          );
+        } catch (_) {
+          // Keep the original error; the UI restores the previous selection.
+        }
+      }
+      if (identical(appSettings, settings)) {
+        appSettings = previous;
+      } else if (launchChanged) {
+        appSettings = appSettings.copyWith(
+          launchAtLogin: previous.launchAtLogin,
+        );
+      }
+      if (!_disposed) notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> setUserMode(AppUserMode mode) async {
@@ -729,10 +892,17 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> updateProSettings(ProSettings settings) async {
+    final previous = proSettings;
     final lifted = proSettings.killSwitch && !settings.killSwitch;
     proSettings = settings;
     notifyListeners();
-    await _repository.saveProSettings(settings);
+    try {
+      await _repository.saveProSettings(settings);
+    } catch (_) {
+      if (identical(proSettings, settings)) proSettings = previous;
+      if (!_disposed) notifyListeners();
+      rethrow;
+    }
     if (lifted) await WindowsFirewall.clear();
   }
 
@@ -806,11 +976,19 @@ class VpnController extends ChangeNotifier {
   bool isLoadingDevices = false;
   String? devicesError;
 
+  final Set<(String, String)> _removingDeviceRequests = {};
+  Set<String> get removingDeviceIds => _removingDeviceRequests
+      .where((request) => request.$1 == subscriptionToken)
+      .map((request) => request.$2)
+      .toSet();
+
   Future<void> loadDevices() async {
     final token = subscriptionToken;
+    final epoch = ++_devicesEpoch;
     if (token == null) {
       devices = const [];
       devicesError = null;
+      isLoadingDevices = false;
       notifyListeners();
       return;
     }
@@ -818,24 +996,44 @@ class VpnController extends ChangeNotifier {
     devicesError = null;
     notifyListeners();
     try {
-      devices = await _subscriptions.fetchDevices(token);
+      final loaded = await _subscriptions.fetchDevices(token);
+      if (_disposed || epoch != _devicesEpoch || token != subscriptionToken) {
+        return;
+      }
+      devices = loaded;
     } catch (_) {
+      if (_disposed || epoch != _devicesEpoch || token != subscriptionToken) {
+        return;
+      }
       devicesError = strings.devicesLoadFailed;
       devices = const [];
+    } finally {
+      if (!_disposed && epoch == _devicesEpoch && token == subscriptionToken) {
+        isLoadingDevices = false;
+        notifyListeners();
+      }
     }
-    isLoadingDevices = false;
-    notifyListeners();
   }
 
   Future<bool> kickDevice(String deviceId) async {
     final token = subscriptionToken;
-    if (token == null || deviceId.isEmpty) return false;
+    if (token == null ||
+        deviceId.isEmpty ||
+        _removingDeviceRequests.contains((token, deviceId))) {
+      return false;
+    }
+    _removingDeviceRequests.add((token, deviceId));
+    notifyListeners();
     try {
       final ok = await _subscriptions.kickDevice(token, deviceId);
+      if (_disposed || token != subscriptionToken) return false;
       if (ok) await loadDevices();
       return ok;
     } catch (_) {
       return false;
+    } finally {
+      _removingDeviceRequests.remove((token, deviceId));
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -895,7 +1093,8 @@ class VpnController extends ChangeNotifier {
 
   Future<TunnelNode> _selectNode() async {
     final nodes = profile?.nodes ?? const <TunnelNode>[];
-    final countryId = locationMode == LocationMode.auto || selectedLocation.isAuto
+    final countryId =
+        locationMode == LocationMode.auto || selectedLocation.isAuto
         ? null
         : selectedLocation.id;
     final order = _kindOrder();
@@ -962,7 +1161,8 @@ class VpnController extends ChangeNotifier {
     bool spreadLoad = true,
   }) async {
     if (nodes.length == 1) return nodes.first;
-    if (nodes.first.kind == TunnelKind.hy2 || nodes.first.kind == TunnelKind.tuic) {
+    if (nodes.first.kind == TunnelKind.hy2 ||
+        nodes.first.kind == TunnelKind.tuic) {
       return nodes.first;
     }
     // For Reality keep primary endpoints first; only race within the best group.
@@ -1161,7 +1361,8 @@ class VpnController extends ChangeNotifier {
       for (final node in profile?.nodes ?? const <TunnelNode>[]) {
         if (node.kind == TunnelKind.message) continue;
         final current = byCountry[node.countryId];
-        if (current == null || _probeRank(node.kind) < _probeRank(current.kind)) {
+        if (current == null ||
+            _probeRank(node.kind) < _probeRank(current.kind)) {
           byCountry[node.countryId] = node;
         }
       }
@@ -1178,12 +1379,12 @@ class VpnController extends ChangeNotifier {
   }
 
   int _probeRank(TunnelKind kind) => switch (kind) {
-        TunnelKind.reality => 0,
-        TunnelKind.grpc => 1,
-        TunnelKind.hy2 => 2,
-        TunnelKind.tuic => 3,
-        TunnelKind.message => 4,
-      };
+    TunnelKind.reality => 0,
+    TunnelKind.grpc => 1,
+    TunnelKind.hy2 => 2,
+    TunnelKind.tuic => 3,
+    TunnelKind.message => 4,
+  };
 
   static bool _looksLikeEmail(String raw) {
     final text = raw.trim();
@@ -1206,6 +1407,10 @@ class VpnController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _loginEpoch++;
+    _devicesEpoch++;
+    _accountEpoch++;
     _sessionTimer?.cancel();
     _loginPoll?.cancel();
     _vpnStatusSub?.cancel();

@@ -83,11 +83,19 @@ unless runner.dependencies.any? { |d| d.target == tunnel }
   runner.add_dependency(tunnel)
 end
 
+debug_xcconfig = project.files.find { |f| f.path.to_s.end_with?('Flutter/Debug.xcconfig') || f.path.to_s == 'Debug.xcconfig' }
+release_xcconfig = project.files.find { |f| f.path.to_s.end_with?('Flutter/Release.xcconfig') || f.path.to_s == 'Release.xcconfig' }
+abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcconfig && release_xcconfig
+
 # Build settings
 %w[Debug Release Profile].each do |cfg_name|
   tcfg = tunnel.build_configurations.find { |c| c.name == cfg_name } ||
          tunnel.build_configurations.first
   next unless tcfg
+  # Pull FLUTTER_BUILD_NAME / FLUTTER_BUILD_NUMBER from Flutter xcconfig (→ Generated.xcconfig)
+  # so PacketTunnel Info.plist $(FLUTTER_BUILD_*) resolves at archive time.
+  xcconfig = cfg_name == 'Debug' ? debug_xcconfig : release_xcconfig
+  tcfg.base_configuration_reference = xcconfig if xcconfig
   tcfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = BUNDLE_EXT
   tcfg.build_settings['INFOPLIST_FILE'] = 'PacketTunnel/Info.plist'
   tcfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'PacketTunnel/PacketTunnel.entitlements'
@@ -96,6 +104,9 @@ end
   tcfg.build_settings['TARGETED_DEVICE_FAMILY'] = '1,2'
   tcfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
   tcfg.build_settings['SWIFT_VERSION'] = '5.0'
+  tcfg.build_settings['CURRENT_PROJECT_VERSION'] = '$(FLUTTER_BUILD_NUMBER)'
+  tcfg.build_settings['MARKETING_VERSION'] = '$(FLUTTER_BUILD_NAME)'
+  tcfg.build_settings['VERSIONING_SYSTEM'] = 'apple-generic'
   if File.directory?(FRAMEWORKS)
     tcfg.build_settings['FRAMEWORK_SEARCH_PATHS'] = '$(inherited) $(PROJECT_DIR)/Frameworks'
     tcfg.build_settings['OTHER_LDFLAGS'] = '$(inherited) -framework Libbox'

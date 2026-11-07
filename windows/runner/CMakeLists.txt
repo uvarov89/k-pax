@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
 
+# Resource compiler (VERSIONINFO / ProductName) for X-Plm vs K-Pax.
+if(DEFINED ENV{APP_BRAND} AND "$ENV{APP_BRAND}" STREQUAL "xplm")
+  set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} /DAPP_BRAND_XPLM")
+endif()
+
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer
 # work.
@@ -19,6 +24,10 @@ add_executable(${BINARY_NAME} WIN32
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
+if(DEFINED ENV{APP_BRAND} AND "$ENV{APP_BRAND}" STREQUAL "xplm")
+  target_compile_definitions(${BINARY_NAME} PRIVATE APP_BRAND_XPLM)
+endif()
+
 
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")

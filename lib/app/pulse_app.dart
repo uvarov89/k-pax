@@ -13,6 +13,7 @@ import 'package:pulse_vpn/core/services/network_auto_connect.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/home/home_screen.dart';
 import 'package:pulse_vpn/features/shell/xplm_shell.dart';
+import 'package:pulse_vpn/features/xplm/widgets/xplm_ping_scope.dart';
 
 class PulseApp extends StatefulWidget {
   const PulseApp({super.key, required this.controller});
@@ -64,11 +65,11 @@ class _PulseAppState extends State<PulseApp> {
     final state = controller.isBusy
         ? 'busy'
         : controller.isConnected
-            ? 'connected'
-            : 'disconnected';
-    const MethodChannel('kpax/window')
-        .invokeMethod<void>('setTrayState', state)
-        .catchError((_) {});
+        ? 'connected'
+        : 'disconnected';
+    const MethodChannel(
+      'kpax/window',
+    ).invokeMethod<void>('setTrayState', state).catchError((_) {});
   }
 
   void _onTheme() {
@@ -87,7 +88,9 @@ class _PulseAppState extends State<PulseApp> {
   }
 
   ThemeData _themeForWindow(ThemeData theme) {
-    if (kIsWeb || !Platform.isWindows) return theme;
+    if (kIsWeb || !Platform.isWindows || AppBrand.current.isXplm) {
+      return theme;
+    }
     return theme.copyWith(
       visualDensity: VisualDensity.compact,
       appBarTheme: theme.appBarTheme.copyWith(
@@ -119,27 +122,47 @@ class _PulseAppState extends State<PulseApp> {
       child: MaterialApp(
         title: brand.appName,
         debugShowCheckedModeBanner: false,
+        scrollBehavior: brand.isXplm ? const XplmScrollBehavior() : null,
         theme: _themeForWindow(NordSignalTheme.forPreference(_theme)),
         builder: (context, child) {
           final overlay = SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness:
-                isLight ? Brightness.dark : Brightness.light,
+            statusBarIconBrightness: isLight
+                ? Brightness.dark
+                : Brightness.light,
             systemNavigationBarColor: brand.isXplm
                 ? XplmColors.paper
                 : isLight
-                    ? NordColors.lightBgBottom
-                    : NordColors.bgBottom,
-            systemNavigationBarIconBrightness:
-                isLight ? Brightness.dark : Brightness.light,
+                ? NordColors.lightBgBottom
+                : NordColors.bgBottom,
+            systemNavigationBarIconBrightness: isLight
+                ? Brightness.dark
+                : Brightness.light,
           );
           return AnnotatedRegion<SystemUiOverlayStyle>(
             value: overlay,
-            child: child ?? const SizedBox.shrink(),
+            child: brand.isXplm
+                ? XplmPingScope(
+                    controller: widget.controller,
+                    child: child ?? const SizedBox.shrink(),
+                  )
+                : child ?? const SizedBox.shrink(),
           );
         },
         home: brand.isXplm ? const XplmShell() : const HomeScreen(),
       ),
     );
   }
+}
+
+/// Keep the mobile X-Plm styling on desktop; mouse-wheel scrolling still works.
+class XplmScrollBehavior extends MaterialScrollBehavior {
+  const XplmScrollBehavior();
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
 }

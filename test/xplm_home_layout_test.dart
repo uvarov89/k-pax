@@ -118,6 +118,13 @@ void main() {
     await tester.pump();
     await tester.tap(find.text(controller.strings.connect));
     expect(taps, 1);
+    controller.lastProbeResults = {'Германия': 66, 'Финляндия': 10};
+    await show(const Size(390, 844));
+    expect(find.text('Пинг: 66 ms'), findsOneWidget);
+    controller.lastProbeResults = {'Германия': -1, 'Финляндия': 10};
+    await show(const Size(390, 844));
+    expect(find.text('Пинг: —'), findsOneWidget);
+    controller.lastProbeResults = null;
     controller.connectionState = VpnConnectionState.connecting;
     await show(const Size(390, 844));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);

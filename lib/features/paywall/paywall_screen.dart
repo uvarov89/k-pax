@@ -42,6 +42,7 @@ class PaywallScreen extends StatelessWidget {
     if (xplm) {
       return XplmHtmlPage(
         title: 'Подписка',
+        showBack: !embeddedInShell,
         child: _XplmPayBody(controller: controller),
       );
     }
@@ -369,6 +370,9 @@ class _XplmPayBody extends StatelessWidget {
 }
 
 Future<void> openPaywall(BuildContext context, {bool fromExpired = false}) {
+  if (AppBrand.current.isXplm && XplmTabNavigation.go(context, 2)) {
+    return Future<void>.value();
+  }
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => PaywallScreen(fromExpired: fromExpired),

@@ -1,3 +1,5 @@
+import 'package:pulse_vpn/features/home/widgets/xplm_home_scene.dart';
+import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -34,9 +36,57 @@ class OnboardingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<VpnController>().strings;
+    if (AppBrand.current.isXplm) {
+      return XplmHtmlPage(
+        title: 'XPLM',
+        showBack: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              children: [
+                SizedBox(
+                  height: (constraints.maxHeight * .4).clamp(150.0, 260.0),
+                  child: const XplmHomeScene(connected: false, busy: false),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'XPLM',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFEEF6FF),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                XplmHtmlGlass(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    s.onboardingBody,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.5,
+                      color: Color(0xFFB8CADD),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                XplmHtmlButton(
+                  label: s.onboardingCta,
+                  onPressed: () => _finish(context),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondary =
-        isDark ? NordColors.textSecondary : NordColors.lightTextSecondary;
+    final secondary = isDark
+        ? NordColors.textSecondary
+        : NordColors.lightTextSecondary;
 
     return NordBackground(
       child: Scaffold(

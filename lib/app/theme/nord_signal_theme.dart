@@ -68,7 +68,9 @@ abstract final class NordSignalTheme {
           disabledBackgroundColor: NordColors.border,
           disabledForegroundColor: NordColors.textMuted,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
       ),
@@ -76,7 +78,10 @@ abstract final class NordSignalTheme {
         filled: true,
         fillColor: NordColors.bgTop,
         hintStyle: const TextStyle(color: NordColors.textMuted),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: NordColors.border),
@@ -98,7 +103,9 @@ abstract final class NordSignalTheme {
       ),
     );
 
-    return base.copyWith(textTheme: _readableText(base.textTheme, NordColors.textPrimary));
+    return base.copyWith(
+      textTheme: _readableText(base.textTheme, NordColors.textPrimary),
+    );
   }
 
   static ThemeData get light {
@@ -125,15 +132,19 @@ abstract final class NordSignalTheme {
       switchTheme: _switchTheme(dark: false),
     );
 
-    return base.copyWith(textTheme: _readableText(base.textTheme, NordColors.lightTextPrimary));
+    return base.copyWith(
+      textTheme: _readableText(base.textTheme, NordColors.lightTextPrimary),
+    );
   }
 
   static ThemeData get xplmLight {
     // Kept name for call sites; X-Plm UI is dark neon (flashy refs).
     final base = ThemeData(
       useMaterial3: true,
+      visualDensity: VisualDensity.standard,
+      materialTapTargetSize: MaterialTapTargetSize.padded,
       brightness: Brightness.dark,
-      fontFamily: 'Manrope',
+      fontFamily: 'XplmArial',
       colorScheme: const ColorScheme.dark(
         primary: XplmColors.accent,
         onPrimary: XplmColors.onAccent,
@@ -150,7 +161,63 @@ abstract final class NordSignalTheme {
         foregroundColor: XplmColors.ink,
       ),
       dividerColor: XplmColors.line,
+      dividerTheme: const DividerThemeData(
+        color: XplmColors.line,
+        thickness: 1,
+        space: 1,
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: XplmColors.cyan,
+          side: const BorderSide(color: XplmColors.lineStrong),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          textStyle: const TextStyle(fontFamily: 'XplmArial', fontSize: 14),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: XplmColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: XplmColors.line),
+        ),
+        titleTextStyle: const TextStyle(
+          fontFamily: 'XplmArial',
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: XplmColors.ink,
+        ),
+        contentTextStyle: const TextStyle(
+          fontFamily: 'XplmArial',
+          fontSize: 14,
+          color: XplmColors.ink2,
+          height: 1.4,
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: XplmColors.paper,
+        modalBackgroundColor: XplmColors.paper,
+        showDragHandle: true,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: XplmColors.cyan,
+        titleTextStyle: TextStyle(
+          fontFamily: 'XplmArial',
+          fontSize: 14,
+          color: XplmColors.ink,
+        ),
+        subtitleTextStyle: TextStyle(
+          fontFamily: 'XplmArial',
+          fontSize: 12,
+          color: XplmColors.ink2,
+        ),
+      ),
       switchTheme: SwitchThemeData(
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return Colors.white;
           return XplmColors.ink2;
@@ -167,7 +234,9 @@ abstract final class NordSignalTheme {
           disabledBackgroundColor: XplmColors.lineStrong,
           disabledForegroundColor: XplmColors.ink3,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
       ),
@@ -175,7 +244,10 @@ abstract final class NordSignalTheme {
         filled: true,
         fillColor: XplmColors.surfaceElevated,
         hintStyle: const TextStyle(color: XplmColors.ink3),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: XplmColors.line),
@@ -196,7 +268,9 @@ abstract final class NordSignalTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
-    return base.copyWith(textTheme: _readableText(base.textTheme, XplmColors.ink));
+    return base.copyWith(
+      textTheme: _readableText(base.textTheme, XplmColors.ink),
+    );
   }
 
   static ThemeData forPreference(AppThemePreference preference) {
@@ -282,17 +356,15 @@ class KpaxCard extends StatelessWidget {
         : (isDark ? NordColors.surface : NordColors.lightSurface);
     final border = xplm
         ? (glow
-            ? XplmColors.cyan.withValues(alpha: 0.7)
-            : XplmColors.cyan.withValues(alpha: 0.28))
+              ? XplmColors.cyan.withValues(alpha: 0.7)
+              : XplmColors.cyan.withValues(alpha: 0.28))
         : (glow
-            ? NordColors.cyan.withValues(alpha: 0.35)
-            : (isDark ? NordColors.border : NordColors.lightBorder));
+              ? NordColors.cyan.withValues(alpha: 0.35)
+              : (isDark ? NordColors.border : NordColors.lightBorder));
     final box = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
-        color: xplm
-            ? surface
-            : surface.withValues(alpha: isDark ? 0.92 : 0.96),
+        color: xplm ? surface : surface.withValues(alpha: isDark ? 0.92 : 0.96),
         border: Border.all(color: border, width: xplm ? (glow ? 1.5 : 1.2) : 1),
         boxShadow: [
           if (xplm)

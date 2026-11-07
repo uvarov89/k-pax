@@ -7,6 +7,7 @@ import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
+import 'package:pulse_vpn/core/services/server_latency_monitor.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_codex_widgets.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
@@ -129,7 +130,19 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
     final accentFill = xplm ? XplmColors.accent : NordColors.accentDim;
 
     final q = _search.text.trim().toLowerCase();
-    final source = controller.locations;
+    final livePings = xplm ? context.watch<ServerLatencyMonitor?>() : null;
+    final source = controller.locations
+        .map(
+          (location) => livePings == null || location.isAuto
+              ? location
+              : ServerLocation(
+                  id: location.id,
+                  countryCode: location.countryCode,
+                  nameRu: location.nameRu,
+                  latencyMs: livePings.pingFor(location.id) ?? -1,
+                ),
+        )
+        .toList();
     final locations =
         (xplm ? source.where((l) => !l.isAuto && _matches(l)) : source).where((
           l,
@@ -142,6 +155,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
     if (xplm) {
       return XplmHtmlPage(
         title: 'Серверы',
+        showBack: !widget.embeddedInShell,
         action: XplmHtmlIconButton(
           icon: Icons.search_rounded,
           tooltip: 'Поиск серверов',
@@ -237,13 +251,23 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                                 if (source.where((l) => !l.isAuto).isEmpty &&
                                     !controller.isRefreshingServers)
                                   TextButton(
-                                    onPressed: () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const AccountScreen(
-                                          accountDetails: true,
+                                    onPressed: () {
+                                      const page = AccountScreen(
+                                        accountDetails: true,
+                                      );
+                                      if (XplmTabNavigation.openInTab(
+                                        context,
+                                        3,
+                                        page,
+                                      )) {
+                                        return;
+                                      }
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => page,
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                    },
                                     child: const Text('Добавить подписку'),
                                   ),
                               ],
@@ -260,6 +284,10 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                             final server = locations[index];
                             return _CodexServerRow(
                               server: server,
+                              measuring:
+                                  livePings != null &&
+                                  livePings.pingFor(server.id) == null &&
+                                  livePings.isPending(server.id),
                               selected: server.id == selectedId,
                               autoLabel: s.auto,
                               onTap: () {
@@ -500,9 +528,11 @@ class _CodexServerRow extends StatelessWidget {
     required this.selected,
     required this.autoLabel,
     required this.onTap,
+    this.measuring = false,
   });
   final ServerLocation server;
   final bool selected;
+  final bool measuring;
   final String autoLabel;
   final VoidCallback onTap;
   @override
@@ -548,10 +578,14 @@ class _CodexServerRow extends StatelessWidget {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      if (!server.isAuto && server.latencyMs >= 0) ...[
+                      if (!server.isAuto) ...[
                         const SizedBox(height: 3),
                         Text(
-                          '${server.latencyMs} ms',
+                          measuring
+                              ? 'Пинг: …'
+                              : server.latencyMs >= 0
+                              ? '${server.latencyMs} ms'
+                              : 'Пинг: —',
                           style: const TextStyle(
                             fontSize: 13,
                             color: Color(0xFF91A5BF),
@@ -561,8 +595,7 @@ class _CodexServerRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (server.latencyMs >= 0)
-                  XplmSignalBars(latencyMs: server.latencyMs),
+                XplmSignalBars(latencyMs: server.latencyMs),
                 const SizedBox(width: 12),
                 if (selected)
                   Container(

@@ -1,3 +1,4 @@
+import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -57,9 +58,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (controller == null || !mounted) return;
     final flash = controller.takeUiFlash();
     if (flash == null) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(flash.message)));
+    if (!AppBrand.current.isXplm ||
+        controller.appSettings.notificationsEnabled) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(flash.message)));
+    }
     if (flash.openAccount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -69,8 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openProfile() {
-    if (widget.embeddedInShell) {
-      // Profile tab lives in XplmShell; still allow push for deep-link flashes.
+    if (AppBrand.current.isXplm && XplmTabNavigation.go(context, 3)) {
+      return Future<void>.value();
     }
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -129,6 +133,13 @@ class _HomeScreenState extends State<HomeScreen> {
         text: s.openProfileForAccess,
         actionLabel: s.account,
         onAction: _openProfile,
+      );
+    }
+    if (controller.subscriptionLoadFailed) {
+      return _SubscriptionBanner(
+        text: s.subscriptionNetworkFailed,
+        actionLabel: s.retry,
+        onAction: () => controller.reloadSubscription(),
       );
     }
     if (!account.hasAccess && controller.isKPaxSubscription) {
@@ -308,6 +319,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       text: s.openProfileForAccess,
                                       actionLabel: s.account,
                                       onAction: _openProfile,
+                                    )
+                                  else if (controller.subscriptionLoadFailed)
+                                    _SubscriptionBanner(
+                                      text: s.subscriptionNetworkFailed,
+                                      actionLabel: s.retry,
+                                      onAction: () =>
+                                          controller.reloadSubscription(),
                                     )
                                   else if (!account.hasAccess &&
                                       controller.isKPaxSubscription)

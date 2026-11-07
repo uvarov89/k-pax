@@ -1,9 +1,11 @@
+import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
+import 'package:pulse_vpn/core/services/server_latency_monitor.dart';
 import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
 import 'package:pulse_vpn/features/settings/settings_screen.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_codex_widgets.dart';
@@ -27,6 +29,7 @@ class XplmHomeLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<VpnController>();
     final s = controller.strings;
+    final livePings = context.watch<ServerLatencyMonitor?>();
     final connected = controller.isConnected;
     final busy = controller.isBusy;
 
@@ -39,6 +42,8 @@ class XplmHomeLayout extends StatelessWidget {
       cta = s.disconnecting;
     } else if (connected) {
       cta = s.disconnect;
+    } else if (controller.subscriptionLoadFailed) {
+      cta = s.retry;
     } else if (controller.needsLink) {
       cta = s.account;
     } else {
@@ -64,7 +69,10 @@ class XplmHomeLayout extends StatelessWidget {
     if (connected && !effective.isAuto && effective.latencyMs >= 0) {
       locationPing = effective.latencyMs;
     }
-    if (locationPing < 0) {
+    final measuredPing = controller.lastProbeResults?[locationLabel];
+    if (measuredPing != null) locationPing = measuredPing;
+    if (locationPing < 0 &&
+        (connected ? node == null && effective.isAuto : selected.isAuto)) {
       final pings = controller.locations
           .where((l) => !l.isAuto && l.latencyMs >= 0)
           .map((l) => l.latencyMs);
@@ -72,6 +80,19 @@ class XplmHomeLayout extends StatelessWidget {
         locationPing = pings.reduce((a, b) => a < b ? a : b);
       }
     }
+
+    final pingCountryId = connected
+        ? (node?.countryId ?? effective.id)
+        : selected.id;
+    final autoPing = pingCountryId == 'auto';
+    final liveValue = autoPing
+        ? livePings?.bestPing
+        : livePings?.pingFor(pingCountryId);
+    if (livePings != null) locationPing = liveValue ?? -1;
+    final pingMeasuring =
+        livePings != null &&
+        liveValue == null &&
+        (autoPing ? livePings.isMeasuring : livePings.isPending(pingCountryId));
 
     final account = controller.account;
     final expiry = account.hasAccess && controller.hasExpiry
@@ -93,6 +114,13 @@ class XplmHomeLayout extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: _HomeHeader(
                       onMenu: () {
+                        if (XplmTabNavigation.openInTab(
+                          context,
+                          3,
+                          const SettingsScreen(),
+                        )) {
+                          return;
+                        }
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => const SettingsScreen(),
@@ -150,7 +178,16 @@ class XplmHomeLayout extends StatelessWidget {
                                 countryCode: locationCode,
                                 title: locationLabel,
                                 pingMs: locationPing,
+                                measuring: pingMeasuring,
+                                onPingPressed: livePings == null
+                                    ? null
+                                    : () => livePings.refresh(
+                                        countryId: autoPing
+                                            ? null
+                                            : pingCountryId,
+                                      ),
                                 onTap: () {
+                                  if (XplmTabNavigation.go(context, 1)) return;
                                   Navigator.of(context).push(
                                     MaterialPageRoute<void>(
                                       builder: (_) =>
@@ -256,7 +293,13 @@ class _HomeHeader extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: XplmRoundIconButton(onTap: onMenu, icon: Icons.menu_rounded),
+            child: Tooltip(
+              message: 'Настройки',
+              child: XplmRoundIconButton(
+                onTap: onMenu,
+                icon: Icons.settings_outlined,
+              ),
+            ),
           ),
           Expanded(
             child: Padding(
@@ -304,9 +347,12 @@ class _HomeHeader extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: XplmRoundIconButton(
-              onTap: onBell,
-              icon: Icons.notifications_none_rounded,
+            child: Tooltip(
+              message: 'Профиль',
+              child: XplmRoundIconButton(
+                onTap: onBell,
+                icon: Icons.person_outline_rounded,
+              ),
             ),
           ),
         ],
@@ -405,12 +451,16 @@ class _ServerCard extends StatelessWidget {
     required this.title,
     required this.pingMs,
     required this.onTap,
+    this.measuring = false,
+    this.onPingPressed,
   });
 
   final String countryCode;
   final String title;
   final int pingMs;
   final VoidCallback onTap;
+  final bool measuring;
+  final VoidCallback? onPingPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -463,27 +513,10 @@ class _ServerCard extends StatelessWidget {
               const SizedBox(height: 3),
               const Divider(height: 1, color: Color(0xFF19304C)),
               const SizedBox(height: 7),
-              SizedBox(
-                height: 27,
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.bolt_rounded,
-                      color: Color(0xFF24B5FF),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      pingMs >= 0 ? 'Пинг: $pingMs ms' : 'Пинг: —',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFFC4D1E3),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (pingMs >= 0) XplmSignalBars(latencyMs: pingMs),
-                  ],
-                ),
+              _HomePingLine(
+                pingMs: pingMs,
+                measuring: measuring,
+                onRefresh: onPingPressed,
               ),
             ],
           ),
@@ -715,6 +748,43 @@ class _HomePrimaryButton extends StatelessWidget {
                     ],
                   ),
           ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _HomePingLine extends StatelessWidget {
+  const _HomePingLine({
+    required this.pingMs,
+    required this.measuring,
+    this.onRefresh,
+  });
+  final int pingMs;
+  final bool measuring;
+  final VoidCallback? onRefresh;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 27,
+    child: Tooltip(
+      message: 'Обновить TCP-пинг сервера',
+      child: InkWell(
+        onTap: onRefresh,
+        child: Row(
+          children: [
+            const Icon(Icons.bolt_rounded, color: Color(0xFF24B5FF), size: 18),
+            const SizedBox(width: 4),
+            Text(
+              measuring
+                  ? 'Пинг: …'
+                  : pingMs >= 0
+                  ? 'Пинг: $pingMs ms'
+                  : 'Пинг: —',
+              style: const TextStyle(fontSize: 13, color: Color(0xFFC4D1E3)),
+            ),
+            const Spacer(),
+            XplmSignalBars(latencyMs: pingMs),
+          ],
         ),
       ),
     ),

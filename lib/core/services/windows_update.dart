@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
+
 class WindowsRelease {
   const WindowsRelease({required this.version, required this.url});
 
@@ -73,7 +75,7 @@ WindowsUpdateLookup interpretWindowsUpdate(String body, String currentVersion) {
 class WindowsUpdateCheck {
   const WindowsUpdateCheck();
 
-  static final Uri endpoint = Uri.parse('https://k-pax.space/app/windows');
+  static Uri get endpoint => AppBrand.current.windowsUpdateEndpoint;
 
   Future<WindowsUpdateLookup> lookup(String currentVersion) async {
     if (kIsWeb || !Platform.isWindows) {
@@ -81,8 +83,12 @@ class WindowsUpdateCheck {
     }
     final client = HttpClient();
     try {
-      final request = await client.getUrl(endpoint).timeout(const Duration(seconds: 8));
-      request.headers.set(HttpHeaders.userAgentHeader, 'K-Pax');
+      final request =
+          await client.getUrl(endpoint).timeout(const Duration(seconds: 8));
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        AppBrand.current.appName,
+      );
       final response = await request.close().timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
         return const WindowsUpdateLookup(status: WindowsUpdateStatus.unavailable);

@@ -6,9 +6,27 @@ class XplmTabNavigation extends InheritedWidget {
   const XplmTabNavigation({
     super.key,
     required this.select,
+    this.open,
     required super.child,
   });
   final ValueChanged<int> select;
+  final void Function(int, Widget)? open;
+  static bool openInTab(BuildContext context, int index, Widget page) {
+    final tabs = context
+        .dependOnInheritedWidgetOfExactType<XplmTabNavigation>();
+    if (tabs?.open == null) return false;
+    tabs!.open!(index, page);
+    return true;
+  }
+
+  static bool go(BuildContext context, int index) {
+    final tabs = context
+        .dependOnInheritedWidgetOfExactType<XplmTabNavigation>();
+    if (tabs == null) return false;
+    tabs.select(index);
+    return true;
+  }
+
   static void back(BuildContext context) {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -19,7 +37,7 @@ class XplmTabNavigation extends InheritedWidget {
 
   @override
   bool updateShouldNotify(XplmTabNavigation oldWidget) =>
-      select != oldWidget.select;
+      select != oldWidget.select || open != oldWidget.open;
 }
 
 class XplmHtmlPage extends StatelessWidget {
@@ -152,37 +170,40 @@ class XplmHtmlButton extends StatelessWidget {
   final double fontSize;
   final bool busy;
   @override
-  Widget build(BuildContext context) => CustomPaint(
-    painter: const _HtmlSurfacePainter(primary: true),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(25),
-        onTap: busy ? null : onPressed,
-        child: SizedBox(
-          width: double.infinity,
-          height: height,
-          child: Center(
-            child: busy
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      value: MediaQuery.of(context).disableAnimations
-                          ? .75
-                          : null,
-                      color: Colors.white,
+  Widget build(BuildContext context) => Opacity(
+    opacity: onPressed == null && !busy ? .45 : 1,
+    child: CustomPaint(
+      painter: const _HtmlSurfacePainter(primary: true),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(25),
+          onTap: busy ? null : onPressed,
+          child: SizedBox(
+            width: double.infinity,
+            height: height,
+            child: Center(
+              child: busy
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: MediaQuery.of(context).disableAnimations
+                            ? .75
+                            : null,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.white,
+                      ),
                     ),
-                  )
-                : Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white,
-                    ),
-                  ),
+            ),
           ),
         ),
       ),

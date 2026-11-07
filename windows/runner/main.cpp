@@ -6,9 +6,14 @@
 #include "utils.h"
 
 namespace {
+#ifdef APP_BRAND_XPLM
+constexpr wchar_t kSingleInstanceMutex[] = L"Local\\XPlm.SingleInstance.Mutex";
+constexpr wchar_t kWindowTitle[] = L"X-Plm";
+#else
 constexpr wchar_t kSingleInstanceMutex[] = L"Local\\KPax.SingleInstance.Mutex";
-constexpr wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr wchar_t kWindowTitle[] = L"K-Pax";
+#endif
+constexpr wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 bool ActivateExistingInstance() {
   HWND existing = ::FindWindowW(kWindowClassName, kWindowTitle);
@@ -66,7 +71,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(80, 40);
   Win32Window::Size size(440, 760);
-  if (!window.Create(L"K-Pax", origin, size)) {
+  if (!window.Create(kWindowTitle, origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(false);

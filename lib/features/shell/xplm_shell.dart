@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/home/home_screen.dart';
@@ -18,34 +17,94 @@ class XplmShell extends StatefulWidget {
 
 class _XplmShellState extends State<XplmShell> {
   int _index = 0;
+  final _navigators = List.generate(4, (_) => GlobalKey<NavigatorState>());
+  late final _observers = List.generate(4, (_) => _TabObserver(_routesChanged));
+
+  void _routesChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _select(int index) {
+    if (_index == index) {
+      _navigators[index].currentState?.popUntil((route) => route.isFirst);
+    } else {
+      setState(() => _index = index);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return NordBackground(
+    final current = _navigators[_index].currentState;
+    const roots = <Widget>[
+      HomeScreen(embeddedInShell: true),
+      CountryPickerScreen(embeddedInShell: true),
+      PaywallScreen(embeddedInShell: true),
+      AccountScreen(embeddedInShell: true),
+    ];
+    final shell = PopScope(
+      canPop: _index == 0 && !(current?.canPop() ?? false),
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        final navigator = _navigators[_index].currentState;
+        if (navigator?.canPop() ?? false) {
+          navigator!.pop();
+        } else if (_index != 0) {
+          setState(() => _index = 0);
+        }
+      },
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF010D1E),
         body: XplmTabNavigation(
-          select: (i) => setState(() => _index = i),
+          select: _select,
+          open: (index, page) {
+            final navigator = _navigators[index].currentState!;
+            navigator.popUntil((route) => route.isFirst);
+            setState(() => _index = index);
+            navigator.push(MaterialPageRoute<void>(builder: (_) => page));
+          },
           child: IndexedStack(
             index: _index,
             children: [
-              TickerMode(
-                enabled: _index == 0,
-                child: const HomeScreen(embeddedInShell: true),
-              ),
-              const CountryPickerScreen(embeddedInShell: true),
-              const PaywallScreen(embeddedInShell: true),
-              const AccountScreen(embeddedInShell: true),
+              for (var i = 0; i < roots.length; i++)
+                TickerMode(
+                  enabled: _index == i,
+                  child: Navigator(
+                    key: _navigators[i],
+                    observers: [_observers[i]],
+                    onGenerateRoute: (_) =>
+                        MaterialPageRoute<void>(builder: (_) => roots[i]),
+                  ),
+                ),
             ],
           ),
         ),
-        bottomNavigationBar: XplmBottomNav(
-          index: _index,
-          onChanged: (i) => setState(() => _index = i),
+        bottomNavigationBar: XplmBottomNav(index: _index, onChanged: _select),
+      ),
+    );
+    // Keep every desktop tab and pushed screen aligned with the Android layout.
+    if (Theme.of(context).platform != TargetPlatform.windows) return shell;
+    return ColoredBox(
+      color: const Color(0xFF010D1E),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: shell,
         ),
       ),
     );
   }
+}
+
+class _TabObserver extends NavigatorObserver {
+  _TabObserver(this.changed);
+  final VoidCallback changed;
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
 }
 
 class XplmBottomNav extends StatelessWidget {
@@ -64,7 +123,7 @@ class XplmBottomNav extends StatelessWidget {
       (Icons.home_outlined, 'Главная'),
       (Icons.public_outlined, 'Серверы'),
       (Icons.workspace_premium_outlined, 'Подписка'),
-      (Icons.settings_outlined, 'Профиль'),
+      (Icons.person_outline_rounded, 'Профиль'),
     ];
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -170,23 +229,11 @@ class _HtmlNavIcon extends CustomPainter {
           ..lineTo(19, 17);
       default:
         path
-          ..moveTo(9, 3)
-          ..lineTo(15, 3)
-          ..lineTo(16, 6)
-          ..lineTo(19, 7)
-          ..lineTo(21, 12)
-          ..lineTo(19, 14)
-          ..lineTo(19, 18)
-          ..lineTo(15, 21)
-          ..lineTo(12, 20)
-          ..lineTo(9, 21)
-          ..lineTo(5, 18)
-          ..lineTo(5, 14)
-          ..lineTo(3, 12)
-          ..lineTo(5, 7)
-          ..lineTo(8, 6)
-          ..close()
-          ..addOval(const Rect.fromLTWH(9, 9, 6, 6));
+          ..addOval(const Rect.fromLTWH(8, 3, 8, 8))
+          ..moveTo(4, 21)
+          ..lineTo(4, 19)
+          ..cubicTo(4, 12, 20, 12, 20, 19)
+          ..lineTo(20, 21);
     }
     final paint = Paint()
       ..style = PaintingStyle.stroke

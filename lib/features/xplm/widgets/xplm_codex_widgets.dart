@@ -27,7 +27,11 @@ class XplmWordmark extends StatelessWidget {
             letterSpacing: -1,
             color: XplmColors.wordmark,
             shadows: const [
-              Shadow(color: Color(0xFF5186A5), offset: Offset(0, 2), blurRadius: 2),
+              Shadow(
+                color: Color(0xFF5186A5),
+                offset: Offset(0, 2),
+                blurRadius: 2,
+              ),
             ],
           ),
         ),
@@ -83,10 +87,7 @@ class XplmGlass extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: padding ?? EdgeInsets.zero,
-        child: child,
-      ),
+      child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
     );
   }
 }
@@ -236,7 +237,14 @@ class _HeroShieldPainter extends CustomPainter {
       final path = Path();
       final t = inset;
       path.moveTo(w * 0.5, h * 0.05 + t);
-      path.cubicTo(w * 0.35, h * 0.15, w * 0.18, h * 0.17, w * 0.08 + t, h * 0.19);
+      path.cubicTo(
+        w * 0.35,
+        h * 0.15,
+        w * 0.18,
+        h * 0.17,
+        w * 0.08 + t,
+        h * 0.19,
+      );
       path.lineTo(w * 0.08 + t, h * 0.42);
       path.cubicTo(
         w * 0.08,
@@ -255,7 +263,14 @@ class _HeroShieldPainter extends CustomPainter {
         h * 0.42,
       );
       path.lineTo(w * 0.92 - t, h * 0.19);
-      path.cubicTo(w * 0.82, h * 0.17, w * 0.65, h * 0.14, w * 0.5, h * 0.05 + t);
+      path.cubicTo(
+        w * 0.82,
+        h * 0.17,
+        w * 0.65,
+        h * 0.14,
+        w * 0.5,
+        h * 0.05 + t,
+      );
       path.close();
       return path;
     }
@@ -387,40 +402,65 @@ class _EarthDotsPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// TCP latency scale shared by home and server list.
 class XplmSignalBars extends StatelessWidget {
   const XplmSignalBars({super.key, required this.latencyMs, this.height = 17});
-
   final int latencyMs;
   final double height;
-
+  static int activeBars(int ms) => ms < 0
+      ? 0
+      : ms <= 80
+      ? 4
+      : ms <= 150
+      ? 3
+      : ms <= 250
+      ? 2
+      : 1;
+  static Color signalColor(int ms) => ms < 0
+      ? const Color(0xFF527B91)
+      : ms <= 80
+      ? const Color(0xFF33CF8F)
+      : ms <= 150
+      ? const Color(0xFFFFC24A)
+      : ms <= 250
+      ? const Color(0xFFFF922E)
+      : const Color(0xFFFF5A6A);
   @override
   Widget build(BuildContext context) {
-    // Codex HTML `.signal i` is always #33cf8f, all four bars filled.
-    const c = Color(0xFF33CF8F);
-    const hs = [5.0, 9.0, 12.0, 16.0];
-    return SizedBox(
-      height: height,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < 4; i++) ...[
-            if (i > 0) const SizedBox(width: 2),
-            Container(
-              width: 3,
-              height: hs[i],
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(1),
-                color: latencyMs < 0 ? c.withValues(alpha: 0.25) : c,
-                boxShadow: latencyMs < 0
-                    ? null
-                    : const [
-                        BoxShadow(color: Color(0x4D08DBA1), blurRadius: 3),
-                      ],
+    final count = activeBars(latencyMs);
+    final color = signalColor(latencyMs);
+    const heights = [5.0, 9.0, 12.0, 16.0];
+    return Semantics(
+      label: latencyMs < 0
+          ? 'Нет замера пинга'
+          : 'Пинг $latencyMs мс, $count из 4 полосок',
+      child: SizedBox(
+        height: height,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (var i = 0; i < 4; i++) ...[
+              if (i > 0) const SizedBox(width: 2),
+              Container(
+                width: 3,
+                height: heights[i],
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(1),
+                  color: i < count ? color : const Color(0xFF294554),
+                  boxShadow: i < count
+                      ? [
+                          BoxShadow(
+                            color: color.withValues(alpha: .3),
+                            blurRadius: 3,
+                          ),
+                        ]
+                      : null,
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -506,16 +546,18 @@ class _CodexFlagPainter extends CustomPainter {
       case 'bg':
         bands(const [Color(0xFFFFFFFF), Color(0xFF009671), Color(0xFFD52D38)]);
       case 'fr':
-        bands(const [Color(0xFF034EA3), Color(0xFFFFFFFF), Color(0xFFE13B49)],
-            vertical: true);
+        bands(const [
+          Color(0xFF034EA3),
+          Color(0xFFFFFFFF),
+          Color(0xFFE13B49),
+        ], vertical: true);
       case 'nl':
         bands(const [Color(0xFFD62F43), Color(0xFFFFFFFF), Color(0xFF1748A0)]);
       case 'us':
         for (var i = 0; i < 7; i++) {
           canvas.drawRect(
             Rect.fromLTWH(0, size.height / 7 * i, size.width, size.height / 7),
-            Paint()
-              ..color = i.isEven ? const Color(0xFFE34451) : Colors.white,
+            Paint()..color = i.isEven ? const Color(0xFFE34451) : Colors.white,
           );
         }
         canvas.drawRect(
@@ -538,19 +580,35 @@ class _CodexFlagPainter extends CustomPainter {
         canvas.drawLine(r.topLeft, r.bottomRight, red);
         canvas.drawLine(r.topRight, r.bottomLeft, red);
         canvas.drawRect(
-          Rect.fromCenter(center: r.center, width: size.width, height: size.height * 0.22),
+          Rect.fromCenter(
+            center: r.center,
+            width: size.width,
+            height: size.height * 0.22,
+          ),
           Paint()..color = Colors.white,
         );
         canvas.drawRect(
-          Rect.fromCenter(center: r.center, width: size.width * 0.22, height: size.height),
+          Rect.fromCenter(
+            center: r.center,
+            width: size.width * 0.22,
+            height: size.height,
+          ),
           Paint()..color = Colors.white,
         );
         canvas.drawRect(
-          Rect.fromCenter(center: r.center, width: size.width, height: size.height * 0.12),
+          Rect.fromCenter(
+            center: r.center,
+            width: size.width,
+            height: size.height * 0.12,
+          ),
           Paint()..color = const Color(0xFFDC3352),
         );
         canvas.drawRect(
-          Rect.fromCenter(center: r.center, width: size.width * 0.12, height: size.height),
+          Rect.fromCenter(
+            center: r.center,
+            width: size.width * 0.12,
+            height: size.height,
+          ),
           Paint()..color = const Color(0xFFDC3352),
         );
       case 'sg':

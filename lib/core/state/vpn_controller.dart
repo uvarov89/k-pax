@@ -122,8 +122,12 @@ class VpnController extends ChangeNotifier {
       linkState == SubscriptionLinkState.ready && account.hasAccess;
 
   bool get needsLink =>
-      linkState == SubscriptionLinkState.missing ||
-      linkState == SubscriptionLinkState.failed;
+      subscriptionUrl == null &&
+      (linkState == SubscriptionLinkState.missing ||
+          linkState == SubscriptionLinkState.failed);
+
+  bool get subscriptionLoadFailed =>
+      subscriptionUrl != null && linkState == SubscriptionLinkState.failed;
 
   bool get isLoginWaiting =>
       loginSession != null && linkState == SubscriptionLinkState.loading;
@@ -399,13 +403,25 @@ class VpnController extends ChangeNotifier {
       try {
         await _start(node);
       } catch (_) {
-        final spare = proSettings.protocolFallback ? _spareFor(node) : null;
-        if (spare == null) rethrow;
-        try {
-          await _service.disconnect();
-        } catch (_) {}
-        await _start(spare);
-        node = spare;
+        if (!proSettings.protocolFallback) rethrow;
+        final tried = {_endpointKey(node)};
+        var spare = _spareFor(node, tried);
+        var started = false;
+        while (spare != null) {
+          tried.add(_endpointKey(spare));
+          try {
+            await _service.disconnect();
+          } catch (_) {}
+          try {
+            await _start(spare);
+            node = spare;
+            started = true;
+            break;
+          } catch (_) {
+            spare = _spareFor(spare, tried);
+          }
+        }
+        if (!started) rethrow;
       }
       await WindowsFirewall.clear();
       connectedNode = node;
@@ -713,7 +729,10 @@ class VpnController extends ChangeNotifier {
     }
   }
 
+  int _subscriptionReloadEpoch = 0;
+
   Future<void> reloadSubscription() async {
+    final reloadEpoch = ++_subscriptionReloadEpoch;
     final url = subscriptionUrl;
     if (url == null) {
       linkState = SubscriptionLinkState.missing;
@@ -732,23 +751,48 @@ class VpnController extends ChangeNotifier {
         profile = parseSubscription(url);
       } else {
         final fetched = await _subscriptions.fetch(Uri.parse(url));
-        if (_disposed || url != subscriptionUrl) return;
+        if (_disposed ||
+            reloadEpoch != _subscriptionReloadEpoch ||
+            url != subscriptionUrl) {
+          return;
+        }
         profile = parseSubscription(fetched.body, userinfo: fetched.userinfo);
         providerWebPage = fetched.webPage;
         if (fetched.title != null) await _rename(url, fetched.title!);
-        if (_disposed || url != subscriptionUrl) return;
+        if (_disposed ||
+            reloadEpoch != _subscriptionReloadEpoch ||
+            url != subscriptionUrl) {
+          return;
+        }
         await _rememberAccountNumber(fetched.publicId);
-        if (_disposed || url != subscriptionUrl) return;
+        if (_disposed ||
+            reloadEpoch != _subscriptionReloadEpoch ||
+            url != subscriptionUrl) {
+          return;
+        }
       }
       _applyProfile();
       _restoreSavedLocation();
     } on FormatException {
-      if (_disposed || url != subscriptionUrl) return;
-      profile = null;
+      if (_disposed ||
+          reloadEpoch != _subscriptionReloadEpoch ||
+          url != subscriptionUrl) {
+        return;
+      }
       linkError = strings.emptySubscription;
-      linkState = SubscriptionLinkState.failed;
+      if (kept != null && account.hasAccess) {
+        profile = kept;
+        linkState = SubscriptionLinkState.ready;
+      } else {
+        profile = null;
+        linkState = SubscriptionLinkState.failed;
+      }
     } on SubscriptionRejected {
-      if (_disposed || url != subscriptionUrl) return;
+      if (_disposed ||
+          reloadEpoch != _subscriptionReloadEpoch ||
+          url != subscriptionUrl) {
+        return;
+      }
       profile = null;
       linkState = SubscriptionLinkState.expired;
       account = account.copyWith(
@@ -757,7 +801,11 @@ class VpnController extends ChangeNotifier {
       );
       unawaited(_repository.saveAccount(account));
     } catch (_) {
-      if (_disposed || url != subscriptionUrl) return;
+      if (_disposed ||
+          reloadEpoch != _subscriptionReloadEpoch ||
+          url != subscriptionUrl) {
+        return;
+      }
       // Fail closed for K-Pax when local access already ended or never loaded.
       final kpaxExpired = isKPaxSubscription && !account.hasAccess;
       if (kept == null || kpaxExpired) {
@@ -1216,27 +1264,54 @@ class VpnController extends ChangeNotifier {
     return nodes.first;
   }
 
-  TunnelNode? _spareFor(TunnelNode node) {
+  String _endpointKey(TunnelNode node) =>
+      '${node.countryId}|${node.kind.name}|${node.host}|${node.port}';
+
+  /// Same-country fallbacks: self-steal / other ports, then other hosts (RU front),
+  /// then next protocol kinds. [tried] prevents 443↔2053 loops.
+  TunnelNode? _spareFor(TunnelNode node, [Set<String>? tried]) {
+    final seen = tried ?? {_endpointKey(node)};
     final nodes = profile?.nodes ?? const <TunnelNode>[];
-    // Same country + same kind, other endpoint (Reality :443 ↔ self-steal).
-    for (final candidate in _preferPrimaryEndpoints(
-      nodes
-          .where(
-            (item) =>
-                item.countryId == node.countryId &&
-                item.kind == node.kind &&
-                (item.host != node.host || item.port != node.port),
-          )
-          .toList(),
-    )) {
-      return candidate;
+    final sameCountry = nodes
+        .where((item) => item.countryId == node.countryId)
+        .toList();
+
+    // Reality: prefer other endpoints on the same host, then other hosts (front).
+    if (node.kind == TunnelKind.reality) {
+      final sameHost = <TunnelNode>[];
+      final otherHost = <TunnelNode>[];
+      for (final item in sameCountry) {
+        if (item.kind != TunnelKind.reality) continue;
+        final key = _endpointKey(item);
+        if (seen.contains(key)) continue;
+        if (item.host == node.host) {
+          sameHost.add(item);
+        } else {
+          otherHost.add(item);
+        }
+      }
+      for (final candidate in [..._preferPrimaryEndpoints(sameHost), ...otherHost]) {
+        return candidate;
+      }
+    } else {
+      for (final candidate in _preferPrimaryEndpoints(
+        sameCountry
+            .where(
+              (item) =>
+                  item.kind == node.kind && !seen.contains(_endpointKey(item)),
+            )
+            .toList(),
+      )) {
+        return candidate;
+      }
     }
+
     final order = _kindOrder();
     final start = order.indexOf(node.kind);
     if (start < 0) return null;
     for (final kind in order.skip(start + 1)) {
-      for (final candidate in nodes) {
-        if (candidate.countryId == node.countryId && candidate.kind == kind) {
+      for (final candidate in sameCountry) {
+        if (candidate.kind == kind && !seen.contains(_endpointKey(candidate))) {
           return candidate;
         }
       }
@@ -1255,6 +1330,17 @@ class VpnController extends ChangeNotifier {
   /// Returns false when paywall should be shown.
   Future<bool> connect({bool userInitiated = true}) async {
     if (isBusy || isConnected) return true;
+    if (subscriptionLoadFailed) {
+      await reloadSubscription();
+      if (subscriptionLoadFailed) {
+        connectionState = VpnConnectionState.error;
+        errorMessage = linkError ?? strings.linkOpenFailed;
+        notifyListeners();
+        // A network failure is not a reason to log in again or pay again.
+        return true;
+      }
+      if (isBusy || isConnected) return true;
+    }
     if (!hasAccess) {
       errorMessage = isKPaxSubscription || needsLink
           ? strings.subscriptionRequired
@@ -1296,14 +1382,17 @@ class VpnController extends ChangeNotifier {
         notifyListeners();
       });
     } catch (e) {
-      var spare = proSettings.protocolFallback ? _spareFor(node) : null;
+      final tried = {_endpointKey(node)};
+      var spare = proSettings.protocolFallback ? _spareFor(node, tried) : null;
       while (spare != null) {
+        tried.add(_endpointKey(spare));
         try {
           await _service.disconnect();
         } catch (_) {}
         try {
           await _start(spare);
           await WindowsFirewall.clear();
+          connectedNode = spare;
           connectionState = VpnConnectionState.connected;
           _connectedAt = DateTime.now();
           sessionDuration = Duration.zero;
@@ -1316,7 +1405,7 @@ class VpnController extends ChangeNotifier {
           notifyListeners();
           return true;
         } catch (_) {
-          spare = _spareFor(spare);
+          spare = _spareFor(spare, tried);
         }
       }
       connectionState = VpnConnectionState.error;

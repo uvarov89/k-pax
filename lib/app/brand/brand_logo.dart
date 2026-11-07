@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
-import 'package:pulse_vpn/app/brand/xplm_mark.dart';
-import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 
-/// Brand mark: vector X for X-Plm, raster asset for K-Pax.
+/// Brand asset for the active application flavor.
 class BrandLogo extends StatelessWidget {
   const BrandLogo({super.key, this.size = 36});
 
@@ -13,9 +11,6 @@ class BrandLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brand = AppBrand.current;
-    if (brand.isXplm) {
-      return XplmMark(size: size, color: XplmColors.cyan);
-    }
     return Image.asset(
       brand.logoAsset,
       width: size,

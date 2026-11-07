@@ -52,7 +52,11 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
+#ifdef APP_BRAND_XPLM
+IDI_APP_ICON            ICON                    "resources\\xplm_app_icon.ico"
+#else
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
+#endif
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -89,6 +93,16 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
+#ifdef APP_BRAND_XPLM
+            VALUE "CompanyName", "online.xplm" "\0"
+            VALUE "FileDescription", "X-Plm" "\0"
+            VALUE "FileVersion", VERSION_AS_STRING "\0"
+            VALUE "InternalName", "XPlm" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 online.xplm. All rights reserved." "\0"
+            VALUE "OriginalFilename", "XPlm.exe" "\0"
+            VALUE "ProductName", "X-Plm" "\0"
+            VALUE "ProductVersion", VERSION_AS_STRING "\0"
+#else
             VALUE "CompanyName", "space.kpax" "\0"
             VALUE "FileDescription", "K-Pax" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
@@ -97,6 +111,7 @@ BEGIN
             VALUE "OriginalFilename", "KPax.exe" "\0"
             VALUE "ProductName", "K-Pax" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
+#endif
         END
     END
     BLOCK "VarFileInfo"

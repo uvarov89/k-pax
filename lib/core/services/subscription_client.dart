@@ -10,11 +10,19 @@ class SubscriptionClient {
   Future<FetchedSubscription> fetch(Uri uri) async {
     final client = HttpClient();
     try {
-      final request = await client.getUrl(uri).timeout(const Duration(seconds: 15));
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 15));
       request.headers.set(HttpHeaders.userAgentHeader, _ua);
-      final response = await request.close().timeout(const Duration(seconds: 20));
-      final body = await response.transform(utf8.decoder).join();
-      if (response.statusCode == 403 || body.contains('Подписка недействительна')) {
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 403 ||
+          body.contains('Подписка недействительна')) {
         throw const SubscriptionRejected();
       }
       if (response.statusCode != 200) {
@@ -25,12 +33,13 @@ class SubscriptionClient {
         userinfo: response.headers.value('subscription-userinfo'),
         publicId: AppBrand.current.isXplm
             ? (response.headers.value('x-xplm-id') ??
-                response.headers.value('x-kpax-id'))
+                  response.headers.value('x-kpax-id'))
             : (response.headers.value('x-kpax-id') ??
-                response.headers.value('x-xplm-id')),
+                  response.headers.value('x-xplm-id')),
         title: profileTitle(response.headers.value('profile-title')),
         webPage: providerPage(
-          response.headers.value('profile-web-page-url') ?? response.headers.value('support-url'),
+          response.headers.value('profile-web-page-url') ??
+              response.headers.value('support-url'),
         ),
       );
     } finally {
@@ -38,17 +47,30 @@ class SubscriptionClient {
     }
   }
 
-  Future<Map<String, dynamic>> _postJson(Uri uri, Map<String, Object?> payload) async {
+  Future<Map<String, dynamic>> _postJson(
+    Uri uri,
+    Map<String, Object?> payload,
+  ) async {
     final client = HttpClient();
     try {
       final bytes = utf8.encode(jsonEncode(payload));
-      final request = await client.postUrl(uri).timeout(const Duration(seconds: 20));
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json; charset=utf-8');
+      final request = await client
+          .postUrl(uri)
+          .timeout(const Duration(seconds: 20));
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'application/json; charset=utf-8',
+      );
       request.headers.set(HttpHeaders.userAgentHeader, _ua);
       request.contentLength = bytes.length;
       request.add(bytes);
-      final response = await request.close().timeout(const Duration(seconds: 30));
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 20));
       try {
         final decoded = jsonDecode(body);
         if (decoded is Map) {
@@ -66,7 +88,9 @@ class SubscriptionClient {
         'body': <String, dynamic>{
           'error': trimmed.isEmpty
               ? 'Сервер вернул ошибку ${response.statusCode}.'
-              : (trimmed.length > 240 ? '${trimmed.substring(0, 240)}…' : trimmed),
+              : (trimmed.length > 240
+                    ? '${trimmed.substring(0, 240)}…'
+                    : trimmed),
         },
       };
     } finally {
@@ -76,10 +100,9 @@ class SubscriptionClient {
 
   Future<AppStartResult> startWithContact(String contact) async {
     final brand = AppBrand.current;
-    final result = await _postJson(
-      brand.appStart(),
-      {'contact': contact.trim()},
-    );
+    final result = await _postJson(brand.appStart(), {
+      'contact': contact.trim(),
+    });
     final status = result['status'] as int;
     final decoded = result['body'] as Map<String, dynamic>;
     if (status != 200) {
@@ -102,10 +125,9 @@ class SubscriptionClient {
   }
 
   Future<AppLoginResult> loginWithContact(String contact) async {
-    final result = await _postJson(
-      AppBrand.current.appLogin(),
-      {'contact': contact.trim()},
-    );
+    final result = await _postJson(AppBrand.current.appLogin(), {
+      'contact': contact.trim(),
+    });
     final status = result['status'] as int;
     final decoded = result['body'] as Map<String, dynamic>;
     if (status != 200) {
@@ -129,13 +151,20 @@ class SubscriptionClient {
   Future<List<ConnectedDeviceInfo>> fetchDevices(String token) async {
     final client = HttpClient();
     try {
-      final uri = AppBrand.current
-          .appDevices()
-          .replace(queryParameters: {'token': token});
-      final request = await client.getUrl(uri).timeout(const Duration(seconds: 15));
+      final uri = AppBrand.current.appDevices().replace(
+        queryParameters: {'token': token},
+      );
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 15));
       request.headers.set(HttpHeaders.userAgentHeader, _ua);
-      final response = await request.close().timeout(const Duration(seconds: 20));
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) {
         throw const HttpException('devices');
       }
@@ -161,10 +190,10 @@ class SubscriptionClient {
   }
 
   Future<bool> kickDevice(String token, String deviceId) async {
-    final result = await _postJson(
-      AppBrand.current.appDevicesKick(),
-      {'token': token, 'device_id': deviceId},
-    );
+    final result = await _postJson(AppBrand.current.appDevicesKick(), {
+      'token': token,
+      'device_id': deviceId,
+    });
     final status = result['status'] as int;
     final decoded = result['body'] as Map<String, dynamic>;
     return status == 200 && decoded['ok'] == true;
@@ -173,13 +202,20 @@ class SubscriptionClient {
   Future<AppLoginStatus> pollLoginStatus(String session) async {
     final client = HttpClient();
     try {
-      final uri = AppBrand.current
-          .appLoginStatus()
-          .replace(queryParameters: {'session': session});
-      final request = await client.getUrl(uri).timeout(const Duration(seconds: 15));
+      final uri = AppBrand.current.appLoginStatus().replace(
+        queryParameters: {'session': session},
+      );
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 15));
       request.headers.set(HttpHeaders.userAgentHeader, _ua);
-      final response = await request.close().timeout(const Duration(seconds: 20));
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 20));
       final decoded = jsonDecode(body);
       if (decoded is! Map) throw const HttpException('login-status');
       final rawUrl = decoded['url']?.toString() ?? '';

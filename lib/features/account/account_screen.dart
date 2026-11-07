@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -13,6 +14,7 @@ import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/settings/about_screen.dart';
 import 'package:pulse_vpn/features/settings/settings_screen.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
+import 'widgets/xplm_account_details.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({
@@ -30,6 +32,13 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final _contact = TextEditingController();
+  bool _submitting = false;
+  int _submitEpoch = 0;
+  void _cancelSubmit(VpnController c) {
+    _submitEpoch++;
+    c.cancelLogin();
+    setState(() => _submitting = false);
+  }
 
   @override
   void dispose() {
@@ -41,12 +50,13 @@ class _AccountScreenState extends State<AccountScreen> {
     BuildContext context,
     VpnController controller,
   ) async {
-    await controller.loadDevices();
+    unawaited(controller.loadDevices());
     if (!context.mounted) return;
     final s = controller.strings;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) {
         return Consumer<VpnController>(
           builder: (context, c, _) {
@@ -54,72 +64,100 @@ class _AccountScreenState extends State<AccountScreen> {
                 ? NordColors.textMuted
                 : NordColors.lightTextMuted;
             return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      s.devices,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      s.devicesHint,
-                      style: TextStyle(color: muted, height: 1.35),
-                    ),
-                    const SizedBox(height: 12),
-                    if (c.isLoadingDevices)
-                      const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (c.devicesError != null)
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       Text(
-                        c.devicesError!,
-                        style: const TextStyle(color: Color(0xFFFFC1CC)),
-                      )
-                    else if (c.devices.isEmpty)
-                      Text(s.devicesEmpty, style: TextStyle(color: muted))
-                    else
-                      ...c.devices.map(
-                        (device) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            device.label.isEmpty ? s.devices : device.label,
-                          ),
-                          subtitle: Text(
-                            device.detail,
-                            style: TextStyle(color: muted, fontSize: 13),
-                          ),
-                          trailing: TextButton(
-                            onPressed: () async {
-                              final ok = await c.kickDevice(device.id);
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    ok ? s.devicesKicked : s.devicesLoadFailed,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Text(s.devicesKick),
-                          ),
+                        s.devices,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: c.isLoadingDevices
-                          ? null
-                          : () => c.loadDevices(),
-                      child: Text(s.devicesRefresh),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        s.devicesHint,
+                        style: TextStyle(color: muted, height: 1.35),
+                      ),
+                      const SizedBox(height: 12),
+                      if (c.isLoadingDevices)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (c.devicesError != null)
+                        Text(
+                          c.devicesError!,
+                          style: const TextStyle(color: Color(0xFFFFC1CC)),
+                        )
+                      else if (c.devices.isEmpty)
+                        Text(s.devicesEmpty, style: TextStyle(color: muted))
+                      else
+                        ...c.devices.map(
+                          (device) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              device.label.isEmpty ? s.devices : device.label,
+                            ),
+                            subtitle: Text(
+                              device.detail,
+                              style: TextStyle(color: muted, fontSize: 13),
+                            ),
+                            trailing: TextButton(
+                              onPressed: c.removingDeviceIds.contains(device.id)
+                                  ? null
+                                  : () async {
+                                      final confirmed = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: Text(s.devicesKick),
+                                          content: Text(device.label),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, false),
+                                              child: Text(s.cancel),
+                                            ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, true),
+                                              child: Text(s.devicesKick),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed != true) return;
+                                      final ok = await c.kickDevice(device.id);
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            ok
+                                                ? s.devicesKicked
+                                                : s.devicesLoadFailed,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                              child: Text(s.devicesKick),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: c.isLoadingDevices
+                            ? null
+                            : () => c.loadDevices(),
+                        child: Text(s.devicesRefresh),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -130,37 +168,53 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Future<void> _submit(VpnController controller) async {
-    await controller.submitSubscriptionLink(_contact.text);
-    if (!mounted) return;
-    final url = controller.oneTimeUrl;
-    if (url == null) return;
-    final s = controller.strings;
-    final number = controller.oneTimeNumber ?? '';
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(s.linkReadyTitle),
-        content: Text(
-          number.isEmpty ? s.linkReadyBody : '$number\n\n${s.linkReadyBody}',
+    if (_submitting || controller.isBusy || _contact.text.trim().isEmpty) {
+      return;
+    }
+    final epoch = ++_submitEpoch;
+    setState(() => _submitting = true);
+    FocusScope.of(context).unfocus();
+    try {
+      await controller.submitSubscriptionLink(_contact.text);
+      if (!mounted || epoch != _submitEpoch) return;
+      final url = controller.oneTimeUrl;
+      if (url == null) return;
+      final s = controller.strings;
+      final number = controller.oneTimeNumber ?? '';
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(s.linkReadyTitle),
+          content: Text(
+            number.isEmpty ? s.linkReadyBody : '$number\n\n${s.linkReadyBody}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+              },
+              child: Text(s.copyLink),
+            ),
+            TextButton(
+              onPressed: () {
+                controller.clearOneTimeLink();
+                Navigator.of(context).pop();
+              },
+              child: Text(s.continueLabel),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: url));
-            },
-            child: Text(s.copyLink),
-          ),
-          TextButton(
-            onPressed: () {
-              controller.clearOneTimeLink();
-              Navigator.of(context).pop();
-            },
-            child: Text(s.continueLabel),
-          ),
-        ],
-      ),
-    );
+      );
+    } catch (_) {
+      if (mounted && epoch == _submitEpoch) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(controller.strings.linkOpenFailed)),
+        );
+      }
+    } finally {
+      if (mounted && epoch == _submitEpoch) setState(() => _submitting = false);
+    }
   }
 
   Future<void> _confirmLogout(VpnController controller) async {
@@ -168,8 +222,12 @@ class _AccountScreenState extends State<AccountScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(s.removeSubscription),
-        content: Text(s.removeSubscriptionBody(controller.subscriptionName)),
+        title: Text(s.isRu ? 'Выйти из аккаунта?' : 'Sign out?'),
+        content: Text(
+          s.isRu
+              ? 'VPN отключится. Сохранённые подписки и данные аккаунта будут удалены с этого устройства. Для входа снова понадобится почта или ссылка.'
+              : 'VPN will disconnect. Saved subscriptions and account data will be removed from this device. Use your email or subscription link to sign in again.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -177,12 +235,24 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(s.remove),
+            child: Text(s.isRu ? 'Выйти' : 'Sign out'),
           ),
         ],
       ),
     );
-    if (ok == true) await controller.forgetSubscriptionLink();
+    if (ok == true) {
+      try {
+        await controller.forgetSubscriptionLink();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Не удалось завершить выход. Повторите попытку.'),
+            ),
+          );
+        }
+      }
+    }
   }
 
   void _showTraffic(VpnController controller) {
@@ -224,64 +294,60 @@ class _AccountScreenState extends State<AccountScreen> {
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
     final channel = AppBrand.current.channelUrl;
+    final s = controller.strings;
     return XplmHtmlPage(
-      title: 'Настройки',
+      title: s.isRu ? 'Профиль' : 'Profile',
       showBack: !widget.embeddedInShell,
-      action: XplmHtmlIconButton(
-        icon: Icons.settings_outlined,
-        tooltip: 'Параметры',
-        onPressed: settings,
-      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         children: [
           const _XplmProfileHeader(),
           const SizedBox(height: 25),
-          if (controller.needsLink) ...[
-            XplmHtmlButton(
-              label: 'Войти или добавить подписку',
-              onPressed: account,
+          XplmHtmlGlass(
+            child: ListTile(
+              leading: const Icon(Icons.person_outline_rounded),
+              title: Text(
+                s.isRu ? 'Аккаунт и устройства' : 'Account and devices',
+              ),
+              subtitle: Text(
+                controller.subscriptionUrl == null
+                    ? (s.isRu
+                          ? 'Войти или добавить подписку'
+                          : 'Sign in or add a subscription')
+                    : (controller.subscriptionLoadFailed
+                          ? s.accountSavedOffline
+                          : controller.subscriptionName),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: account,
             ),
-            const SizedBox(height: 16),
-          ],
+          ),
+          const SizedBox(height: 18),
           XplmHtmlGlass(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Column(
               children: [
                 _XplmMenuRow(
-                  icon: Icons.notifications_none_rounded,
-                  label: 'Уведомления',
-                  trailing: controller.appSettings.notificationsEnabled
-                      ? 'Вкл.'
-                      : 'Выкл.',
-                  onTap: () => controller.updateAppSettings(
-                    controller.appSettings.copyWith(
-                      notificationsEnabled:
-                          !controller.appSettings.notificationsEnabled,
-                    ),
-                  ),
-                ),
-                _XplmMenuRow(
-                  icon: Icons.shield_outlined,
-                  label: 'Безопасность',
+                  icon: Icons.settings_outlined,
+                  label: s.settings,
                   onTap: settings,
                 ),
                 _XplmMenuRow(
                   icon: Icons.bar_chart_rounded,
-                  label: 'Статистика трафика',
+                  label: s.isRu ? 'Статистика трафика' : 'Traffic statistics',
                   barsIcon: true,
                   onTap: () => _showTraffic(controller),
                 ),
                 _XplmMenuRow(
                   icon: Icons.headphones_rounded,
-                  label: 'Поддержка',
+                  label: s.support,
                   onTap: () => launchUrl(
                     Uri.parse('mailto:${AppBrand.current.supportEmail}'),
                   ),
                 ),
                 _XplmMenuRow(
                   icon: Icons.info_outline_rounded,
-                  label: 'О приложении',
+                  label: s.about,
                   divider: false,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
@@ -349,36 +415,6 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 45,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: XplmColors.ink,
-                backgroundColor: const Color(0x800B1A2C),
-                side: const BorderSide(color: Color(0xFF66819D)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text(
-                'Выйти',
-                style: TextStyle(fontFamily: 'XplmArial', fontSize: 14),
-              ),
-              onPressed: controller.subscriptionUrl == null
-                  ? null
-                  : () => _confirmLogout(controller),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: account,
-            child: const Text(
-              'Аккаунт и подписки',
-              style: TextStyle(fontFamily: 'XplmArial'),
-            ),
-          ),
         ],
       ),
     );
@@ -409,6 +445,22 @@ class _AccountScreenState extends State<AccountScreen> {
         kpax && account.userId.isNotEmpty && !account.userId.startsWith('u_');
 
     if (xplm && !widget.accountDetails) return _buildXplmProfile(controller);
+    if (xplm) {
+      return XplmAccountDetails(
+        controller: controller,
+        contact: _contact,
+        submitting: _submitting,
+        onSubmit: () => _submit(controller),
+        onCancelLogin: () => _cancelSubmit(controller),
+        onOpenDevices: () => _openDevices(context, controller),
+        onLogout: () => _confirmLogout(controller),
+        subscriptions: _SubscriptionList(
+          controller: controller,
+          muted: muted,
+          showHeader: !xplm,
+        ),
+      );
+    }
 
     final scaffold = Scaffold(
       backgroundColor: Colors.transparent,
@@ -442,6 +494,41 @@ class _AccountScreenState extends State<AccountScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
+          if (controller.subscriptionLoadFailed) ...[
+            _Card(
+              surface: surface,
+              border: border,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.accountSavedOffline,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    s.subscriptionNetworkFailed,
+                    style: TextStyle(color: muted, height: 1.6),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed:
+                          controller.linkState == SubscriptionLinkState.loading
+                          ? null
+                          : () => controller.reloadSubscription(),
+                      child: Text(s.retry),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           _Card(
             surface: surface,
             border: border,
@@ -557,7 +644,9 @@ class _AccountScreenState extends State<AccountScreen> {
                 Text(
                   account.hasAccess
                       ? controller.subscriptionName
-                      : s.noAccessYet,
+                      : (controller.subscriptionLoadFailed
+                            ? s.accountSavedOffline
+                            : s.noAccessYet),
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
@@ -734,10 +823,15 @@ class _AccountScreenState extends State<AccountScreen> {
 }
 
 class _SubscriptionList extends StatelessWidget {
-  const _SubscriptionList({required this.controller, required this.muted});
+  const _SubscriptionList({
+    required this.controller,
+    required this.muted,
+    this.showHeader = true,
+  });
 
   final VpnController controller;
   final Color muted;
+  final bool showHeader;
 
   Future<void> _confirmRemove(
     BuildContext context,
@@ -775,16 +869,18 @@ class _SubscriptionList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          s.mySubscriptions,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          s.mySubscriptionsHint,
-          style: TextStyle(color: muted, height: 1.45),
-        ),
-        const SizedBox(height: 8),
+        if (showHeader) ...[
+          Text(
+            s.mySubscriptions,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            s.mySubscriptionsHint,
+            style: TextStyle(color: muted, height: 1.45),
+          ),
+          const SizedBox(height: 8),
+        ],
         for (final item in controller.subscriptions)
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -793,7 +889,9 @@ class _SubscriptionList extends StatelessWidget {
                   ? Icons.radio_button_checked
                   : Icons.radio_button_unchecked,
               color: item.url == controller.subscriptionUrl
-                  ? NordColors.accent
+                  ? (AppBrand.current.isXplm
+                        ? XplmColors.cyan
+                        : NordColors.accent)
                   : muted,
             ),
             title: Text(
@@ -868,14 +966,12 @@ class _XplmMenuRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.trailing,
     this.barsIcon = false,
     this.divider = true,
   });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final String? trailing;
   final bool barsIcon;
   final bool divider;
   @override
@@ -902,11 +998,6 @@ class _XplmMenuRow extends StatelessWidget {
             ),
             const SizedBox(width: 17),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
-            if (trailing != null)
-              Text(
-                trailing!,
-                style: const TextStyle(color: Color(0xFF38A4DC), fontSize: 13),
-              ),
             const Icon(
               Icons.chevron_right_rounded,
               size: 22,
@@ -933,6 +1024,9 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final xplm = AppBrand.current.isXplm;
+    if (xplm) {
+      return XplmHtmlGlass(padding: const EdgeInsets.all(16), child: child);
+    }
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),

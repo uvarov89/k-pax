@@ -18,19 +18,27 @@ import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/settings/split_tunnel_screen.dart';
 import 'package:pulse_vpn/features/settings/windows_split_screen.dart';
 import 'package:pulse_vpn/features/settings/about_screen.dart';
+import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
+import 'xplm_security_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.securityOnly = false});
+  final bool securityOnly;
 
   @override
   Widget build(BuildContext context) {
-    final android = !kIsWeb && Platform.isAndroid;
+    final android =
+        !kIsWeb && Theme.of(context).platform == TargetPlatform.android;
+    final ios = !kIsWeb && Theme.of(context).platform == TargetPlatform.iOS;
+    final windows =
+        !kIsWeb && Theme.of(context).platform == TargetPlatform.windows;
     final controller = context.watch<VpnController>();
     final s = controller.strings;
     final settings = controller.appSettings;
     final account = controller.account;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final xplm = AppBrand.current.isXplm;
+    if (xplm && securityOnly) return const XplmSecurityScreen();
     final muted = xplm
         ? XplmColors.ink3
         : (isDark ? NordColors.textMuted : NordColors.lightTextMuted);
@@ -41,19 +49,19 @@ class SettingsScreen extends StatelessWidget {
         ? XplmColors.surface
         : (isDark ? NordColors.surface : NordColors.lightSurface);
 
-    return NordBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(s.settings),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+    final scaffold = Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(s.settings),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          onPressed: () => Navigator.of(context).pop(),
         ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          children: [
+      ),
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(xplm ? 24 : 20, 8, xplm ? 24 : 20, 24),
+        children: [
+          if (!xplm) ...[
             _SectionHeader(s.sectionPremium, first: true),
             _SettingsCard(
               surface: surface,
@@ -63,7 +71,14 @@ class SettingsScreen extends StatelessWidget {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   title: Text(s.subscription),
                   subtitle: Text(
-                    controller.hasExpiry || !account.hasAccess
+                    xplm &&
+                            controller.isKPaxSubscription &&
+                            controller.hasAccess &&
+                            !controller.hasExpiry
+                        ? (s.isRu
+                              ? 'Срок доступа уточняется'
+                              : 'Expiry not provided')
+                        : controller.hasExpiry || !account.hasAccess
                         ? '${controller.planLabel(account.plan)} · ${s.daysLeft(account.daysRemaining)}'
                         : '${controller.planLabel(account.plan)} · ${s.noExpiry}',
                     style: TextStyle(color: muted, fontSize: 13),
@@ -103,154 +118,284 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ],
             ),
-            _SectionHeader(s.sectionConnection),
+          ],
+          if (xplm) ...[
+            _SectionHeader(s.isRu ? 'Уведомления' : 'Notifications'),
             _SettingsCard(
               surface: surface,
               border: border,
               children: [
                 _SwitchRow(
-                  title: s.autoConnectLaunch,
-                  value: settings.autoConnectOnLaunch,
-                  onChanged: (v) => controller.updateAppSettings(
-                    settings.copyWith(autoConnectOnLaunch: v),
-                  ),
-                ),
-                if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) ...[
-                  _SwitchRow(
-                    title: s.autoConnectWifi,
-                    value: settings.autoConnectOnWifi,
-                    onChanged: (v) => controller.updateAppSettings(
-                      settings.copyWith(autoConnectOnWifi: v),
+                  title: s.isRu ? 'Подсказки в приложении' : 'In-app messages',
+                  subtitle: s.isRu
+                      ? 'Системное уведомление работающего VPN остаётся видимым.'
+                      : 'The running VPN system notification stays visible.',
+                  value: settings.notificationsEnabled,
+                  onChanged: (value) => controller.updateAppSettings(
+                    controller.appSettings.copyWith(
+                      notificationsEnabled: value,
                     ),
                   ),
+                ),
+              ],
+            ),
+          ],
+          _SectionHeader(
+            xplm
+                ? (s.isRu ? 'Запуск и подключение' : 'Startup and connection')
+                : s.sectionConnection,
+          ),
+          _SettingsCard(
+            surface: surface,
+            border: border,
+            children: [
+              _SwitchRow(
+                title: s.autoConnectLaunch,
+                value: settings.autoConnectOnLaunch,
+                onChanged: (v) => controller.updateAppSettings(
+                  settings.copyWith(autoConnectOnLaunch: v),
+                ),
+              ),
+              if (!kIsWeb && (android || ios || (xplm && windows))) ...[
+                _SwitchRow(
+                  title: s.autoConnectWifi,
+                  subtitle: !kIsWeb && ios
+                      ? (s.isRu
+                            ? 'Системное автоподключение после первого подключения VPN'
+                            : 'System auto-connect after the first VPN connection')
+                      : null,
+                  value: settings.autoConnectOnWifi,
+                  onChanged: (v) => controller.updateAppSettings(
+                    settings.copyWith(autoConnectOnWifi: v),
+                  ),
+                ),
+                if (android || ios)
                   _SwitchRow(
                     title: s.autoConnectMobile,
+                    subtitle: !kIsWeb && ios
+                        ? (s.isRu
+                              ? 'Системное автоподключение после первого подключения VPN'
+                              : 'System auto-connect after the first VPN connection')
+                        : null,
                     value: settings.autoConnectOnMobile,
                     onChanged: (v) => controller.updateAppSettings(
                       settings.copyWith(autoConnectOnMobile: v),
                     ),
                   ),
-                ],
-                if (!kIsWeb && Platform.isWindows)
-                  _SwitchRow(
-                    title: s.launchWithWindows,
-                    value: settings.launchAtLogin,
-                    onChanged: (v) => controller.updateAppSettings(
-                      settings.copyWith(launchAtLogin: v),
-                    ),
-                  ),
-                if (!kIsWeb && Platform.isWindows)
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    title: Text(s.splitTunneling),
-                    subtitle: Text(
-                      s.splitSubtitle(switch (settings.splitTunnelMode) {
-                        SplitTunnelMode.allApps => s.splitModeAll,
-                        SplitTunnelMode.excludeSelected => s.splitModeExclude,
-                        SplitTunnelMode.includeOnly => s.splitModeInclude,
-                      }, settings.splitTunnelPackages.length),
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                    trailing: Icon(Icons.chevron_right, color: muted),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const WindowsSplitScreen(),
-                        ),
-                      );
-                    },
-                  ),
+              ],
+              if (!kIsWeb && windows)
                 _SwitchRow(
-                  title: s.rememberLastCountry,
-                  value: settings.rememberLastCountry,
+                  title: s.launchWithWindows,
+                  value: settings.launchAtLogin,
                   onChanged: (v) => controller.updateAppSettings(
-                    settings.copyWith(rememberLastCountry: v),
+                    settings.copyWith(launchAtLogin: v),
                   ),
                 ),
-                if (android)
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    title: Text(s.splitTunneling),
-                    subtitle: Text(
-                      s.splitSubtitle(switch (settings.splitTunnelMode) {
-                        SplitTunnelMode.allApps => s.splitModeAll,
-                        SplitTunnelMode.excludeSelected => s.splitModeExclude,
-                        SplitTunnelMode.includeOnly => s.splitModeInclude,
-                      }, settings.splitTunnelPackages.length),
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                    trailing: Icon(Icons.chevron_right, color: muted),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const SplitTunnelScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                if (android)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(s.alwaysOnVpn),
-                        const SizedBox(height: 4),
-                        Text(
-                          s.alwaysOnVpnHint,
-                          style: TextStyle(
-                            color: muted,
-                            fontSize: 13,
-                            height: 1.35,
-                          ),
-                        ),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(0, 36),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: () =>
-                                _showAlwaysOnHelp(context, controller),
-                            child: Text(s.openSystemVpnSettings),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            _SectionHeader(s.proMode),
-            _SettingsCard(
-              surface: surface,
-              border: border,
-              children: [
+              if (!xplm && !kIsWeb && windows)
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  title: Text(s.openProSettings),
-                  subtitle: controller.canUseProNetworkTools
-                      ? null
-                      : Text(
-                          s.proLockedHint,
-                          style: TextStyle(color: muted, fontSize: 13),
-                        ),
+                  title: Text(s.splitTunneling),
+                  subtitle: Text(
+                    s.splitSubtitle(switch (settings.splitTunnelMode) {
+                      SplitTunnelMode.allApps => s.splitModeAll,
+                      SplitTunnelMode.excludeSelected => s.splitModeExclude,
+                      SplitTunnelMode.includeOnly => s.splitModeInclude,
+                    }, settings.splitTunnelPackages.length),
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
                   trailing: Icon(Icons.chevron_right, color: muted),
-                  onTap: () async {
-                    await controller.setUserMode(AppUserMode.pro);
-                    if (context.mounted) {
-                      await showProSettingsSheet(context);
-                    }
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const WindowsSplitScreen(),
+                      ),
+                    );
                   },
                 ),
-              ],
-            ),
-            _SectionHeader(s.sectionAppearance),
-            _SettingsCard(
-              surface: surface,
-              border: border,
-              children: [
+              _SwitchRow(
+                title: s.rememberLastCountry,
+                value: settings.rememberLastCountry,
+                onChanged: (v) => controller.updateAppSettings(
+                  settings.copyWith(rememberLastCountry: v),
+                ),
+              ),
+              if (android && !xplm)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: Text(s.splitTunneling),
+                  subtitle: Text(
+                    s.splitSubtitle(switch (settings.splitTunnelMode) {
+                      SplitTunnelMode.allApps => s.splitModeAll,
+                      SplitTunnelMode.excludeSelected => s.splitModeExclude,
+                      SplitTunnelMode.includeOnly => s.splitModeInclude,
+                    }, settings.splitTunnelPackages.length),
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: muted),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SplitTunnelScreen(),
+                      ),
+                    );
+                  },
+                ),
+              if (android && !xplm)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.alwaysOnVpn),
+                      const SizedBox(height: 4),
+                      Text(
+                        s.alwaysOnVpnHint,
+                        style: TextStyle(
+                          color: muted,
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () =>
+                              _showAlwaysOnHelp(context, controller),
+                          child: Text(s.openSystemVpnSettings),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          _SectionHeader(xplm ? s.sectionConnection : s.proMode),
+          _SettingsCard(
+            surface: surface,
+            border: border,
+            children: [
+              if (xplm && !kIsWeb && windows)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: Text(s.splitTunneling),
+                  subtitle: Text(
+                    s.splitSubtitle(switch (settings.splitTunnelMode) {
+                      SplitTunnelMode.allApps => s.splitModeAll,
+                      SplitTunnelMode.excludeSelected => s.splitModeExclude,
+                      SplitTunnelMode.includeOnly => s.splitModeInclude,
+                    }, settings.splitTunnelPackages.length),
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: muted),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const WindowsSplitScreen(),
+                      ),
+                    );
+                  },
+                ),
+              if (xplm && android)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: Text(s.splitTunneling),
+                  subtitle: Text(
+                    s.splitSubtitle(switch (settings.splitTunnelMode) {
+                      SplitTunnelMode.allApps => s.splitModeAll,
+                      SplitTunnelMode.excludeSelected => s.splitModeExclude,
+                      SplitTunnelMode.includeOnly => s.splitModeInclude,
+                    }, settings.splitTunnelPackages.length),
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: muted),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SplitTunnelScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                title: Text(
+                  xplm
+                      ? (s.isRu ? 'VPN и защита' : 'VPN and protection')
+                      : s.openProSettings,
+                ),
+                subtitle: controller.canUseProNetworkTools
+                    ? null
+                    : Text(
+                        s.proLockedHint,
+                        style: TextStyle(color: muted, fontSize: 13),
+                      ),
+                trailing: Icon(Icons.chevron_right, color: muted),
+                onTap: () async {
+                  if (xplm) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            const SettingsScreen(securityOnly: true),
+                      ),
+                    );
+                    return;
+                  }
+                  await controller.setUserMode(AppUserMode.pro);
+                  if (context.mounted) {
+                    await showProSettingsSheet(context);
+                  }
+                },
+              ),
+            ],
+          ),
+          _SectionHeader(
+            xplm
+                ? (s.isRu ? 'Приложение' : 'Application')
+                : s.sectionAppearance,
+          ),
+          _SettingsCard(
+            surface: surface,
+            border: border,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(s.language)),
+                    const SizedBox(width: 12),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<AppLanguage>(
+                        value: settings.language,
+                        isDense: true,
+                        dropdownColor: surface,
+                        items: AppLanguage.values
+                            .map(
+                              (lang) => DropdownMenuItem(
+                                value: lang,
+                                child: Text(lang.nativeName),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (lang) {
+                          if (lang == null) return;
+                          controller.updateAppSettings(
+                            settings.copyWith(language: lang),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!AppBrand.current.isXplm)
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -258,25 +403,27 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Expanded(child: Text(s.language)),
+                      Expanded(child: Text(s.theme)),
                       const SizedBox(width: 12),
                       DropdownButtonHideUnderline(
-                        child: DropdownButton<AppLanguage>(
-                          value: settings.language,
+                        child: DropdownButton<AppThemePreference>(
+                          value: settings.theme,
                           isDense: true,
                           dropdownColor: surface,
-                          items: AppLanguage.values
-                              .map(
-                                (lang) => DropdownMenuItem(
-                                  value: lang,
-                                  child: Text(lang.nativeName),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (lang) {
-                            if (lang == null) return;
+                          items: [
+                            DropdownMenuItem(
+                              value: AppThemePreference.dark,
+                              child: Text(s.themeDark),
+                            ),
+                            DropdownMenuItem(
+                              value: AppThemePreference.light,
+                              child: Text(s.themeLight),
+                            ),
+                          ],
+                          onChanged: (theme) {
+                            if (theme == null) return;
                             controller.updateAppSettings(
-                              settings.copyWith(language: lang),
+                              settings.copyWith(theme: theme),
                             );
                           },
                         ),
@@ -284,44 +431,9 @@ class SettingsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!AppBrand.current.isXplm)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(s.theme)),
-                        const SizedBox(width: 12),
-                        DropdownButtonHideUnderline(
-                          child: DropdownButton<AppThemePreference>(
-                            value: settings.theme,
-                            isDense: true,
-                            dropdownColor: surface,
-                            items: [
-                              DropdownMenuItem(
-                                value: AppThemePreference.dark,
-                                child: Text(s.themeDark),
-                              ),
-                              DropdownMenuItem(
-                                value: AppThemePreference.light,
-                                child: Text(s.themeLight),
-                              ),
-                            ],
-                            onChanged: (theme) {
-                              if (theme == null) return;
-                              controller.updateAppSettings(
-                                settings.copyWith(theme: theme),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+            ],
+          ),
+          if (!xplm) ...[
             _SectionHeader(s.sectionAbout),
             _SettingsCard(
               surface: surface,
@@ -343,7 +455,7 @@ class SettingsScreen extends StatelessWidget {
                     );
                   },
                 ),
-                if (!kIsWeb && Platform.isWindows)
+                if (!kIsWeb && windows)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                     child: Column(
@@ -368,9 +480,18 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ],
-        ),
+          if (xplm && !kIsWeb && windows) ...[
+            const SizedBox(height: 24),
+            OutlinedButton(
+              onPressed: () => _quitWindows(controller),
+              child: Text(s.quitApp),
+            ),
+          ],
+        ],
       ),
     );
+    if (xplm) return XplmHtmlPage(title: s.settings, child: scaffold.body!);
+    return NordBackground(child: scaffold);
   }
 
   Future<void> _showAlwaysOnHelp(
@@ -378,6 +499,9 @@ class SettingsScreen extends StatelessWidget {
     VpnController controller,
   ) {
     final s = controller.strings;
+    if (AppBrand.current.isXplm && !kIsWeb && Platform.isAndroid) {
+      return _openAndroidVpnSettings(context, controller);
+    }
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -391,6 +515,22 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openAndroidVpnSettings(
+    BuildContext context,
+    VpnController controller,
+  ) async {
+    try {
+      await const MethodChannel(
+        'kpax/android',
+      ).invokeMethod<bool>('openVpnSettings');
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(controller.strings.alwaysOnHelpBody)),
+      );
+    }
   }
 
   Future<void> _quitWindows(VpnController controller) async {
@@ -447,6 +587,12 @@ class _SettingsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final xplm = AppBrand.current.isXplm;
+    if (xplm) {
+      return XplmHtmlGlass(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(children: children),
+      );
+    }
     return Container(
       decoration: BoxDecoration(
         color: surface.withValues(alpha: xplm ? 0.88 : 0.92),
@@ -469,24 +615,48 @@ class _SettingsCard extends StatelessWidget {
   }
 }
 
-class _SwitchRow extends StatelessWidget {
+class _SwitchRow extends StatefulWidget {
   const _SwitchRow({
     required this.title,
     required this.value,
     required this.onChanged,
+    this.subtitle,
   });
 
   final String title;
+  final String? subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final Future<void> Function(bool) onChanged;
+
+  @override
+  State<_SwitchRow> createState() => _SwitchRowState();
+}
+
+class _SwitchRowState extends State<_SwitchRow> {
+  bool _saving = false;
+  Future<void> _change(bool value) async {
+    setState(() => _saving = true);
+    try {
+      await Future.sync(() => widget.onChanged(value));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось сохранить настройку')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return SwitchListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(title),
-      value: value,
-      onChanged: onChanged,
+      title: Text(widget.title),
+      subtitle: widget.subtitle == null ? null : Text(widget.subtitle!),
+      value: widget.value,
+      onChanged: _saving ? null : _change,
     );
   }
 }

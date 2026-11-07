@@ -277,6 +277,12 @@ class AppStrings {
   String get linkOpenFailed => isRu
       ? 'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.'
       : 'Could not reach the server. Check the internet and try again.';
+  /// Saved subscription URL exists; refresh failed (Wi‑Fi/4G blip). Not a logout.
+  String get subscriptionNetworkFailed => isRu
+      ? 'Не удалось загрузить доступ. Аккаунт сохранён. Повторите после восстановления сети.'
+      : 'Access could not be loaded. Your account is saved. Retry when the network is available.';
+  String get accountSavedOffline =>
+      isRu ? 'Аккаунт сохранён' : 'Account saved';
   String get replaceLink => isRu ? 'Заменить ссылку' : 'Replace link';
   String get serversUpdated =>
       isRu ? 'Серверы обновлены' : 'Servers updated';

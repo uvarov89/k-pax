@@ -340,6 +340,7 @@ class _XplmAccountDetailsState extends State<XplmAccountDetails> {
                 children: [
                   if (owned) ...[
                     ListTile(
+                      key: const ValueKey('account-manage'),
                       leading: const Icon(Icons.workspace_premium_outlined),
                       title: Text(s.manageSubscription),
                       subtitle: Text(s.seePlans),
@@ -348,6 +349,7 @@ class _XplmAccountDetailsState extends State<XplmAccountDetails> {
                     ),
                     const Divider(height: 1),
                     ListTile(
+                      key: const ValueKey('account-devices'),
                       leading: const Icon(Icons.devices_rounded),
                       title: Text(s.devices),
                       subtitle: Text(s.devicesHint),
@@ -368,6 +370,7 @@ class _XplmAccountDetailsState extends State<XplmAccountDetails> {
                     const Divider(height: 1),
                   ],
                   ListTile(
+                    key: const ValueKey('account-refresh'),
                     leading: const Icon(Icons.refresh_rounded),
                     title: Text(s.refreshServers),
                     subtitle: Text(s.refreshServersHint),
@@ -394,6 +397,7 @@ class _XplmAccountDetailsState extends State<XplmAccountDetails> {
           if (!showForm) ...[
             const SizedBox(height: 16),
             OutlinedButton.icon(
+              key: const ValueKey('account-add'),
               onPressed: c.isBusy ? null : () => setState(() => _adding = true),
               icon: const Icon(Icons.add_link_rounded),
               label: Text(
@@ -406,6 +410,7 @@ class _XplmAccountDetailsState extends State<XplmAccountDetails> {
           if (c.subscriptionUrl != null) ...[
             const SizedBox(height: 24),
             OutlinedButton.icon(
+              key: const ValueKey('account-logout'),
               onPressed: loading || c.isBusy ? null : widget.onLogout,
               icon: const Icon(Icons.logout_rounded),
               label: Text(s.isRu ? 'Выйти из аккаунта' : 'Sign out'),

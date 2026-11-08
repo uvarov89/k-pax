@@ -34,12 +34,18 @@ void main() {
         ChangeNotifierProvider.value(
           value: controller,
           child: MaterialApp(
-            theme: NordSignalTheme.xplmLight.copyWith(platform: TargetPlatform.windows),
+            theme: NordSignalTheme.xplmLight.copyWith(
+              platform: TargetPlatform.windows,
+            ),
             home: const SettingsScreen(),
           ),
         ),
       );
       await tester.pump();
+      final deviceSettings = find.byKey(const ValueKey('preferences-device'));
+      await tester.ensureVisible(deviceSettings);
+      await tester.tap(deviceSettings);
+      await tester.pumpAndSettle();
       final wifi = find.text(controller.strings.autoConnectWifi);
       expect(wifi, findsOneWidget);
       expect(find.text(controller.strings.autoConnectMobile), findsNothing);

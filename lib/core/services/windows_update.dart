@@ -33,11 +33,23 @@ int compareNumericVersions(String left, String right) {
 }
 
 bool isTrustedWindowsSetupUrl(Uri uri) {
-  return uri.scheme == 'https' &&
-      uri.host == 'github.com' &&
-      uri.path.startsWith('/uvarov89/k-pax/releases/download/') &&
-      uri.path.endsWith('.exe') &&
-      !uri.path.contains('..');
+  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
+  final brand = AppBrand.current;
+  // Brand-hosted redirect (no github.com/.../k-pax in the public JSON URL).
+  if (uri.host == brand.host &&
+      (uri.path == '/download/windows' || uri.path.toLowerCase().endsWith('.exe'))) {
+    return true;
+  }
+  if (uri.host != 'github.com') return false;
+  if (!uri.path.startsWith('/uvarov89/k-pax/releases/download/')) return false;
+  if (!uri.path.toLowerCase().endsWith('.exe')) return false;
+  final name = uri.pathSegments.isEmpty
+      ? ''
+      : uri.pathSegments.last.toLowerCase();
+  if (brand.isXplm) {
+    return name.startsWith('x-plm-') || name.startsWith('xplm-');
+  }
+  return name.startsWith('k-pax-');
 }
 
 enum WindowsUpdateStatus { newer, current, unavailable }

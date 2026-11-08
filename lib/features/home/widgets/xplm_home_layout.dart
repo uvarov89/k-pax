@@ -297,7 +297,7 @@ class _HomeHeader extends StatelessWidget {
               message: 'Настройки',
               child: XplmRoundIconButton(
                 onTap: onMenu,
-                icon: Icons.settings_outlined,
+                icon: Icons.menu_rounded,
               ),
             ),
           ),
@@ -351,7 +351,7 @@ class _HomeHeader extends StatelessWidget {
               message: 'Профиль',
               child: XplmRoundIconButton(
                 onTap: onBell,
-                icon: Icons.person_outline_rounded,
+                icon: Icons.notifications_none_rounded,
               ),
             ),
           ),

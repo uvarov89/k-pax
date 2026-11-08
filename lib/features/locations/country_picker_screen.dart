@@ -155,7 +155,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
     if (xplm) {
       return XplmHtmlPage(
         title: 'Серверы',
-        showBack: !widget.embeddedInShell,
+        showBack: true,
         action: XplmHtmlIconButton(
           icon: Icons.search_rounded,
           tooltip: 'Поиск серверов',

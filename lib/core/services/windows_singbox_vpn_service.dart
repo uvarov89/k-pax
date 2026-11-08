@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
@@ -32,7 +33,8 @@ class WindowsSingboxVpnService implements VpnService {
 
   Directory get _stateDir {
     final base = Platform.environment['LOCALAPPDATA'];
-    return Directory('${base ?? Directory.systemTemp.path}\\K-Pax');
+    final root = base ?? Directory.systemTemp.path;
+    return Directory('$root\\${AppBrand.current.appName}');
   }
 
   File get _pidFile => File('${_stateDir.path}\\sing-box.pid');

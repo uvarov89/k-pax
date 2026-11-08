@@ -42,7 +42,7 @@ class PaywallScreen extends StatelessWidget {
     if (xplm) {
       return XplmHtmlPage(
         title: 'Подписка',
-        showBack: !embeddedInShell,
+        showBack: true,
         child: _XplmPayBody(controller: controller),
       );
     }
@@ -337,7 +337,7 @@ class _XplmPayBody extends StatelessWidget {
               ],
             ),
             if (controller.subscriptionUrl != null) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               OutlinedButton(
                 onPressed: controller.isRefreshingServers
                     ? null

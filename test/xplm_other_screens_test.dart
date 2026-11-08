@@ -285,11 +285,11 @@ void main() {
       await tester.tap(tab('Профиль'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
-      expect(find.text('Аккаунт и устройства'), findsOneWidget);
+      expect(find.text('Уведомления'), findsOneWidget);
       await screenshot(tester, capture, 'profile-navigation', [
         'xplm_profile_logo.png',
       ]);
-      await tester.tap(find.text('Настройки'));
+      await tester.tap(find.byTooltip('Настройки приложения'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Подсказки в приложении'), findsOneWidget);
@@ -335,22 +335,22 @@ void main() {
     ]);
     await tester.tap(find.text('Азия'));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Сингапур'), findsOneWidget);
     expect(find.text('Германия'), findsNothing);
     await tester.tap(find.byTooltip('Поиск серверов'));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.enterText(find.byType(TextField), 'Фин');
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Страна не найдена'), findsOneWidget);
     await tester.tap(find.text('Все страны'));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.text('Финляндия'));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(c.selectedLocation.id, 'fi');
     await tester.drag(
       find.byWidgetPredicate(
@@ -360,10 +360,10 @@ void main() {
       const Offset(-450, 0),
     );
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.text(c.strings.auto));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(c.selectedLocation.isAuto, isTrue);
     await tester.pumpWidget(const SizedBox());
   });
@@ -421,7 +421,7 @@ void main() {
     expect(find.text('Германия'), findsNothing);
     await tester.tap(find.text('Добавить подписку'));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text(c.strings.pasteLinkTitle), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
@@ -445,16 +445,16 @@ void main() {
     await tester.ensureVisible(find.text('Оформить подписку ›'));
     await tester.tap(find.text('Оформить подписку ›'));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(launcher.urls, [AppBrand.current.payUrl]);
     c.subscriptionUrl = 'https://sub.x-plm.online/s/test';
     await show(tester, c, const PaywallScreen(embeddedInShell: true), 2);
     await tester.ensureVisible(find.text(c.strings.refreshAccess));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.text(c.strings.refreshAccess));
     await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(c.refreshes, 1);
     await tester.pumpWidget(const SizedBox());
   });
@@ -472,9 +472,15 @@ void main() {
         capture: key,
       );
       await screenshot(tester, key, 'profile', ['xplm_profile_logo.png']);
-      expect(find.text('Уведомления'), findsNothing);
-      expect(find.text('Безопасность'), findsNothing);
-      expect(find.text('Выйти'), findsNothing);
+      expect(find.text('Уведомления'), findsOneWidget);
+      expect(find.text('Безопасность'), findsOneWidget);
+      expect(find.text('Выйти'), findsOneWidget);
+      await tester.tap(find.text('Уведомления'));
+      await tester.pumpAndSettle();
+      expect(c.appSettings.notificationsEnabled, isFalse);
+      await tester.tap(find.text('Уведомления'));
+      await tester.pumpAndSettle();
+      expect(c.appSettings.notificationsEnabled, isTrue);
       await tester.tap(find.text('Статистика трафика'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
@@ -493,8 +499,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       expect(launcher.urls, contains(AppBrand.current.channelUrl));
-      await tester.ensureVisible(find.text('Аккаунт и устройства'));
-      await tester.tap(find.text('Аккаунт и устройства'));
+      final accountButton = find.ancestor(
+        of: find.text('Аккаунт и подписки'),
+        matching: find.byType(TextButton),
+      );
+      await tester.ensureVisible(accountButton);
+      await tester.pumpAndSettle();
+      await tester.tap(accountButton);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       await tester.ensureVisible(find.text('Добавить другую подписку'));
@@ -516,7 +527,12 @@ void main() {
       await tester.tap(find.text('Выйти из аккаунта'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.text('Выйти'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Выйти'),
+        ),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       expect(c.removals, 1);

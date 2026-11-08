@@ -1,6 +1,4 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
@@ -36,10 +34,6 @@ class XplmSecurityScreen extends StatelessWidget {
     final s = c.strings;
     final p = c.proSettings;
     final allowed = c.canUseProNetworkTools;
-    final android =
-        !kIsWeb && Theme.of(context).platform == TargetPlatform.android;
-    final windows =
-        !kIsWeb && Theme.of(context).platform == TargetPlatform.windows;
     Widget section(String title) => Padding(
       padding: const EdgeInsets.fromLTRB(0, 22, 0, 10),
       child: Text(
@@ -173,6 +167,7 @@ class XplmSecurityScreen extends StatelessWidget {
             child: Column(
               children: [
                 SwitchListTile(
+                  key: const ValueKey('security-dns'),
                   title: Text(s.dns),
                   subtitle: Text(
                     p.dnsAutomatic ? s.dnsThroughTunnel : s.dnsComputer,
@@ -189,6 +184,7 @@ class XplmSecurityScreen extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
+                  key: const ValueKey('security-fallback'),
                   title: Text(s.protocolFallback),
                   subtitle: Text(s.protocolFallbackHint),
                   value: p.protocolFallback,
@@ -225,6 +221,7 @@ class XplmSecurityScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<ReconnectPolicy>(
+                key: const ValueKey('security-reconnect'),
                 value: p.reconnectPolicy,
                 isExpanded: true,
                 dropdownColor: XplmColors.surface,
@@ -250,53 +247,13 @@ class XplmSecurityScreen extends StatelessWidget {
               ),
             ),
           ),
-          if (windows) ...[
-            const SizedBox(height: 12),
-            XplmHtmlGlass(
-              child: SwitchListTile(
-                title: Text(s.killSwitch),
-                subtitle: Text(s.killSwitchHint),
-                value: p.killSwitch,
-                onChanged: !allowed
-                    ? null
-                    : (value) => _save(
-                        context,
-                        () => c.updateProSettings(
-                          c.proSettings.copyWith(killSwitch: value),
-                        ),
-                      ),
-              ),
-            ),
-          ],
-          if (android) ...[
-            const SizedBox(height: 12),
-            XplmHtmlGlass(
-              child: ListTile(
-                title: Text(s.alwaysOnVpn),
-                subtitle: Text(s.alwaysOnVpnHint),
-                trailing: const Icon(Icons.open_in_new_rounded),
-                onTap: () async {
-                  try {
-                    await const MethodChannel(
-                      'kpax/android',
-                    ).invokeMethod<bool>('openVpnSettings');
-                  } catch (_) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(s.alwaysOnHelpBody)),
-                      );
-                    }
-                  }
-                },
-              ),
-            ),
-          ],
           section(s.isRu ? 'Диагностика соединения' : 'Connection diagnostics'),
           XplmHtmlGlass(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
                 XplmHtmlButton(
+                  key: const ValueKey('security-probe'),
                   label: (monitor?.isMeasuring ?? c.isProbing)
                       ? s.testingNodes
                       : s.testNodes,

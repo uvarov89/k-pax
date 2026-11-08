@@ -1,3 +1,4 @@
+import 'xplm_preferences_screen.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,12 @@ class SettingsScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final xplm = AppBrand.current.isXplm;
     if (xplm && securityOnly) return const XplmSecurityScreen();
+    if (xplm) {
+      return XplmPreferencesScreen(
+        onOpenAndroidVpn: () => _openAndroidVpnSettings(context, controller),
+        onQuit: () => _quitWindows(controller),
+      );
+    }
     final muted = xplm
         ? XplmColors.ink3
         : (isDark ? NordColors.textMuted : NordColors.lightTextMuted);

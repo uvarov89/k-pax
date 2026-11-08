@@ -295,50 +295,63 @@ class _AccountScreenState extends State<AccountScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
     final channel = AppBrand.current.channelUrl;
     final s = controller.strings;
+    final notifications = controller.appSettings.notificationsEnabled;
     return XplmHtmlPage(
-      title: s.isRu ? 'Профиль' : 'Profile',
+      title: s.settings,
       showBack: !widget.embeddedInShell,
+      action: XplmHtmlIconButton(
+        key: const ValueKey('profile-settings'),
+        icon: Icons.settings_outlined,
+        tooltip: s.isRu ? 'Настройки приложения' : 'Application settings',
+        onPressed: settings,
+      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         children: [
           const _XplmProfileHeader(),
           const SizedBox(height: 25),
           XplmHtmlGlass(
-            child: ListTile(
-              leading: const Icon(Icons.person_outline_rounded),
-              title: Text(
-                s.isRu ? 'Аккаунт и устройства' : 'Account and devices',
-              ),
-              subtitle: Text(
-                controller.subscriptionUrl == null
-                    ? (s.isRu
-                          ? 'Войти или добавить подписку'
-                          : 'Sign in or add a subscription')
-                    : (controller.subscriptionLoadFailed
-                          ? s.accountSavedOffline
-                          : controller.subscriptionName),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: account,
-            ),
-          ),
-          const SizedBox(height: 18),
-          XplmHtmlGlass(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Column(
               children: [
                 _XplmMenuRow(
-                  icon: Icons.settings_outlined,
-                  label: s.settings,
-                  onTap: settings,
+                  key: const ValueKey('profile-notifications'),
+                  icon: Icons.notifications_none_rounded,
+                  label: s.isRu ? 'Уведомления' : 'Notifications',
+                  trailing: Text(
+                    notifications
+                        ? (s.isRu ? 'Вкл.' : 'On')
+                        : (s.isRu ? 'Выкл.' : 'Off'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF00BAFF),
+                    ),
+                  ),
+                  onTap: () => controller.updateAppSettings(
+                    controller.appSettings.copyWith(
+                      notificationsEnabled: !notifications,
+                    ),
+                  ),
                 ),
                 _XplmMenuRow(
+                  key: const ValueKey('profile-security'),
+                  icon: Icons.shield_outlined,
+                  label: s.isRu ? 'Безопасность' : 'Security',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SettingsScreen(securityOnly: true),
+                    ),
+                  ),
+                ),
+                _XplmMenuRow(
+                  key: const ValueKey('profile-traffic'),
                   icon: Icons.bar_chart_rounded,
                   label: s.isRu ? 'Статистика трафика' : 'Traffic statistics',
                   barsIcon: true,
                   onTap: () => _showTraffic(controller),
                 ),
                 _XplmMenuRow(
+                  key: const ValueKey('profile-support'),
                   icon: Icons.headphones_rounded,
                   label: s.support,
                   onTap: () => launchUrl(
@@ -346,6 +359,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 ),
                 _XplmMenuRow(
+                  key: const ValueKey('profile-about'),
                   icon: Icons.info_outline_rounded,
                   label: s.about,
                   divider: false,
@@ -415,6 +429,42 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            key: const ValueKey('profile-logout'),
+            onPressed: controller.isBusy
+                ? null
+                : () => _confirmLogout(controller),
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: Text(s.isRu ? 'Выйти' : 'Sign out'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFEEF6FF),
+              backgroundColor: const Color(0xFF061525),
+              side: const BorderSide(color: Color(0xFF637E99)),
+              minimumSize: const Size.fromHeight(44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+            ),
+          ),
+          const SizedBox(height: 9),
+          TextButton(
+            key: const ValueKey('profile-account'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontFamily: 'XplmArial',
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            onPressed: account,
+            child: Text(
+              s.isRu ? 'Аккаунт и подписки' : 'Account and subscriptions',
+            ),
+          ),
         ],
       ),
     );
@@ -963,17 +1013,20 @@ class _XplmProfileHeader extends StatelessWidget {
 
 class _XplmMenuRow extends StatelessWidget {
   const _XplmMenuRow({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
     this.barsIcon = false,
     this.divider = true,
+    this.trailing,
   });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool barsIcon;
   final bool divider;
+  final Widget? trailing;
   @override
   Widget build(BuildContext context) => Material(
     color: Colors.transparent,
@@ -998,6 +1051,7 @@ class _XplmMenuRow extends StatelessWidget {
             ),
             const SizedBox(width: 17),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+            ?trailing,
             const Icon(
               Icons.chevron_right_rounded,
               size: 22,

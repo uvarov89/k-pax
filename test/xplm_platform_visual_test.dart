@@ -1,4 +1,5 @@
 import 'package:pulse_vpn/features/home/onboarding_screen.dart';
+import 'package:pulse_vpn/features/settings/about_screen.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -28,7 +29,7 @@ import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 
 class _VisualController extends VpnController {
   _VisualController() : super(service: MockVpnService()) {
-    subscriptionUrl = 'https://x-plm.online/sub/demo';
+    subscriptionUrl = 'https://sub.x-plm.online/s/test-token-1234567890';
     linkState = SubscriptionLinkState.ready;
     account = UserAccount.freshTrial().copyWith(
       accessExpiresAt: DateTime(2100, 12, 25),
@@ -54,13 +55,38 @@ class _VisualController extends VpnController {
       id: 'fi',
       countryCode: 'FI',
       nameRu: 'Финляндия',
-      latencyMs: 62,
+      latencyMs: 34,
     ),
     ServerLocation(
       id: 'bg',
       countryCode: 'BG',
       nameRu: 'Болгария',
-      latencyMs: 170,
+      latencyMs: 42,
+    ),
+    ServerLocation(
+      id: 'fr',
+      countryCode: 'FR',
+      nameRu: 'Франция',
+      latencyMs: 48,
+    ),
+    ServerLocation(
+      id: 'nl',
+      countryCode: 'NL',
+      nameRu: 'Нидерланды',
+      latencyMs: 52,
+    ),
+    ServerLocation(id: 'us', countryCode: 'US', nameRu: 'США', latencyMs: 76),
+    ServerLocation(
+      id: 'gb',
+      countryCode: 'GB',
+      nameRu: 'Великобритания',
+      latencyMs: 80,
+    ),
+    ServerLocation(
+      id: 'sg',
+      countryCode: 'SG',
+      nameRu: 'Сингапур',
+      latencyMs: 112,
     ),
   ];
 }
@@ -87,11 +113,15 @@ void main() {
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    final buildVersion = RegExp(
+      r'^version:\s*([^+\r\n]+)\+(\d+)',
+      multiLine: true,
+    ).firstMatch(File('pubspec.yaml').readAsStringSync())!;
     PackageInfo.setMockInitialValues(
       appName: 'X-Plm',
       packageName: 'online.xplm.app',
-      version: '1.0.45',
-      buildNumber: '47',
+      version: buildVersion[1]!,
+      buildNumber: buildVersion[2]!,
       buildSignature: '',
     );
   });
@@ -109,7 +139,11 @@ void main() {
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    for (final platform in [TargetPlatform.android, TargetPlatform.windows]) {
+    for (final platform in [
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+      TargetPlatform.windows,
+    ]) {
       debugDefaultTargetPlatformOverride = platform;
       for (final name in [
         'intro',
@@ -122,6 +156,7 @@ void main() {
         'account',
         'settings',
         'security',
+        'about',
       ]) {
         SharedPreferences.setMockInitialValues({'onboarding_seen': true});
         final c = _VisualController();
@@ -146,12 +181,13 @@ void main() {
             embeddedInShell: true,
           ),
           'settings' => const SettingsScreen(),
+          'about' => const AboutScreen(),
           _ => const XplmSecurityScreen(),
         };
         final tab = switch (name) {
           'servers' => 1,
           'subscription' => 2,
-          'profile' || 'account' || 'settings' || 'security' => 3,
+          'profile' || 'account' || 'settings' || 'security' || 'about' => 3,
           _ => 0,
         };
         await tester.pumpWidget(
@@ -164,6 +200,7 @@ void main() {
                 data: const MediaQueryData(
                   size: Size(390, 844),
                   disableAnimations: true,
+                  padding: EdgeInsets.only(top: 44),
                 ),
                 child: RepaintBoundary(
                   key: key,
@@ -190,9 +227,15 @@ void main() {
           'xplm_subscription_earth.png',
           'xplm_gift.png',
           'xplm_profile_logo.png',
+          'xplm_logo.png',
           'xplm_flags/de.png',
           'xplm_flags/fi.png',
           'xplm_flags/bg.png',
+          'xplm_flags/fr.png',
+          'xplm_flags/nl.png',
+          'xplm_flags/us.png',
+          'xplm_flags/gb.png',
+          'xplm_flags/sg.png',
         ]) {
           await tester.runAsync(
             () => precacheImage(

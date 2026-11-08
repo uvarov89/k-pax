@@ -229,11 +229,23 @@ class _HtmlNavIcon extends CustomPainter {
           ..lineTo(19, 17);
       default:
         path
-          ..addOval(const Rect.fromLTWH(8, 3, 8, 8))
-          ..moveTo(4, 21)
-          ..lineTo(4, 19)
-          ..cubicTo(4, 12, 20, 12, 20, 19)
-          ..lineTo(20, 21);
+          ..moveTo(9, 3)
+          ..lineTo(15, 3)
+          ..lineTo(16, 6)
+          ..lineTo(19, 7)
+          ..lineTo(21, 12)
+          ..lineTo(19, 14)
+          ..lineTo(19, 18)
+          ..lineTo(15, 21)
+          ..lineTo(12, 20)
+          ..lineTo(9, 21)
+          ..lineTo(5, 18)
+          ..lineTo(5, 14)
+          ..lineTo(3, 12)
+          ..lineTo(5, 7)
+          ..lineTo(8, 6)
+          ..close()
+          ..addOval(const Rect.fromLTWH(9, 9, 6, 6));
     }
     final paint = Paint()
       ..style = PaintingStyle.stroke

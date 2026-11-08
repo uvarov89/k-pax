@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/services/windows_update.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -11,13 +12,18 @@ import 'package:pulse_vpn/core/state/vpn_controller.dart';
 var _checking = false;
 
 Future<File?> _downloadSetup(Uri url) async {
-  final file = File('${Directory.systemTemp.path}\\K-Pax-Setup-update.exe');
+  final brand = AppBrand.current;
+  final setupName =
+      brand.isXplm ? 'X-Plm-Setup-update.exe' : 'K-Pax-Setup-update.exe';
+  final file = File('${Directory.systemTemp.path}\\$setupName');
   final client = HttpClient()..autoUncompress = true;
   try {
-    final request = await client.getUrl(url).timeout(const Duration(seconds: 20));
+    final request = await client
+        .getUrl(url)
+        .timeout(const Duration(seconds: 20));
     request.followRedirects = true;
     request.maxRedirects = 8;
-    request.headers.set(HttpHeaders.userAgentHeader, 'K-Pax');
+    request.headers.set(HttpHeaders.userAgentHeader, brand.appName);
     final response = await request.close().timeout(const Duration(minutes: 5));
     if (response.statusCode != 200) return null;
     final sink = file.openWrite();
@@ -37,10 +43,9 @@ Future<File?> _downloadSetup(Uri url) async {
 
 Future<bool> _applySetup(File file) async {
   try {
-    await const MethodChannel('kpax/window').invokeMethod<void>(
-      'launchInstaller',
-      file.path,
-    );
+    await const MethodChannel(
+      'kpax/window',
+    ).invokeMethod<void>('launchInstaller', file.path);
     await const MethodChannel('kpax/window').invokeMethod<void>('quit');
     return true;
   } catch (_) {
@@ -96,7 +101,9 @@ Future<void> checkForWindowsUpdate(
           final file = await _downloadSetup(release.url);
           if (!context.mounted) return;
           if (file == null) {
-            messenger?.showSnackBar(SnackBar(content: Text(s.updateApplyFailed)));
+            messenger?.showSnackBar(
+              SnackBar(content: Text(s.updateApplyFailed)),
+            );
             break;
           }
           final controller = context.read<VpnController>();
@@ -106,7 +113,9 @@ Future<void> checkForWindowsUpdate(
           }
           final started = await _applySetup(file);
           if (!started) {
-            messenger?.showSnackBar(SnackBar(content: Text(s.updateApplyFailed)));
+            messenger?.showSnackBar(
+              SnackBar(content: Text(s.updateApplyFailed)),
+            );
           }
         }
         break;

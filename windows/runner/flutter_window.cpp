@@ -71,7 +71,12 @@ bool FlutterWindow::OnCreate() {
                                  ? nullptr
                                  : std::get_if<std::string>(call.arguments());
           if (path == nullptr ||
-              path->find("K-Pax-Setup-update.exe") == std::string::npos) {
+#ifdef APP_BRAND_XPLM
+              path->find("X-Plm-Setup-update.exe") == std::string::npos
+#else
+              path->find("K-Pax-Setup-update.exe") == std::string::npos
+#endif
+          ) {
             result->Error("bad_path", "installer path rejected");
             return;
           }
@@ -94,7 +99,7 @@ bool FlutterWindow::OnCreate() {
           startup.wShowWindow = SW_HIDE;
           PROCESS_INFORMATION process{};
           // The installer must leave the app job. Otherwise it is killed when
-          // K-Pax exits, and the update stops with no window left.
+          // the app exits, and the update stops with no window left.
           if (!CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr,
                               FALSE,
                               CREATE_BREAKAWAY_FROM_JOB |
@@ -163,7 +168,11 @@ void FlutterWindow::AddTrayIcon() {
       GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON), IMAGE_ICON,
       GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
       LR_DEFAULTCOLOR));
+#ifdef APP_BRAND_XPLM
+  wcscpy_s(tray_.szTip, sizeof(tray_.szTip) / sizeof(tray_.szTip[0]), L"X-Plm");
+#else
   wcscpy_s(tray_.szTip, sizeof(tray_.szTip) / sizeof(tray_.szTip[0]), L"K-Pax");
+#endif
   if (Shell_NotifyIconW(NIM_ADD, &tray_)) {
     tray_added_ = true;
   }

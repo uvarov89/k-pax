@@ -5,25 +5,30 @@ import 'package:pulse_vpn/app/brand/app_brand.dart';
 
 /// Removes a leftover outbound block and can put it back if the tunnel drops.
 class WindowsFirewall {
-  static const _block = 'K-Pax-KillSwitch';
-  static const _allow = 'K-Pax-KillSwitch-App';
+  static String get _block =>
+      AppBrand.current.isXplm ? 'X-Plm-KillSwitch' : 'K-Pax-KillSwitch';
+  static String get _allow =>
+      AppBrand.current.isXplm ? 'X-Plm-KillSwitch-App' : 'K-Pax-KillSwitch-App';
 
   static Future<void> clear() async {
     if (kIsWeb || !Platform.isWindows) return;
-    await Process.run('netsh', [
-      'advfirewall',
-      'firewall',
-      'delete',
-      'rule',
-      'name=$_block',
-    ]);
-    await Process.run('netsh', [
-      'advfirewall',
-      'firewall',
-      'delete',
-      'rule',
-      'name=$_allow',
-    ]);
+    // Drop both brand rule names so white-label leftovers do not stick around.
+    for (final name in [
+      _block,
+      _allow,
+      'K-Pax-KillSwitch',
+      'K-Pax-KillSwitch-App',
+      'X-Plm-KillSwitch',
+      'X-Plm-KillSwitch-App',
+    ]) {
+      await Process.run('netsh', [
+        'advfirewall',
+        'firewall',
+        'delete',
+        'rule',
+        'name=$name',
+      ]);
+    }
   }
 
   static Future<void> blockOutboundExceptApp() async {

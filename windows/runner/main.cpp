@@ -71,6 +71,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(80, 40);
   Win32Window::Size size(440, 760);
+#ifdef APP_BRAND_XPLM
+  // Match the reference client canvas, adding native window chrome separately.
+  RECT reference_bounds = {0, 0, 390, 844};
+  ::AdjustWindowRectEx(&reference_bounds,
+      WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE, 0);
+  size = Win32Window::Size(reference_bounds.right - reference_bounds.left,
+                          reference_bounds.bottom - reference_bounds.top);
+  RECT work_area = {};
+  if (::SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0)) {
+    const double scale = static_cast<double>(::GetDpiForSystem()) / 96.0;
+    const unsigned int available_height = static_cast<unsigned int>(
+        (work_area.bottom - work_area.top - 16) / scale);
+    if (size.height > available_height) size.height = available_height;
+  }
+#endif
   if (!window.Create(kWindowTitle, origin, size)) {
     return EXIT_FAILURE;
   }

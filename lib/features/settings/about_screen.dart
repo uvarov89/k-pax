@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -149,12 +148,37 @@ class AboutScreen extends StatelessWidget {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                if (!kIsWeb && (Platform.isWindows || Platform.isAndroid))
+                if (AppBrand.current.isXplm ||
+                    (!kIsWeb && (Platform.isWindows || Platform.isAndroid)))
                   _AboutLink(
+                    key: const ValueKey('about-update'),
                     title: s.checkUpdates,
-                    onTap: () => checkForAppUpdate(context, manual: true),
+                    onTap: () {
+                      if (Theme.of(context).platform == TargetPlatform.iOS) {
+                        showDialog<void>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(s.checkUpdates),
+                            content: Text(
+                              s.isRu
+                                  ? 'Проверьте обновление X-Plm в App Store или TestFlight, откуда установлено приложение.'
+                                  : 'Check for an X-Plm update in the App Store or TestFlight used to install the app.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text(s.gotIt),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        checkForAppUpdate(context, manual: true);
+                      }
+                    },
                   ),
                 _AboutLink(
+                  key: const ValueKey('about-site'),
                   title: s.aboutOpenSite,
                   subtitle: AppBrand.current.host,
                   onTap: () => launchUrl(
@@ -163,6 +187,7 @@ class AboutScreen extends StatelessWidget {
                   ),
                 ),
                 _AboutLink(
+                  key: const ValueKey('about-terms'),
                   title: s.terms,
                   subtitle: '${AppBrand.current.host}/terms',
                   onTap: () => launchUrl(
@@ -171,6 +196,7 @@ class AboutScreen extends StatelessWidget {
                   ),
                 ),
                 _AboutLink(
+                  key: const ValueKey('about-privacy'),
                   title: s.privacy,
                   subtitle: '${AppBrand.current.host}/privacy',
                   onTap: () => launchUrl(
@@ -179,6 +205,7 @@ class AboutScreen extends StatelessWidget {
                   ),
                 ),
                 _AboutLink(
+                  key: const ValueKey('about-support'),
                   title: s.support,
                   subtitle: s.supportSoon,
                   onTap: () {
@@ -234,6 +261,7 @@ class _AboutPanel extends StatelessWidget {
 
 class _AboutLink extends StatelessWidget {
   const _AboutLink({
+    super.key,
     required this.title,
     required this.onTap,
     this.subtitle,

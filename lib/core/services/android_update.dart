@@ -15,10 +15,14 @@ class AndroidRelease {
 
 bool isTrustedAndroidApkUrl(Uri uri) {
   if (uri.scheme != 'https' || uri.path.contains('..')) return false;
-  final lower = uri.path.toLowerCase();
-  if (!lower.endsWith('.apk')) return false;
   final brand = AppBrand.current;
-  if (uri.host == brand.host) return true;
+  final lower = uri.path.toLowerCase();
+  // Brand-hosted redirect (no github.com/.../k-pax in the public JSON URL).
+  if (uri.host == brand.host) {
+    if (uri.path == '/download/android' || lower.endsWith('.apk')) return true;
+    return false;
+  }
+  if (!lower.endsWith('.apk')) return false;
   if (uri.host != 'github.com') return false;
   if (!uri.path.startsWith('/uvarov89/k-pax/releases/download/')) {
     return false;

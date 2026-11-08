@@ -144,7 +144,9 @@ class _PulseAppState extends State<PulseApp> {
             child: brand.isXplm
                 ? XplmPingScope(
                     controller: widget.controller,
-                    child: child ?? const SizedBox.shrink(),
+                    child: XplmReferenceViewport(
+                      child: child ?? const SizedBox.shrink(),
+                    ),
                   )
                 : child ?? const SizedBox.shrink(),
           );
@@ -165,4 +167,35 @@ class XplmScrollBehavior extends MaterialScrollBehavior {
     Widget child,
     ScrollableDetails details,
   ) => child;
+}
+
+/// Reference phone canvas for the Windows edition. Android keeps its real safe area.
+class XplmReferenceViewport extends StatelessWidget {
+  const XplmReferenceViewport({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if (Theme.of(context).platform != TargetPlatform.windows) return child;
+    final media = MediaQuery.of(context);
+    return ColoredBox(
+      color: const Color(0xFF010D1E),
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 390,
+            height: 844,
+            child: MediaQuery(
+              data: media.copyWith(
+                size: const Size(390, 844),
+                padding: const EdgeInsets.only(top: 44),
+                viewPadding: const EdgeInsets.only(top: 44),
+              ),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

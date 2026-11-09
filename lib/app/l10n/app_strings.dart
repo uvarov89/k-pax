@@ -81,16 +81,14 @@ class AppStrings {
   String get auto => isRu ? 'Автовыбор' : 'Auto';
   String get country => isRu ? 'Страна' : 'Country';
   String get bestServerAuto => isRu
-      ? 'Сам выбирает сервер и тип подключения'
-      : 'Picks the server and the connection type';
+      ? 'Сам выбирает сервер, путь и запасной вход, чтобы интернет работал'
+      : 'Picks the server, path and backup route so the internet works';
   String selected(String name) => isRu ? 'Выбрано: $name' : 'Selected: $name';
   String get openProSettings =>
       isRu ? 'Параметры соединения' : 'Connection options';
   String get location => isRu ? 'Локация' : 'Location';
   String get recommended => isRu ? 'рекомендуется' : 'recommended';
-  String get bestSpeedAuto => isRu
-      ? 'Лучшая скорость автоматически'
-      : 'Best speed automatically';
+  String get bestSpeedAuto => bestServerAuto;
   String get proMode => isRu ? 'Соединение' : 'Connection';
   String get protocol => isRu ? 'Протокол' : 'Protocol';
   String get networkBypass => isRu ? 'Обход сети' : 'Network bypass';

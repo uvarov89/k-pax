@@ -352,16 +352,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(c.selectedLocation.id, 'fi');
-    await tester.drag(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is ListView && widget.scrollDirection == Axis.horizontal,
-      ),
-      const Offset(-450, 0),
-    );
+    // Clear search so the pinned Auto row is visible again.
+    await tester.enterText(find.byType(TextField), '');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    await tester.tap(find.text(c.strings.auto));
+    await tester.ensureVisible(find.byKey(const ValueKey('server-auto')));
+    await tester.tap(find.byKey(const ValueKey('server-auto')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(c.selectedLocation.isAuto, isTrue);

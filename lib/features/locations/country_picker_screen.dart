@@ -143,14 +143,23 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                 ),
         )
         .toList();
-    final locations =
-        (xplm ? source.where((l) => !l.isAuto && _matches(l)) : source).where((
-          l,
-        ) {
-          if (q.isEmpty) return true;
-          return l.nameRu.toLowerCase().contains(q) ||
-              l.countryCode.toLowerCase().contains(q);
-        }).toList();
+    bool matchesSearch(ServerLocation l) {
+      if (q.isEmpty) return true;
+      return l.nameRu.toLowerCase().contains(q) ||
+          l.countryCode.toLowerCase().contains(q);
+    }
+
+    final countryRows = source
+        .where((l) => !l.isAuto && (!xplm || _matches(l)) && matchesSearch(l))
+        .toList();
+    // X-Plm: Auto is a pinned first row (not a region chip). K-Pax keeps Auto in the list.
+    final showPinnedAuto = xplm && _chip == _RegionChip.all && q.isEmpty;
+    final locations = xplm
+        ? [
+            if (showPinnedAuto) ServerLocation.auto,
+            ...countryRows,
+          ]
+        : source.where(matchesSearch).toList();
 
     if (xplm) {
       return XplmHtmlPage(
@@ -196,12 +205,6 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                               onTap: () => setState(() => _chip = entry.$1),
                             ),
                           ),
-                        _CodexChip(
-                          label: s.auto,
-                          selected: selectedId == ServerLocation.auto.id,
-                          onTap: () =>
-                              controller.selectLocation(ServerLocation.auto),
-                        ),
                       ],
                     ),
                   ),
@@ -283,13 +286,16 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                           itemBuilder: (context, index) {
                             final server = locations[index];
                             return _CodexServerRow(
+                              key: ValueKey('server-${server.id}'),
                               server: server,
                               measuring:
                                   livePings != null &&
+                                  !server.isAuto &&
                                   livePings.pingFor(server.id) == null &&
                                   livePings.isPending(server.id),
                               selected: server.id == selectedId,
                               autoLabel: s.auto,
+                              autoSubtitle: s.bestServerAuto,
                               onTap: () {
                                 controller.selectLocation(server);
                                 if (!widget.embeddedInShell &&
@@ -336,6 +342,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                       final selected = server.id == selectedId;
                       final radius = BorderRadius.circular(12);
                       return Material(
+                        key: ValueKey('server-${server.id}'),
                         color: selected
                             ? elevated
                             : surface.withValues(alpha: 0.65),
@@ -375,7 +382,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                                       ),
                                       if (server.isAuto)
                                         Text(
-                                          s.bestSpeedAuto,
+                                          s.bestServerAuto,
                                           style: TextStyle(
                                             color: muted,
                                             fontSize: 12,
@@ -524,9 +531,11 @@ class _CodexChip extends StatelessWidget {
 
 class _CodexServerRow extends StatelessWidget {
   const _CodexServerRow({
+    super.key,
     required this.server,
     required this.selected,
     required this.autoLabel,
+    required this.autoSubtitle,
     required this.onTap,
     this.measuring = false,
   });
@@ -534,6 +543,7 @@ class _CodexServerRow extends StatelessWidget {
   final bool selected;
   final bool measuring;
   final String autoLabel;
+  final String autoSubtitle;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Container(
@@ -564,7 +574,18 @@ class _CodexServerRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
             child: Row(
               children: [
-                XplmHtmlFlag(code: server.countryCode),
+                if (server.isAuto)
+                  const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Color(0xFF06416A),
+                    child: Icon(
+                      Icons.public_rounded,
+                      size: 20,
+                      color: Color(0xFF30BAFF),
+                    ),
+                  )
+                else
+                  XplmHtmlFlag(code: server.countryCode),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -578,24 +599,24 @@ class _CodexServerRow extends StatelessWidget {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      if (!server.isAuto) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          measuring
-                              ? 'Пинг: …'
-                              : server.latencyMs >= 0
-                              ? '${server.latencyMs} ms'
-                              : 'Пинг: —',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF91A5BF),
-                          ),
+                      const SizedBox(height: 3),
+                      Text(
+                        server.isAuto
+                            ? autoSubtitle
+                            : measuring
+                            ? 'Пинг: …'
+                            : server.latencyMs >= 0
+                            ? '${server.latencyMs} ms'
+                            : 'Пинг: —',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF91A5BF),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
-                XplmSignalBars(latencyMs: server.latencyMs),
+                if (!server.isAuto) XplmSignalBars(latencyMs: server.latencyMs),
                 const SizedBox(width: 12),
                 if (selected)
                   Container(

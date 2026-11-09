@@ -26,13 +26,17 @@ class VpnController extends ChangeNotifier {
     VpnService? service,
     SettingsRepository? repository,
     SubscriptionClient? subscriptions,
+    Future<int?> Function(String host, int port)? tcpProbe,
   }) : _service = service ?? defaultVpnService(),
        _repository = repository ?? SettingsRepository(),
-       _subscriptions = subscriptions ?? SubscriptionClient();
+       _subscriptions = subscriptions ?? SubscriptionClient(),
+       _tcpProbe = tcpProbe;
 
   final VpnService _service;
   final SettingsRepository _repository;
   final SubscriptionClient _subscriptions;
+  /// Optional TCP RTT probe override (tests). Null → [measureTcp].
+  final Future<int?> Function(String host, int port)? _tcpProbe;
   int _loginEpoch = 0;
   bool _disposed = false;
   (int, String)? _pollingLogin;
@@ -398,31 +402,8 @@ class VpnController extends ChangeNotifier {
     }
 
     try {
-      var node = lastNode;
-      node ??= await _selectNode();
-      try {
-        await _start(node);
-      } catch (_) {
-        if (!proSettings.protocolFallback) rethrow;
-        final tried = {_endpointKey(node)};
-        var spare = _spareFor(node, tried);
-        var started = false;
-        while (spare != null) {
-          tried.add(_endpointKey(spare));
-          try {
-            await _service.disconnect();
-          } catch (_) {}
-          try {
-            await _start(spare);
-            node = spare;
-            started = true;
-            break;
-          } catch (_) {
-            spare = _spareFor(spare, tried);
-          }
-        }
-        if (!started) rethrow;
-      }
+      final seed = lastNode ?? await _selectNode();
+      final node = await _startWithFailover(seed);
       await WindowsFirewall.clear();
       connectedNode = node;
       connectionState = VpnConnectionState.connected;
@@ -1139,25 +1120,96 @@ class VpnController extends ChangeNotifier {
     return [forced, ...chain.where((kind) => kind != forced)];
   }
 
-  Future<TunnelNode> _selectNode() async {
+  bool get _isAutoMode =>
+      locationMode == LocationMode.auto || selectedLocation.isAuto;
+
+  Future<TunnelNode> _selectNode({
+    Set<String>? excludeCountryIds,
+    Set<String>? excludeEndpoints,
+  }) async {
     final nodes = profile?.nodes ?? const <TunnelNode>[];
-    final countryId =
-        locationMode == LocationMode.auto || selectedLocation.isAuto
-        ? null
-        : selectedLocation.id;
+    final countryId = _isAutoMode ? null : selectedLocation.id;
     final order = _kindOrder();
-    final pool = nodes
-        .where(
-          (node) =>
-              (countryId == null || node.countryId == countryId) &&
-              order.contains(node.kind),
-        )
-        .toList();
+    final pool = nodes.where((node) {
+      if (countryId != null && node.countryId != countryId) return false;
+      if (excludeCountryIds != null &&
+          excludeCountryIds.contains(node.countryId)) {
+        return false;
+      }
+      if (excludeEndpoints != null &&
+          excludeEndpoints.contains(_endpointKey(node))) {
+        return false;
+      }
+      return order.contains(node.kind);
+    }).toList();
     if (pool.isEmpty) {
       throw StateError('no node');
     }
     // Spread load across near-best countries only in Автовыбор (not manual country).
     return _autoServerAndType(pool, order, spreadLoad: countryId == null);
+  }
+
+  /// Start [first], then same-country spares. In Auto only, keep picking other
+  /// countries until the pool is exhausted.
+  Future<TunnelNode> _startWithFailover(TunnelNode first) async {
+    final tried = <String>{};
+    final triedCountries = <String>{first.countryId};
+    Object? lastError;
+
+    Future<TunnelNode?> tryStart(TunnelNode node, {bool disconnectFirst = false}) async {
+      tried.add(_endpointKey(node));
+      triedCountries.add(node.countryId);
+      if (disconnectFirst) {
+        try {
+          await _service.disconnect();
+        } catch (_) {}
+      }
+      try {
+        await _start(node);
+        return node;
+      } catch (e) {
+        lastError = e;
+        return null;
+      }
+    }
+
+    Future<TunnelNode?> trySpares(TunnelNode from) async {
+      if (!proSettings.protocolFallback) return null;
+      var spare = _spareFor(from, tried);
+      while (spare != null) {
+        final ok = await tryStart(spare, disconnectFirst: true);
+        if (ok != null) return ok;
+        spare = _spareFor(spare, tried);
+      }
+      return null;
+    }
+
+    final primary = await tryStart(first);
+    if (primary != null) return primary;
+
+    final spareOk = await trySpares(first);
+    if (spareOk != null) return spareOk;
+
+    if (!_isAutoMode) {
+      throw lastError ?? StateError('connect failed');
+    }
+
+    // Auto: jump to another country after same-country path is exhausted.
+    while (true) {
+      final TunnelNode next;
+      try {
+        next = await _selectNode(
+          excludeCountryIds: triedCountries,
+          excludeEndpoints: tried,
+        );
+      } catch (_) {
+        throw lastError ?? StateError('connect failed');
+      }
+      final started = await tryStart(next, disconnectFirst: true);
+      if (started != null) return started;
+      final nextSpare = await trySpares(next);
+      if (nextSpare != null) return nextSpare;
+    }
   }
 
   /// Reachable server among near-best RTTs. Message lines stay out of the race
@@ -1225,7 +1277,7 @@ class VpnController extends ChangeNotifier {
     for (final node in race) {
       final port = node.port == 0 ? 443 : node.port;
       if (!seen.add('${node.host}:$port')) continue;
-      final ms = await measureTcp(node.host, port);
+      final ms = await (_tcpProbe ?? measureTcp)(node.host, port);
       if (ms != null) timed.add((node: node, ms: ms));
     }
     if (timed.isEmpty) return race.first;
@@ -1359,9 +1411,9 @@ class VpnController extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
 
-    TunnelNode node;
+    TunnelNode seed;
     try {
-      node = await _selectNode();
+      seed = await _selectNode();
     } catch (error) {
       connectionState = VpnConnectionState.error;
       errorMessage = _failureText(error);
@@ -1370,8 +1422,9 @@ class VpnController extends ChangeNotifier {
     }
 
     try {
-      await _start(node);
+      final node = await _startWithFailover(seed);
       await WindowsFirewall.clear();
+      connectedNode = node;
       connectionState = VpnConnectionState.connected;
       _connectedAt = DateTime.now();
       sessionDuration = Duration.zero;
@@ -1382,32 +1435,6 @@ class VpnController extends ChangeNotifier {
         notifyListeners();
       });
     } catch (e) {
-      final tried = {_endpointKey(node)};
-      var spare = proSettings.protocolFallback ? _spareFor(node, tried) : null;
-      while (spare != null) {
-        tried.add(_endpointKey(spare));
-        try {
-          await _service.disconnect();
-        } catch (_) {}
-        try {
-          await _start(spare);
-          await WindowsFirewall.clear();
-          connectedNode = spare;
-          connectionState = VpnConnectionState.connected;
-          _connectedAt = DateTime.now();
-          sessionDuration = Duration.zero;
-          _sessionTimer?.cancel();
-          _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-            if (_connectedAt == null) return;
-            sessionDuration = DateTime.now().difference(_connectedAt!);
-            notifyListeners();
-          });
-          notifyListeners();
-          return true;
-        } catch (_) {
-          spare = _spareFor(spare, tried);
-        }
-      }
       connectionState = VpnConnectionState.error;
       errorMessage = _failureText(e);
     }

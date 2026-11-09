@@ -177,6 +177,10 @@ class XplmHomeLayout extends StatelessWidget {
                               _ServerCard(
                                 countryCode: locationCode,
                                 title: locationLabel,
+                                subtitle:
+                                    !connected && selected.isAuto
+                                    ? s.bestServerAuto
+                                    : null,
                                 pingMs: locationPing,
                                 measuring: pingMeasuring,
                                 onPingPressed: livePings == null
@@ -451,12 +455,14 @@ class _ServerCard extends StatelessWidget {
     required this.title,
     required this.pingMs,
     required this.onTap,
+    this.subtitle,
     this.measuring = false,
     this.onPingPressed,
   });
 
   final String countryCode;
   final String title;
+  final String? subtitle;
   final int pingMs;
   final VoidCallback onTap;
   final bool measuring;
@@ -464,6 +470,7 @@ class _ServerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasSubtitle = subtitle != null && subtitle!.isNotEmpty;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -474,7 +481,7 @@ class _ServerCard extends StatelessWidget {
           child: Column(
             children: [
               SizedBox(
-                height: 34,
+                height: hasSubtitle ? null : 34,
                 child: Row(
                   children: [
                     if (countryCode.toLowerCase() == 'auto')
@@ -491,12 +498,29 @@ class _ServerCard extends StatelessWidget {
                       XplmFlagCircle(code: countryCode, size: 30),
                     const SizedBox(width: 9),
                     Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          if (hasSubtitle) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF91A5BF),
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     const Text(

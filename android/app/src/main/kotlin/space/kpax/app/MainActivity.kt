@@ -22,6 +22,14 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "cacheDir" -> result.success(cacheDir.absolutePath)
+                    "openVpnSettings" -> {
+                        try {
+                            startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("vpn_settings_failed", e.message, null)
+                        }
+                    }
                     "installApk" -> {
                         val path = call.arguments as? String
                         if (path.isNullOrBlank()) {

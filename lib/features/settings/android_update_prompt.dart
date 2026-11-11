@@ -13,7 +13,9 @@ var _checking = false;
 
 Future<Directory> _androidCacheDir() async {
   try {
-    final path = await const MethodChannel('kpax/android').invokeMethod<String>('cacheDir');
+    final path = await const MethodChannel(
+      'kpax/android',
+    ).invokeMethod<String>('cacheDir');
     if (path != null && path.isNotEmpty) return Directory(path);
   } catch (_) {}
   return Directory.systemTemp;
@@ -25,7 +27,9 @@ Future<File?> _downloadApk(Uri url) async {
   final file = File('${dir.path}/${brand.updateApkName}');
   final client = HttpClient()..autoUncompress = true;
   try {
-    final request = await client.getUrl(url).timeout(const Duration(seconds: 20));
+    final request = await client
+        .getUrl(url)
+        .timeout(const Duration(seconds: 20));
     request.followRedirects = true;
     request.maxRedirects = 8;
     request.headers.set(HttpHeaders.userAgentHeader, brand.appName);
@@ -48,10 +52,9 @@ Future<File?> _downloadApk(Uri url) async {
 
 Future<String?> _installApk(File file) async {
   try {
-    final outcome = await const MethodChannel('kpax/android').invokeMethod<String>(
-      'installApk',
-      file.path,
-    );
+    final outcome = await const MethodChannel(
+      'kpax/android',
+    ).invokeMethod<String>('installApk', file.path);
     return outcome ?? 'started';
   } catch (_) {
     return null;
@@ -106,7 +109,9 @@ Future<void> checkForAndroidUpdate(
           final file = await _downloadApk(release.url);
           if (!context.mounted) return;
           if (file == null) {
-            messenger?.showSnackBar(SnackBar(content: Text(s.updateApplyFailed)));
+            messenger?.showSnackBar(
+              SnackBar(content: Text(s.updateApplyFailed)),
+            );
             break;
           }
           final controller = context.read<VpnController>();
@@ -121,7 +126,9 @@ Future<void> checkForAndroidUpdate(
               SnackBar(content: Text(s.updateInstallPermission)),
             );
           } else if (outcome != 'started') {
-            messenger?.showSnackBar(SnackBar(content: Text(s.updateApplyFailed)));
+            messenger?.showSnackBar(
+              SnackBar(content: Text(s.updateApplyFailed)),
+            );
           }
         }
         break;

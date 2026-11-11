@@ -1300,7 +1300,24 @@ class VpnController extends ChangeNotifier {
     }
 
     if (pool.length == 1) return pool.first;
-    return pool[_autoPickRandom.nextInt(pool.length)];
+    // Sticky among near-best: same account keeps the same country across reconnects,
+    // while different accounts spread across DE/FI/BG.
+    return pool[_stickyIndex(pool.length)];
+  }
+
+  int _stickySeed() {
+    final id = account.userId.trim();
+    if (id.isNotEmpty) return id.hashCode;
+    final url = (subscriptionUrl ?? '').trim();
+    if (url.isNotEmpty) return url.hashCode;
+    return 0;
+  }
+
+  int _stickyIndex(int length) {
+    if (length <= 1) return 0;
+    final seed = _stickySeed();
+    if (seed == 0) return _autoPickRandom.nextInt(length);
+    return seed.abs() % length;
   }
 
   static final _autoPickRandom = math.Random();
@@ -1341,6 +1358,11 @@ class VpnController extends ChangeNotifier {
         } else {
           otherHost.add(item);
         }
+      }
+      // Sticky among RU fronts so spare load splits across ru/ru2 per account.
+      if (otherHost.length > 1) {
+        final idx = _stickyIndex(otherHost.length);
+        otherHost.insert(0, otherHost.removeAt(idx));
       }
       for (final candidate in [..._preferPrimaryEndpoints(sameHost), ...otherHost]) {
         return candidate;

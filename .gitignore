@@ -65,7 +65,16 @@ app.*.map.json
 **/.gradle/
 **/.cxx/
 
-# Built on CI / locally � do not commit
+# Built on CI / locally — do not commit
 ios/Frameworks/Libbox.xcframework/
 third_party/sing_box/ios/Frameworks/Libbox.xcframework/
+
+# Local release artifacts dropped in the repo root
+/*.apk
+/*.exe
+/K-Pax-*.apk
+/K-Pax-Setup-*.exe
+/X-Plm-*.apk
+/X-Plm-Setup-*.exe
+/k-pax-*-preview.apk
 

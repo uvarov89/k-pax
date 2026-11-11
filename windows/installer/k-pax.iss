@@ -3,7 +3,7 @@
 ; Then: ISCC.exe windows\installer\k-pax.iss
 
 #define MyAppName "K-Pax"
-#define MyAppVersion "1.0.49"
+#define MyAppVersion "1.0.50"
 #define MyAppPublisher "K-Pax"
 #define MyAppURL "https://k-pax.space"
 #define MyAppExeName "KPax.exe"

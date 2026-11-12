@@ -118,9 +118,10 @@ class AppStrings {
       };
   String get dns => 'DNS';
   String get dnsThroughTunnel =>
-      isRu ? 'DNS через туннель' : 'DNS through the tunnel';
-  String get dnsComputer =>
-      isRu ? 'DNS компьютера' : 'The computer DNS';
+      isRu ? 'DNS через туннель (DoH)' : 'DNS through the tunnel (DoH)';
+  String get dnsComputer => isRu
+      ? 'DNS через туннель (UDP)'
+      : 'DNS through the tunnel (UDP)';
   String get splitTunneling =>
       isRu ? 'Приложения и VPN' : 'Apps & VPN';
   String get splitSoon => isRu
@@ -222,56 +223,51 @@ class AppStrings {
       : 'We updated servers for stability. Tap Refresh to pull the new settings.';
   String get refreshSubscriptionAction => isRu ? 'Обновить' : 'Refresh';
   String get dismissNotice => isRu ? 'Скрыть' : 'Dismiss';
-  String get pasteLinkTitle => isRu ? 'Войти или вставить ссылку' : 'Sign in or paste a link';
-  String get pasteLinkBody => _brand.allowsTelegram
-      ? (isRu
-          ? 'Почта или @ник Telegram — придёт подтверждение, ссылка подгрузится сама. Можно вставить ссылку $appName или подписку другого провайдера — вход не нужен.'
-          : 'Email or @Telegram nick — confirm ownership, then the link loads itself. Or paste a $appName / other-provider subscription link — no sign-in needed.')
-      : (isRu
-          ? 'Укажите почту — придёт письмо с подтверждением, ссылка подгрузится сама. Можно вставить ссылку $appName или подписку другого провайдера — вход не нужен.'
-          : 'Enter your email — confirm ownership, then the link loads itself. Or paste a $appName / other-provider subscription link — no sign-in needed.');
-  String get pasteLinkHint => _brand.allowsTelegram
-      ? (isRu
-          ? 'Почта, @ник, ${_brand.subExample} или ссылка другого провайдера'
-          : 'Email, @nick, ${_brand.subExample} or another provider link')
-      : (isRu
-          ? 'Почта, ${_brand.subExample} или ссылка другого провайдера'
-          : 'Email, ${_brand.subExample} or another provider link');
+  String get pasteLinkTitle => isRu ? 'Войти по почте' : 'Sign in with email';
+  String get pasteLinkBody => isRu
+      ? 'Укажите почту — придёт код. Введите код здесь: доступ подгрузится сам, ссылку копировать не нужно.'
+      : 'Enter your email — you get a code. Type it here: access loads itself; no link to copy.';
+  String get pasteLinkHint =>
+      isRu ? 'name@mail.ru' : 'name@mail.ru';
+  String get loginCodeHint => isRu ? 'Код из письма' : 'Code from email';
+  String get confirmLoginCode => isRu ? 'Подтвердить код' : 'Confirm code';
+  String get badLoginCode =>
+      isRu ? 'Неверный или устаревший код.' : 'Wrong or expired code.';
   String get saveLink => isRu ? 'Продолжить' : 'Continue';
   String get loginWithContact => isRu ? 'Войти' : 'Sign in';
   String get pasteOwnLink => isRu ? 'Вставить свою ссылку' : 'Paste your link';
   String get openBotConfirm => isRu ? 'Открыть бота' : 'Open the bot';
   String get waitingEmailConfirm => isRu
-      ? 'Письмо отправлено. Нажмите кнопку в письме — доступ появится здесь сам, ссылку копировать не нужно.'
-      : 'Email sent. Tap the button in the message — access appears here; no need to copy a link.';
+      ? 'Письмо отправлено. Введите код ниже — или нажмите кнопку в письме.'
+      : 'Email sent. Enter the code below — or tap the button in the message.';
   String get waitingTelegramConfirm => isRu
-      ? 'Откройте бота и нажмите «Подтвердить» — доступ появится здесь сам.'
-      : 'Open the bot and tap Confirm — access appears here.';
+      ? 'Откройте бота и нажмите «Подтвердить» — доступ появится здесь. Затем привяжите почту.'
+      : 'Open the bot and tap Confirm — access appears here. Then link an email.';
   String get cancelLogin => isRu ? 'Отменить' : 'Cancel';
   String get loginTimedOut => isRu
       ? 'Время подтверждения вышло. Запросите вход ещё раз.'
       : 'Confirmation timed out. Start sign-in again.';
-  String get openProfileForAccess => _brand.allowsTelegram
-      ? (isRu
-          ? 'Войдите почтой или @ником в профиле'
-          : 'Sign in with email or @nick in the profile')
-      : (isRu
-          ? 'Войдите почтой в профиле'
-          : 'Sign in with email in the profile');
+  String get openProfileForAccess =>
+      isRu ? 'Войдите почтой в профиле' : 'Sign in with email in the profile';
   String get linkReadyTitle => isRu ? 'Доступ включён' : 'Access is on';
   String get linkReadyBody => isRu
-      ? 'Ссылка сохранена в приложении. Скопируйте её для компьютера: второй раз мы её не покажем.'
-      : 'The link is saved in the app. Copy it for your computer: it will not be shown again.';
-  String get badLink => _brand.allowsTelegram
-      ? (isRu
-          ? 'Не похоже на почту, @ник или ссылку подписки.'
-          : 'Does not look like an email, @nick, or subscription link.')
-      : (isRu
-          ? 'Не похоже на почту или ссылку подписки.'
-          : 'Does not look like an email or subscription link.');
+      ? 'Всё готово. Можно подключаться — ссылку копировать не нужно.'
+      : 'You are set. Connect — no need to copy a link.';
+  String get badLink => isRu
+      ? 'Не похоже на почту. Укажите name@mail.ru'
+      : 'That does not look like an email. Use name@mail.ru';
   String get emailOnlyContact => isRu
       ? 'В $appName вход только по почте: name@mail.ru'
       : '$appName sign-in is email only: name@mail.ru';
+  String get linkEmailTitle =>
+      isRu ? 'Привяжите почту' : 'Link an email';
+  String get linkEmailBody => isRu
+      ? 'Новые входы — только по почте. Привяжите почту к этому аккаунту, Telegram останется на месте.'
+      : 'New sign-ins are email-only. Link an email to this account; Telegram stays attached.';
+  String get linkEmailSendCode =>
+      isRu ? 'Отправить код' : 'Send code';
+  String get linkEmailConfirm =>
+      isRu ? 'Привязать почту' : 'Link email';
   String get linkOpenFailed => isRu
       ? 'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.'
       : 'Could not reach the server. Check the internet and try again.';
@@ -299,10 +295,10 @@ class AppStrings {
       ? 'Рекламные сети и счётчики отключаются на подключении. Меньше шума в ленте и на сайтах.'
       : 'Ad networks and trackers drop on connect. Less noise in feeds and on sites.';
   String get aboutThesisLinkTitle =>
-      isRu ? 'Одна ссылка' : 'One link';
+      isRu ? 'Один аккаунт' : 'One account';
   String get aboutThesisLinkBody => isRu
-      ? 'Телефон и компьютер на одной ссылке. Два устройства сразу, сверху — автоматический выбор сервера.'
-      : 'Phone and computer share one link. Two devices at once, with automatic server pick on top.';
+      ? 'Телефон и компьютер на одном аккаунте. Два устройства сразу, сверху — автоматический выбор сервера.'
+      : 'Phone and computer share one account. Two devices at once, with automatic server pick on top.';
   String get aboutThesisPayTitle =>
       isRu ? 'Без автопродления' : 'No auto-renewal';
   String get aboutThesisPayBody => isRu
@@ -387,6 +383,8 @@ class AppStrings {
   String get updateNow => isRu ? 'Обновить' : 'Update';
   String get updateLater => isRu ? 'Позже' : 'Later';
   String get checkUpdates => isRu ? 'Проверить обновления' : 'Check for updates';
+  String get openInPlayStore =>
+      isRu ? 'Открыть в Google Play' : 'Open in Google Play';
   String get updateCurrent =>
       isRu ? 'Установлена последняя версия' : 'You have the latest version';
   String get updateCheckFailed => isRu
@@ -487,13 +485,9 @@ class AppStrings {
   String get loginWaitingHome => isRu
       ? 'Ждём подтверждение входа…'
       : 'Waiting for sign-in confirmation…';
-  String get lostAccessHelp => _brand.allowsTelegram
-      ? (isRu
-          ? 'Потеряли доступ — введите ту же почту или @ник выше: для почты придёт письмо, для Telegram откроется бот.'
-          : 'Lost access — enter the same email or @nick above: email gets a letter, Telegram opens the bot.')
-      : (isRu
-          ? 'Потеряли доступ — введите ту же почту выше: придёт письмо с подтверждением.'
-          : 'Lost access — enter the same email above: you will get a confirmation letter.');
+  String get lostAccessHelp => isRu
+      ? 'Потеряли доступ — введите ту же почту выше: придёт код подтверждения.'
+      : 'Lost access — enter the same email above: you will get a confirmation code.';
   String get userId => isRu ? 'ID пользователя' : 'User ID';
   String get legal => isRu ? 'Документы' : 'Legal';
   String get terms => isRu ? 'Пользовательское соглашение' : 'Terms of use';
@@ -516,13 +510,9 @@ class AppStrings {
           'Do not give the link to other people. Access can be stopped if strangers are clearly using it, or if a server is temporarily down.',
           '${_brand.priceLabel} extends the same link by 30 days. Payment does not create a new link.',
         ];
-  String get noAccessYet => _brand.allowsTelegram
-      ? (isRu
-          ? 'Подписки нет. Укажите почту, ник или ссылку выше.'
-          : 'No subscription yet. Enter an email, nick or link above.')
-      : (isRu
-          ? 'Подписки нет. Укажите почту или ссылку выше.'
-          : 'No subscription yet. Enter an email or link above.');
+  String get noAccessYet => isRu
+      ? 'Подписки нет. Укажите почту выше.'
+      : 'No subscription yet. Enter your email above.';
   String get emptySubscription => isRu
       ? 'В ссылке нет подходящих серверов. Подходят подписки списком, Clash или JSON и ссылки vless, vmess, trojan, ss, hy2, tuic.'
       : 'The link has no usable servers. Subscriptions as a list, Clash or JSON work, and vless, vmess, trojan, ss, hy2, tuic links.';

@@ -46,7 +46,10 @@ final class AppBrand {
   Uri get windowsUpdateEndpoint => Uri.parse('https://$host/app/windows');
   Uri appStart() => Uri.parse('https://$host/app/start');
   Uri appLogin() => Uri.parse('https://$host/app/login');
+  Uri appLoginCode() => Uri.parse('https://$host/app/login/code');
   Uri appLoginStatus() => Uri.parse('https://$host/app/login/status');
+  Uri appLinkEmail() => Uri.parse('https://$host/app/link-email');
+  Uri appLinkEmailConfirm() => Uri.parse('https://$host/app/link-email/confirm');
   Uri appDevices() => Uri.parse('https://$host/app/devices');
   Uri appDevicesKick() => Uri.parse('https://$host/app/devices/kick');
 

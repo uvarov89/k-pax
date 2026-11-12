@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/distribution.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/services/android_update.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -61,10 +62,20 @@ Future<String?> _installApk(File file) async {
   }
 }
 
+Future<void> _openPlayStoreListing() async {
+  try {
+    await const MethodChannel('kpax/android').invokeMethod<bool>('openStoreListing');
+  } catch (_) {}
+}
+
 Future<void> checkForAndroidUpdate(
   BuildContext context, {
   required bool manual,
 }) async {
+  if (!AppDistribution.allowsApkSelfUpdate) {
+    if (manual) await _openPlayStoreListing();
+    return;
+  }
   if (_checking) return;
   _checking = true;
   final messenger = ScaffoldMessenger.maybeOf(context);

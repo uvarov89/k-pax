@@ -48,11 +48,52 @@ void main() {
     final dns = on['dns'] as Map;
     expect(tun['strict_route'], isTrue);
     expect(dns['final'], 'dns-remote');
+    expect(tun['address'], ['172.19.0.1/30', 'fdfe:dcba:9876::1/126']);
+    expect(tun['mtu'], 1280);
+    expect(dns['strategy'], 'ipv4_only');
+    expect(
+      (dns['servers'] as List).cast<Map>().any(
+        (s) => s['tag'] == 'dns-remote' && '${s['address']}'.contains('1.1.1.1'),
+      ),
+      isTrue,
+    );
 
     final off = config(killSwitch: false, dnsAutomatic: false);
     final tunOff = (off['inbounds'] as List).first as Map;
     expect(tunOff['strict_route'], isFalse);
-    expect((off['dns'] as Map)['final'], 'dns-direct');
+    // Still tunnel DNS (UDP via proxy) — never ISP resolver for foreign names.
+    expect((off['dns'] as Map)['final'], 'dns-remote-udp');
+  });
+
+  test('full tunnel rejects QUIC and IPv6 leak by default', () {
+    final disabled = config();
+    final disabledRules = (disabled['route'] as Map)['rules'] as List;
+    expect((disabled['route'] as Map)['final'], 'proxy');
+    expect(
+      disabledRules.cast<Map>().any(
+        (r) => r['protocol'] == 'quic' && r['action'] == 'reject',
+      ),
+      isTrue,
+    );
+    expect(
+      disabledRules.cast<Map>().any(
+        (r) => r['ip_version'] == 6 && r['action'] == 'reject',
+      ),
+      isTrue,
+    );
+
+    final enabled = jsonDecode(
+      buildTunnelConfig(
+        node,
+        const ProSettings(ipv6Mode: Ipv6Mode.enabled),
+      ),
+    ) as Map<String, Object?>;
+    final enabledRules = (enabled['route'] as Map)['rules'] as List;
+    expect(
+      enabledRules.cast<Map>().any((r) => r['ip_version'] == 6),
+      isFalse,
+    );
+    expect((enabled['dns'] as Map)['strategy'], 'prefer_ipv4');
   });
 
   test('stats endpoint is added only when requested', () {

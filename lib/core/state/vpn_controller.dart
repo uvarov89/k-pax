@@ -87,6 +87,7 @@ class VpnController extends ChangeNotifier {
   String? loginChannel;
   String? loginBotUrl;
   String? loginHint;
+  bool needsEmailLink = false;
   SubscriptionProfile? profile;
   List<SavedSubscription> subscriptions = const [];
   Uri? providerWebPage;
@@ -472,6 +473,7 @@ class VpnController extends ChangeNotifier {
     lastProbeResults = null;
     oneTimeUrl = null;
     oneTimeNumber = null;
+    needsEmailLink = false;
     devices = const [];
     devicesError = null;
     isLoadingDevices = false;
@@ -632,6 +634,7 @@ class VpnController extends ChangeNotifier {
       loginBotUrl = (result.botUrl ?? '').isEmpty ? null : result.botUrl;
       loginHint = result.hint;
       oneTimeNumber = result.publicId;
+      if (result.needsEmailLink) needsEmailLink = true;
       _loginStartedAt = DateTime.now();
       await _persistPendingLogin();
       if (_disposed || epoch != _loginEpoch) return;
@@ -646,6 +649,66 @@ class VpnController extends ChangeNotifier {
       linkError = strings.linkOpenFailed;
       linkState = _loginFailureState;
       notifyListeners();
+    }
+  }
+
+  Future<void> submitLoginCode(String code) async {
+    final session = loginSession;
+    if (session == null || session.isEmpty) return;
+    final epoch = _loginEpoch;
+    linkError = null;
+    notifyListeners();
+    try {
+      final status = await _subscriptions.confirmLoginCode(session, code);
+      if (_disposed || epoch != _loginEpoch || loginSession != session) return;
+      if (!status.isReady || status.url == null) {
+        linkError = status.error ?? strings.badLoginCode;
+        notifyListeners();
+        return;
+      }
+      _loginPoll?.cancel();
+      _loginPoll = null;
+      loginSession = null;
+      loginBotUrl = null;
+      loginHint = null;
+      loginChannel = null;
+      if (status.needsEmailLink) needsEmailLink = true;
+      await _clearPendingLogin();
+      if (_disposed || epoch != _loginEpoch) return;
+      oneTimeUrl = status.url.toString();
+      oneTimeNumber = status.publicId ?? oneTimeNumber;
+      await _activate(oneTimeUrl!);
+      if (status.publicId != null) {
+        await _rememberAccountNumber(status.publicId);
+      }
+    } catch (_) {
+      if (_disposed || epoch != _loginEpoch) return;
+      linkError = strings.linkOpenFailed;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> startLinkEmail(String email) async {
+    final token = subscriptionToken;
+    if (token == null) return strings.openProfileForAccess;
+    try {
+      return await _subscriptions.startLinkEmail(token, email);
+    } catch (_) {
+      return strings.linkOpenFailed;
+    }
+  }
+
+  Future<String?> confirmLinkEmail(String code) async {
+    final token = subscriptionToken;
+    if (token == null) return strings.openProfileForAccess;
+    try {
+      final error = await _subscriptions.confirmLinkEmail(token, code);
+      if (error != null) return error;
+      needsEmailLink = false;
+      notifyListeners();
+      return null;
+    } catch (_) {
+      return strings.linkOpenFailed;
     }
   }
 
@@ -674,13 +737,14 @@ class VpnController extends ChangeNotifier {
     try {
       final status = await _subscriptions.pollLoginStatus(session);
       if (_disposed || epoch != _loginEpoch || loginSession != session) return;
-      if (status.isReady) {
+        if (status.isReady) {
         _loginPoll?.cancel();
         _loginPoll = null;
         loginSession = null;
         loginBotUrl = null;
         loginHint = null;
         loginChannel = null;
+        if (status.needsEmailLink) needsEmailLink = true;
         await _clearPendingLogin();
         if (_disposed || epoch != _loginEpoch) return;
         oneTimeUrl = status.url.toString();
@@ -751,6 +815,7 @@ class VpnController extends ChangeNotifier {
             url != subscriptionUrl) {
           return;
         }
+        needsEmailLink = fetched.needsEmailLink;
       }
       _applyProfile();
       _restoreSavedLocation();

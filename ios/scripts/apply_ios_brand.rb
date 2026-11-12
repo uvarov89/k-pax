@@ -63,6 +63,19 @@ def replace_plist_string(path, key, value)
   File.write(path, text.sub(pattern, "\\1#{value}\\2"))
 end
 
+def ensure_plist_false(path, key)
+  text = File.read(path)
+  return if text.include?("<key>#{key}</key>")
+
+  updated = text.sub(
+    %r{</dict>\s*</plist>\s*\z},
+    "\t<key>#{key}</key>\n\t<false/>\n</dict>\n</plist>\n"
+  )
+  raise "could not insert #{key} into #{path}" if updated == text
+
+  File.write(path, updated)
+end
+
 def replace_url_types(path, bundle_app, scheme)
   text = File.read(path)
   # Replace CFBundleURLName + CFBundleURLSchemes block under CFBundleURLTypes.
@@ -99,6 +112,7 @@ replace_plist_string(runner_plist, 'CFBundleDisplayName', cfg[:display_name])
 replace_plist_string(runner_plist, 'CFBundleName', cfg[:display_name])
 replace_plist_string(runner_plist, 'NSLocalNetworkUsageDescription', cfg[:local_network])
 replace_url_types(runner_plist, cfg[:bundle_app], cfg[:url_scheme])
+ensure_plist_false(runner_plist, 'ITSAppUsesNonExemptEncryption')
 replace_plist_string(tunnel_plist, 'CFBundleDisplayName', cfg[:tunnel_name])
 
 patch_pbxproj(pbxproj, cfg[:bundle_app], cfg[:app_icon])

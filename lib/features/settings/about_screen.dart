@@ -11,6 +11,7 @@ import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
+import 'package:pulse_vpn/app/distribution.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
 
 class AboutScreen extends StatelessWidget {
@@ -152,7 +153,9 @@ class AboutScreen extends StatelessWidget {
                     (!kIsWeb && (Platform.isWindows || Platform.isAndroid)))
                   _AboutLink(
                     key: const ValueKey('about-update'),
-                    title: s.checkUpdates,
+                    title: AppDistribution.updatesViaStore
+                        ? s.openInPlayStore
+                        : s.checkUpdates,
                     onTap: () {
                       if (Theme.of(context).platform == TargetPlatform.iOS) {
                         showDialog<void>(

@@ -85,5 +85,8 @@
 	<array>
 		<string>network-authentication</string>
 	</array>
+	<!-- Standard TLS/HTTPS only for App Store export compliance questionnaire skip. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

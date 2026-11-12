@@ -41,7 +41,8 @@ android {
         manifestPlaceholders["deepLinkScheme"] = "kpax"
     }
 
-    flavorDimensions += "brand"
+    // brand × channel → variants like kpaxDirect / kpaxPlay (Flutter --flavor).
+    flavorDimensions += listOf("brand", "channel")
     productFlavors {
         create("kpax") {
             dimension = "brand"
@@ -54,6 +55,15 @@ android {
             applicationId = "online.xplm.app"
             resValue("string", "app_name", "X-Plm")
             manifestPlaceholders["deepLinkScheme"] = "xplm"
+        }
+        // Sideload / GitHub APK (in-app installer). Default for existing scripts.
+        create("direct") {
+            dimension = "channel"
+            isDefault = true
+        }
+        // Google Play AAB: no REQUEST_INSTALL_PACKAGES; updates via Play.
+        create("play") {
+            dimension = "channel"
         }
     }
 

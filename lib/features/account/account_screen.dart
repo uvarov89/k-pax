@@ -32,17 +32,25 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final _contact = TextEditingController();
+  final _loginCode = TextEditingController();
+  final _linkEmail = TextEditingController();
+  final _linkCode = TextEditingController();
   bool _submitting = false;
+  bool _linkEmailCodeSent = false;
   int _submitEpoch = 0;
   void _cancelSubmit(VpnController c) {
     _submitEpoch++;
     c.cancelLogin();
+    _loginCode.clear();
     setState(() => _submitting = false);
   }
 
   @override
   void dispose() {
     _contact.dispose();
+    _loginCode.dispose();
+    _linkEmail.dispose();
+    _linkCode.dispose();
     super.dispose();
   }
 
@@ -177,8 +185,7 @@ class _AccountScreenState extends State<AccountScreen> {
     try {
       await controller.submitSubscriptionLink(_contact.text);
       if (!mounted || epoch != _submitEpoch) return;
-      final url = controller.oneTimeUrl;
-      if (url == null) return;
+      if (controller.oneTimeUrl == null) return;
       final s = controller.strings;
       final number = controller.oneTimeNumber ?? '';
       await showDialog<void>(
@@ -190,12 +197,6 @@ class _AccountScreenState extends State<AccountScreen> {
             number.isEmpty ? s.linkReadyBody : '$number\n\n${s.linkReadyBody}',
           ),
           actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: url));
-              },
-              child: Text(s.copyLink),
-            ),
             TextButton(
               onPressed: () {
                 controller.clearOneTimeLink();
@@ -217,6 +218,43 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
+  Future<void> _submitLoginCode(VpnController controller) async {
+    final code = _loginCode.text.trim();
+    if (_submitting || code.isEmpty) return;
+    final epoch = ++_submitEpoch;
+    setState(() => _submitting = true);
+    FocusScope.of(context).unfocus();
+    try {
+      await controller.submitLoginCode(code);
+      if (!mounted || epoch != _submitEpoch) return;
+      if (controller.oneTimeUrl == null) return;
+      _loginCode.clear();
+      final s = controller.strings;
+      final number = controller.oneTimeNumber ?? '';
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(s.linkReadyTitle),
+          content: Text(
+            number.isEmpty ? s.linkReadyBody : '$number\n\n${s.linkReadyBody}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                controller.clearOneTimeLink();
+                Navigator.of(context).pop();
+              },
+              child: Text(s.continueLabel),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted && epoch == _submitEpoch) setState(() => _submitting = false);
+    }
+  }
+
   Future<void> _confirmLogout(VpnController controller) async {
     final s = controller.strings;
     final ok = await showDialog<bool>(
@@ -225,8 +263,8 @@ class _AccountScreenState extends State<AccountScreen> {
         title: Text(s.isRu ? 'Выйти из аккаунта?' : 'Sign out?'),
         content: Text(
           s.isRu
-              ? 'VPN отключится. Сохранённые подписки и данные аккаунта будут удалены с этого устройства. Для входа снова понадобится почта или ссылка.'
-              : 'VPN will disconnect. Saved subscriptions and account data will be removed from this device. Use your email or subscription link to sign in again.',
+              ? 'VPN отключится. Сохранённые данные аккаунта будут удалены с этого устройства. Для входа снова понадобится почта.'
+              : 'VPN will disconnect. Account data will be removed from this device. Use your email to sign in again.',
         ),
         actions: [
           TextButton(
@@ -612,6 +650,31 @@ class _AccountScreenState extends State<AccountScreen> {
                       style: TextStyle(color: muted, height: 1.35),
                     ),
                   ],
+                  if (controller.loginChannel == 'email') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _loginCode,
+                      keyboardType: TextInputType.number,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submitLoginCode(controller),
+                      decoration: InputDecoration(
+                        hintText: s.loginCodeHint,
+                        filled: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _submitting
+                            ? null
+                            : () => _submitLoginCode(controller),
+                        child: Text(s.confirmLoginCode),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   if (controller.loginChannel == 'telegram' &&
                       (controller.loginBotUrl ?? '').isNotEmpty)
@@ -629,7 +692,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
-                      onPressed: controller.cancelLogin,
+                      onPressed: () => _cancelSubmit(controller),
                       child: Text(s.cancelLogin),
                     ),
                   ),
@@ -639,11 +702,11 @@ class _AccountScreenState extends State<AccountScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _contact,
-                    keyboardType: TextInputType.text,
+                    keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
                     enableSuggestions: false,
                     minLines: 1,
-                    maxLines: 4,
+                    maxLines: 2,
                     decoration: InputDecoration(
                       hintText: s.pasteLinkHint,
                       filled: true,
@@ -676,6 +739,95 @@ class _AccountScreenState extends State<AccountScreen> {
               ],
             ),
           ),
+          if (controller.hasAccess && controller.needsEmailLink) ...[
+            const SizedBox(height: 12),
+            _Card(
+              surface: surface,
+              border: border,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.linkEmailTitle,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    s.linkEmailBody,
+                    style: TextStyle(color: muted, height: 1.45),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _linkEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    decoration: InputDecoration(
+                      hintText: s.pasteLinkHint,
+                      filled: true,
+                    ),
+                  ),
+                  if (_linkEmailCodeSent) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _linkCode,
+                      keyboardType: TextInputType.number,
+                      autocorrect: false,
+                      decoration: InputDecoration(
+                        hintText: s.loginCodeHint,
+                        filled: true,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _submitting
+                          ? null
+                          : () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              setState(() => _submitting = true);
+                              final sendingCode = !_linkEmailCodeSent;
+                              final err = sendingCode
+                                  ? await controller.startLinkEmail(
+                                      _linkEmail.text,
+                                    )
+                                  : await controller.confirmLinkEmail(
+                                      _linkCode.text,
+                                    );
+                              if (!mounted) return;
+                              setState(() {
+                                _submitting = false;
+                                if (err == null && sendingCode) {
+                                  _linkEmailCodeSent = true;
+                                }
+                                if (err == null && !sendingCode) {
+                                  _linkEmailCodeSent = false;
+                                  _linkCode.clear();
+                                }
+                              });
+                              final message = err ??
+                                  (sendingCode
+                                      ? s.waitingEmailConfirm
+                                      : s.linkReadyTitle);
+                              messenger.showSnackBar(
+                                SnackBar(content: Text(message)),
+                              );
+                            },
+                      child: Text(
+                        _linkEmailCodeSent
+                            ? s.linkEmailConfirm
+                            : s.linkEmailSendCode,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (controller.subscriptions.isNotEmpty) ...[
             const SizedBox(height: 12),
             _Card(

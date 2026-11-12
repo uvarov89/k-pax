@@ -27,6 +27,8 @@ class SettingsRepository {
   static const _kDns = 'dns_auto';
   static const _kKillSwitch = 'kill_switch';
   static const _kIpv6 = 'ipv6';
+  /// One-shot: old default IPv6=enabled leaked clearnet IPv6 / broke Telegram.
+  static const _kIpv6TunFix = 'ipv6_tun_fix_v1';
   static const _kFallback = 'protocol_fallback';
   static const _kReconnect = 'reconnect_policy';
   static const _kUserId = 'user_id';
@@ -124,6 +126,14 @@ class SettingsRepository {
 
   Future<ProSettings> loadProSettings() async {
     final p = await _prefs;
+    if (p.getBool(_kIpv6TunFix) != true) {
+      // Historical default was enabled (index 0). Force IPv4-via-VPN once.
+      final raw = p.getInt(_kIpv6);
+      if (raw == null || raw == Ipv6Mode.enabled.index) {
+        await p.setInt(_kIpv6, Ipv6Mode.disabled.index);
+      }
+      await p.setBool(_kIpv6TunFix, true);
+    }
     return ProSettings(
       protocol: _enumAt(
         TunnelProtocol.values,
@@ -137,7 +147,7 @@ class SettingsRepository {
       ),
       dnsAutomatic: p.getBool(_kDns) ?? true,
       killSwitch: p.getBool(_kKillSwitch) ?? true,
-      ipv6Mode: _enumAt(Ipv6Mode.values, p.getInt(_kIpv6), Ipv6Mode.enabled),
+      ipv6Mode: _enumAt(Ipv6Mode.values, p.getInt(_kIpv6), Ipv6Mode.disabled),
       protocolFallback: p.getBool(_kFallback) ?? true,
       reconnectPolicy: _enumAt(
         ReconnectPolicy.values,

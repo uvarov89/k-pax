@@ -39,6 +39,7 @@ class AppLoginResult {
     this.botUrl,
     this.hint,
     this.error,
+    this.needsEmailLink = false,
   });
 
   final String session;
@@ -47,6 +48,7 @@ class AppLoginResult {
   final String? botUrl;
   final String? hint;
   final String? error;
+  final bool needsEmailLink;
 
   bool get isTelegram => channel == 'telegram';
   bool get isEmail => channel == 'email';
@@ -60,6 +62,7 @@ class AppLoginStatus {
     this.expiresAt,
     this.active = true,
     this.error,
+    this.needsEmailLink = false,
   });
 
   final String status;
@@ -68,6 +71,7 @@ class AppLoginStatus {
   final int? expiresAt;
   final bool active;
   final String? error;
+  final bool needsEmailLink;
 
   bool get isPending => status == 'pending';
   bool get isReady => status == 'ready' && url != null;
@@ -81,6 +85,7 @@ class FetchedSubscription {
     this.publicId,
     this.title,
     this.webPage,
+    this.needsEmailLink = false,
   });
 
   final String body;
@@ -88,6 +93,7 @@ class FetchedSubscription {
   final String? publicId;
   final String? title;
   final Uri? webPage;
+  final bool needsEmailLink;
 }
 
 /// `profile-title` is plain text or `base64:...`.

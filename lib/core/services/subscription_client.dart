@@ -41,6 +41,8 @@ class SubscriptionClient {
           response.headers.value('profile-web-page-url') ??
               response.headers.value('support-url'),
         ),
+        needsEmailLink:
+            (response.headers.value('x-kpax-needs-email') ?? '') == '1',
       );
     } finally {
       client.close(force: true);
@@ -145,7 +147,58 @@ class SubscriptionClient {
       botUrl: decoded['bot_url']?.toString(),
       hint: decoded['hint']?.toString(),
       error: decoded['error']?.toString(),
+      needsEmailLink: decoded['needs_email_link'] == true,
     );
+  }
+
+  Future<AppLoginStatus> confirmLoginCode(String session, String code) async {
+    final result = await _postJson(AppBrand.current.appLoginCode(), {
+      'session': session,
+      'code': code.trim(),
+    });
+    final status = result['status'] as int;
+    final decoded = result['body'] as Map<String, dynamic>;
+    final rawUrl = decoded['url']?.toString() ?? '';
+    if (status != 200 || decoded['status']?.toString() != 'ready') {
+      return AppLoginStatus(
+        status: decoded['status']?.toString() ?? 'error',
+        error: decoded['error']?.toString() ?? 'Неверный код.',
+      );
+    }
+    return AppLoginStatus(
+      status: 'ready',
+      url: rawUrl.isEmpty ? null : brandSubscriptionUri(rawUrl),
+      publicId: decoded['public_id']?.toString(),
+      expiresAt: int.tryParse('${decoded['expires_at']}'),
+      active: decoded['active'] != false,
+      needsEmailLink: decoded['needs_email_link'] == true,
+    );
+  }
+
+  Future<String?> startLinkEmail(String subToken, String email) async {
+    final result = await _postJson(AppBrand.current.appLinkEmail(), {
+      'token': subToken,
+      'email': email.trim(),
+    });
+    final status = result['status'] as int;
+    final decoded = result['body'] as Map<String, dynamic>;
+    if (status != 200 || decoded['ok'] != true) {
+      return decoded['error']?.toString() ?? 'Не получилось отправить код.';
+    }
+    return null;
+  }
+
+  Future<String?> confirmLinkEmail(String subToken, String code) async {
+    final result = await _postJson(AppBrand.current.appLinkEmailConfirm(), {
+      'token': subToken,
+      'code': code.trim(),
+    });
+    final status = result['status'] as int;
+    final decoded = result['body'] as Map<String, dynamic>;
+    if (status != 200 || decoded['ok'] != true) {
+      return decoded['error']?.toString() ?? 'Неверный код.';
+    }
+    return null;
   }
 
   Future<List<ConnectedDeviceInfo>> fetchDevices(String token) async {
@@ -226,6 +279,7 @@ class SubscriptionClient {
         expiresAt: int.tryParse('${decoded['expires_at']}'),
         active: decoded['active'] != false,
         error: decoded['error']?.toString(),
+        needsEmailLink: decoded['needs_email_link'] == true,
       );
     } finally {
       client.close(force: true);

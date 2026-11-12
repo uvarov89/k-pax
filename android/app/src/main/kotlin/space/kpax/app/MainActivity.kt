@@ -44,9 +44,34 @@ class MainActivity : FlutterActivity() {
                             result.error("install_failed", e.message, null)
                         }
                     }
+                    "openStoreListing" -> {
+                        try {
+                            openStoreListing()
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("store_failed", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun openStoreListing() {
+        val market = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("market://details?id=$packageName"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(market)
+        } catch (_: Exception) {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     private fun beginInstall(path: String, result: MethodChannel.Result) {

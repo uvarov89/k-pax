@@ -7,9 +7,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Needed to list apps for split tunneling (sideload / non-Play distribution) -->
+    <!-- Per-app split tunneling (Play: declare QUERY_ALL_PACKAGES for VPN / per-app routing). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- REQUEST_INSTALL_PACKAGES only in channel=direct (sideload). Play flavor removes it. -->
 
 
     <application

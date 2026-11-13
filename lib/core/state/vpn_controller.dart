@@ -1224,9 +1224,20 @@ class VpnController extends ChangeNotifier {
     final tried = <String>{};
     final triedCountries = <String>{first.countryId};
     Object? lastError;
+    // iOS Packet Tunnel start is slow to fail; unbounded Auto failover feels like a freeze.
+    final ios = !kIsWeb && Platform.isIOS;
+    final deadline = DateTime.now().add(
+      Duration(seconds: ios ? 40 : 180),
+    );
+    var attempts = 0;
+    final maxAttempts = ios ? 2 : 12;
 
     Future<TunnelNode?> tryStart(TunnelNode node, {bool disconnectFirst = false}) async {
       if (!_wantConnected) return null;
+      if (attempts >= maxAttempts || DateTime.now().isAfter(deadline)) {
+        return null;
+      }
+      attempts += 1;
       tried.add(_endpointKey(node));
       triedCountries.add(node.countryId);
       if (disconnectFirst) {
@@ -1246,6 +1257,8 @@ class VpnController extends ChangeNotifier {
 
     Future<TunnelNode?> trySpares(TunnelNode from) async {
       if (!proSettings.protocolFallback) return null;
+      // On iOS one primary attempt is enough for first diagnosis / fast fail.
+      if (ios) return null;
       var spare = _spareFor(from, tried);
       while (spare != null) {
         final ok = await tryStart(spare, disconnectFirst: true);
@@ -1266,7 +1279,9 @@ class VpnController extends ChangeNotifier {
     }
 
     // Auto: jump to another country after same-country path is exhausted.
-    while (_wantConnected) {
+    while (_wantConnected &&
+        attempts < maxAttempts &&
+        DateTime.now().isBefore(deadline)) {
       final TunnelNode next;
       try {
         next = await _selectNode(
@@ -1281,7 +1296,12 @@ class VpnController extends ChangeNotifier {
       final nextSpare = await trySpares(next);
       if (nextSpare != null) return nextSpare;
     }
-    throw lastError ?? StateError('connect cancelled');
+    throw lastError ??
+        StateError(
+          ios
+              ? '[FAILOVER_BUDGET] iOS: не удалось подключить за отведённое время'
+              : 'connect cancelled',
+        );
   }
 
   /// Reachable server among near-best RTTs. Message lines stay out of the race

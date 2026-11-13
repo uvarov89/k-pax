@@ -85,9 +85,10 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     final config = buildTunnelConfig(node, settings, appSettings: appSettings);
     final bool started;
     try {
+      // startVPNTunnel should return quickly; long hangs = system/extension issue.
       started = await _singBox
           .connect(config)
-          .timeout(const Duration(seconds: 45));
+          .timeout(const Duration(seconds: 20));
     } on TimeoutException {
       try {
         await _singBox.disconnect();
@@ -105,8 +106,10 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
   }
 
   Future<void> _waitUntilConnected() async {
-    // First connect may show the system VPN permission sheet.
-    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    // Keep short: controller failover must not sit ~1min per node (felt like "nothing").
+    // Permission sheet: user usually answers in a few seconds; 25s total is enough.
+    final deadline = DateTime.now().add(const Duration(seconds: 25));
+    final noProgressDeadline = DateTime.now().add(const Duration(seconds: 8));
     var sawConnecting = false;
     while (DateTime.now().isBefore(deadline)) {
       final status = await _singBox.getConnectionStatus();
@@ -125,7 +128,15 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
               : '[TUNNEL_STOPPED] $detail',
         );
       }
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (!sawConnecting && DateTime.now().isAfter(noProgressDeadline)) {
+        final detail = await _lastTunnelStopReason();
+        throw StateError(
+          detail == null
+              ? '[NO_PROGRESS] VPN не перешёл в Connecting (профиль/расширение?)'
+              : '[NO_PROGRESS] $detail',
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
     }
     final detail = await _lastTunnelStopReason();
     throw StateError(

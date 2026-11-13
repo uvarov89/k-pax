@@ -37,8 +37,9 @@ class ConnectButton extends StatelessWidget {
     final connecting = state == VpnConnectionState.connecting;
     final disconnecting = state == VpnConnectionState.disconnecting;
     final busy = connecting || disconnecting;
-    // Allow cancel while connecting; only block during disconnecting.
-    final tapEnabled = !disconnecting && onPressed != null;
+    // Allow cancel while connecting; allow force-reset while disconnecting
+    // (native stop can hang on iOS — second tap clears UI).
+    final tapEnabled = onPressed != null;
 
     final Color ringColor;
     final Color fillColor;

@@ -207,11 +207,7 @@ class XplmHomeLayout extends StatelessWidget {
                                 fontSize: 18,
                                 busy: busy,
                                 icon: Icons.power_settings_new_rounded,
-                                // Allow cancel while connecting; block only while disconnecting.
-                                onPressed: controller.connectionState ==
-                                        VpnConnectionState.disconnecting
-                                    ? null
-                                    : () => onConnectPressed(),
+                                onPressed: () => onConnectPressed(),
                               ),
                               const SizedBox(height: 17),
                               _HomeGlass(

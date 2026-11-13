@@ -1565,8 +1565,10 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
-    if (connectionState == VpnConnectionState.disconnected ||
-        connectionState == VpnConnectionState.disconnecting) {
+    if (connectionState == VpnConnectionState.disconnected) return;
+    // Second tap while already disconnecting: force UI reset (native may hang).
+    if (connectionState == VpnConnectionState.disconnecting) {
+      _forceDisconnectedUi();
       return;
     }
     _wantConnected = false;
@@ -1577,22 +1579,29 @@ class VpnController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _service.disconnect();
+      await _service.disconnect().timeout(const Duration(seconds: 10));
       await WindowsFirewall.clear();
     } catch (_) {
-      // Still clear UI state so the user is never stuck on connecting.
+      // Still clear UI — never leave the user stuck on disconnecting/connecting.
+      try {
+        await _service.disconnect().timeout(const Duration(seconds: 2));
+      } catch (_) {}
     } finally {
-      _sessionTimer?.cancel();
-      _sessionTimer = null;
-      _connectedAt = null;
-      sessionDuration = Duration.zero;
-      connectedNode = null;
-      uploadBytesPerSec = 0;
-      downloadBytesPerSec = 0;
-      errorMessage = null;
-      connectionState = VpnConnectionState.disconnected;
-      notifyListeners();
+      _forceDisconnectedUi();
     }
+  }
+
+  void _forceDisconnectedUi() {
+    _sessionTimer?.cancel();
+    _sessionTimer = null;
+    _connectedAt = null;
+    sessionDuration = Duration.zero;
+    connectedNode = null;
+    uploadBytesPerSec = 0;
+    downloadBytesPerSec = 0;
+    errorMessage = null;
+    connectionState = VpnConnectionState.disconnected;
+    notifyListeners();
   }
 
   Future<void> runNodeProbe() async {

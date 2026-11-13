@@ -159,10 +159,14 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
   Future<void> disconnect() async {
     await _ensureReady();
     try {
-      final stopped = await _singBox.disconnect();
+      final stopped = await _singBox
+          .disconnect()
+          .timeout(const Duration(seconds: 8));
       if (!stopped) {
         throw StateError('[DISCONNECT_FALSE] Не удалось остановить VPN');
       }
+    } on TimeoutException {
+      throw StateError('[DISCONNECT_TIMEOUT] Остановка VPN не ответила');
     } on PlatformException catch (e) {
       throw StateError(_platformErrorText(e));
     }

@@ -131,7 +131,8 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   tcfg.build_settings['INFOPLIST_FILE'] = 'PacketTunnel/Info.plist'
   tcfg.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
   tcfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'PacketTunnel/PacketTunnel.entitlements'
-  tcfg.build_settings['LD_RUNPATH_SEARCH_PATHS'] = '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks'
+  tcfg.build_settings['LD_RUNPATH_SEARCH_PATHS'] =
+    '$(inherited) @executable_path/Frameworks @loader_path/Frameworks @executable_path/../../Frameworks'
   tcfg.build_settings['SKIP_INSTALL'] = 'YES'
   tcfg.build_settings['TARGETED_DEVICE_FAMILY'] = '1,2'
   tcfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
@@ -157,7 +158,7 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   end
 end
 
-# Link Libbox.xcframework into PacketTunnel when present
+# Link + Embed Libbox into PacketTunnel.appex (extension process needs its own copy)
 if File.directory?(FRAMEWORKS)
   fw_group = project.main_group.find_subpath('Frameworks', true)
   fw_group.set_source_tree('<group>')
@@ -166,6 +167,15 @@ if File.directory?(FRAMEWORKS)
   lib_ref ||= fw_group.new_file('Libbox.xcframework')
   unless tunnel.frameworks_build_phase.files_references.include?(lib_ref)
     tunnel.frameworks_build_phase.add_file_reference(lib_ref)
+  end
+  embed_fw = tunnel.copy_files_build_phases.find { |p| p.name == 'Embed Frameworks' }
+  unless embed_fw
+    embed_fw = tunnel.new_copy_files_build_phase('Embed Frameworks')
+    embed_fw.symbol_dst_subfolder_spec = :frameworks # 10
+  end
+  unless embed_fw.files_references.include?(lib_ref)
+    bf = embed_fw.add_file_reference(lib_ref)
+    bf.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
   end
 end
 

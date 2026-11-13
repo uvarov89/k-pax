@@ -10,10 +10,32 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     private var platformInterface: ExtensionPlatformInterface?
     
     override open func startTunnel(options: [String: NSObject]?) async throws {
+        do {
+            try await startTunnelBody()
+            FilePath.clearTunnelError()
+        } catch {
+            let text = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            FilePath.writeTunnelError(text)
+            NSLog("PacketTunnel: start failed: \(text)")
+            throw error
+        }
+    }
+
+    private func startTunnelBody() async throws {
+        if FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: FilePath.groupName
+        ) == nil {
+            throw ExtensionStartupError(
+                "(packet-tunnel) App Group unavailable: \(FilePath.groupName)"
+            )
+        }
+        try FilePath.prepareSharedDirectories()
+
         let setupOptions = LibboxSetupOptions()
-        setupOptions.basePath = FilePath.sharedDirectory.relativePath
-        setupOptions.workingPath = FilePath.workingDirectory.relativePath
-        setupOptions.tempPath = FilePath.cacheDirectory.relativePath
+        setupOptions.basePath = FilePath.sharedDirectory.path
+        setupOptions.workingPath = FilePath.workingDirectory.path
+        setupOptions.tempPath = FilePath.cacheDirectory.path
         setupOptions.logMaxLines = 3000
         
         var setupError: NSError?
@@ -23,7 +45,10 @@ open class ExtensionProvider: NEPacketTunnelProvider {
         }
         
         var stderrError: NSError?
-        LibboxRedirectStderr(FilePath.cacheDirectory.appendingPathComponent("stderr.log").relativePath, &stderrError)
+        LibboxRedirectStderr(
+            FilePath.cacheDirectory.appendingPathComponent("stderr.log").path,
+            &stderrError
+        )
         if let stderrError {
             throw ExtensionStartupError("(packet-tunnel) redirect stderr error: \(stderrError.localizedDescription)")
         }
@@ -60,25 +85,22 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     }
     
     private func startService() async throws {
-        // Get configuration from App Groups (for access from Extension)
         let configContent: String
-        
-        // First try to get from App Groups
-        let groupDefaults = UserDefaults(suiteName: FilePath.groupName)
-        if let config = groupDefaults?.string(forKey: "sing_box_current_config") {
+        if let fromFile = try? String(contentsOf: FilePath.tunnelConfigFile, encoding: .utf8),
+           !fromFile.isEmpty {
+            configContent = fromFile
+        } else if let groupDefaults = UserDefaults(suiteName: FilePath.groupName),
+                  let config = groupDefaults.string(forKey: "sing_box_current_config"),
+                  !config.isEmpty {
             configContent = config
-        } else if let config = UserDefaults.standard.string(forKey: "sing_box_current_config") {
-            // Fallback to standard UserDefaults
-            configContent = config
+        } else if let activeConfig = ServerConfigManager().getActiveServerConfig(),
+                  let configJson = activeConfig["config"] as? String,
+                  !configJson.isEmpty {
+            configContent = configJson
         } else {
-            // Try to get active configuration from ServerConfigManager
-            let serverConfigManager = ServerConfigManager()
-            if let activeConfig = serverConfigManager.getActiveServerConfig(),
-               let configJson = activeConfig["config"] as? String {
-                configContent = configJson
-            } else {
-                throw ExtensionStartupError("(packet-tunnel) error: missing configuration")
-            }
+            throw ExtensionStartupError(
+                "(packet-tunnel) error: missing configuration (app group file empty)"
+            )
         }
         
         let options = LibboxOverrideOptions()

@@ -41,6 +41,11 @@ def validate_archive(ipa, brand, signing=True):
         assert len(extensions) == 1, "Expected exactly one VPN extension"
         extension = extensions[0]
         validate_bundle_info(plistlib.loads((app / "Info.plist").read_bytes()), plistlib.loads((extension / "Info.plist").read_bytes()), brand)
+        # Packet Tunnel must ship Libbox inside the appex (separate process from Runner).
+        libbox = list((extension / "Frameworks").glob("Libbox.framework")) + list(
+            (extension / "Frameworks").glob("Libbox")
+        )
+        assert libbox, "Libbox not embedded in PacketTunnel.appex/Frameworks"
         if signing:
             subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
             bundle = BRANDS[brand][0]

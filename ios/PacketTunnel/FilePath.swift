@@ -84,6 +84,50 @@ public extension FilePath {
     #else
         static let workingDirectory = cacheDirectory.appendingPathComponent("Working", isDirectory: true)
     #endif
+
+    /// Tunnel JSON shared app ↔ extension (UserDefaults is too small / flaky for full configs).
+    static var tunnelConfigFile: URL {
+        sharedDirectory.appendingPathComponent("sing_box_current_config.json", isDirectory: false)
+    }
+
+    /// Last Packet Tunnel failure text for the Flutter UI (no secrets).
+    static var tunnelLastErrorFile: URL {
+        sharedDirectory.appendingPathComponent("packet_tunnel_last_error.txt", isDirectory: false)
+    }
+
+    static func prepareSharedDirectories() throws {
+        let fm = FileManager.default
+        for dir in [sharedDirectory, cacheDirectory, workingDirectory] {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+    }
+
+    static func writeTunnelError(_ message: String) {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        try? prepareSharedDirectories()
+        try? text.data(using: .utf8)?.write(to: tunnelLastErrorFile, options: .atomic)
+        UserDefaults(suiteName: groupName)?.set(text, forKey: "packet_tunnel_last_error")
+    }
+
+    static func readTunnelError() -> String? {
+        if let data = try? Data(contentsOf: tunnelLastErrorFile),
+           let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !text.isEmpty {
+            return text
+        }
+        let fromDefaults = UserDefaults(suiteName: groupName)?
+            .string(forKey: "packet_tunnel_last_error")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fromDefaults, !fromDefaults.isEmpty { return fromDefaults }
+        return nil
+    }
+
+    static func clearTunnelError() {
+        try? FileManager.default.removeItem(at: tunnelLastErrorFile)
+        UserDefaults(suiteName: groupName)?.removeObject(forKey: "packet_tunnel_last_error")
+    }
     
     static var iCloudDirectory = FileManager.default.url(forUbiquityContainerIdentifier: nil)?.appendingPathComponent("Documents", isDirectory: true) ?? URL(string: "stub")!
 }

@@ -220,12 +220,20 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
             
             Task {
                 do {
-                    // Save configuration to UserDefaults for use in Extension
                     currentConfig = config
-                    if let groupDefaults = UserDefaults(suiteName: FilePath.groupName) {
-                        groupDefaults.set(config, forKey: "sing_box_current_config")
-                    } else {
-                        UserDefaults.standard.set(config, forKey: "sing_box_current_config")
+                    FilePath.clearTunnelError()
+                    // Prefer App Group file — full JSON is too large/flaky for UserDefaults alone.
+                    do {
+                        try FilePath.writeTunnelConfig(config)
+                    } catch {
+                        await MainActor.run {
+                            result(FlutterError(
+                                code: "APP_GROUP_WRITE_FAILED",
+                                message: "Cannot write tunnel config to App Group: \(error.localizedDescription)",
+                                details: FilePath.groupName
+                            ))
+                        }
+                        return
                     }
                     
                     // Ensure Extension Profile is initialized
@@ -266,6 +274,11 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
             }
         case "getLastTunnelError":
             Task {
+                // Prefer extension-written App Group error (real startTunnel failure).
+                if let fromExtension = FilePath.readTunnelError(), !fromExtension.isEmpty {
+                    await MainActor.run { result(fromExtension) }
+                    return
+                }
                 let detail = await Self.lastDisconnectDetail(from: extensionProfile)
                 await MainActor.run {
                     result(detail)
@@ -288,13 +301,8 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                     
                     try await profile.stop()
                     
-                    // Clear configuration
                     currentConfig = nil
-                    if let groupDefaults = UserDefaults(suiteName: FilePath.groupName) {
-                        groupDefaults.removeObject(forKey: "sing_box_current_config")
-                    } else {
-                        UserDefaults.standard.removeObject(forKey: "sing_box_current_config")
-                    }
+                    FilePath.clearTunnelConfig()
                     
                     await MainActor.run {
                         result(true)

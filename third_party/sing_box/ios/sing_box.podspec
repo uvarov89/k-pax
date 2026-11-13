@@ -17,11 +17,15 @@ A Flutter plugin for sing-box, providing platform-specific implementations for A
   s.dependency 'Flutter'
   s.platform = :ios, '15.0'
   
-  # Libbox framework
+  # Libbox framework (Go/libbox needs system libresolv for res_9_* symbols)
   s.vendored_frameworks = 'Frameworks/Libbox.xcframework'
-
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.libraries = 'resolv'
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'OTHER_LDFLAGS' => '$(inherited) -lresolv',
+  }
+  s.user_target_xcconfig = { 'OTHER_LDFLAGS' => '$(inherited) -lresolv' }
   s.swift_version = '5.0'
 
   # If your plugin requires a privacy manifest, for example if it uses any

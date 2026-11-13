@@ -249,7 +249,7 @@ public class CommandClient: ObservableObject {
             }
         }
         
-        func writeConnectionEvents(_ events: LibboxConnectionEvents?) {
+        func write(_ events: LibboxConnectionEvents?) {
             guard let events else {
                 return
             }
@@ -258,7 +258,7 @@ public class CommandClient: ObservableObject {
                     commandClient.rawConnections = LibboxNewConnections()
                 }
                 guard let message = commandClient.rawConnections else { return }
-                message.applyEvents(events)
+                message.apply(events)
                 let result = commandClient.filterConnections(message)
                 commandClient.connections = result.connections
                 commandClient.hasAnyConnection = result.hasAny

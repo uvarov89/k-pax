@@ -48,9 +48,7 @@ private class resultBox<T> {
     
     func getResult0() -> T {
         guard let result0 = result0 else {
-            // This should not happen, as semaphore.wait() guarantees value is set
-            // But just in case, return default value or throw error
-            throw NSError(domain: "resultBox", code: -2, userInfo: [NSLocalizedDescriptionKey: "result0 not set in resultBox"])
+            fatalError("result0 not set in resultBox")
         }
         return result0
     }

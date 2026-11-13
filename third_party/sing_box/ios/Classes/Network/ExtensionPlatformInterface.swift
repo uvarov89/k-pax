@@ -183,11 +183,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
             var bypassDomains: [String] = []
             if let bypassDomainIterator = options.getHTTPProxyBypassDomain() {
                 while bypassDomainIterator.hasNext() {
-                    if let domain = bypassDomainIterator.next() {
-                        bypassDomains.append(domain)
-                    } else {
-                        break
-                    }
+                    bypassDomains.append(bypassDomainIterator.next())
                 }
             }
             if excludeAPNs {
@@ -201,11 +197,7 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
             var matchDomains: [String] = []
             if let matchDomainIterator = options.getHTTPProxyMatchDomain() {
                 while matchDomainIterator.hasNext() {
-                    if let domain = matchDomainIterator.next() {
-                        matchDomains.append(domain)
-                    } else {
-                        break
-                    }
+                    matchDomains.append(matchDomainIterator.next())
                 }
             }
             if !matchDomains.isEmpty {
@@ -236,12 +228,12 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
     
     // MARK: - LibboxPlatformInterfaceProtocol
     
-    // Libbox 1.13+ PlatformInterface (gomobile names from Go).
-    public func usePlatformAutoDetectInterfaceControl() -> Bool {
+    // Libbox 1.13+ PlatformInterface (gomobile Swift names).
+    public func usePlatformAutoDetectControl() -> Bool {
         false
     }
 
-    public func autoDetectInterfaceControl(_: Int32) throws {}
+    public func autoDetectControl(_: Int32) throws {}
 
     public func findConnectionOwner(
         _: Int32,

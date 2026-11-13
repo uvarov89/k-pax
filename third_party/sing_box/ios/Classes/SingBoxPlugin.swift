@@ -345,10 +345,13 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
             // Get server address from configuration
             let address: Any? = getCurrentServerAddress()
             
+            let errorMessage: Any = !isConnected
+                ? "Not connected to VPN"
+                : (ping == nil ? "Ping not available" : NSNull())
             result([
                 "ping": ping ?? 0,
                 "success": isConnected && (ping ?? 0) > 0,
-                "errorMessage": !isConnected ? "Not connected to VPN" : (ping == nil ? "Ping not available" : NSNull()),
+                "errorMessage": errorMessage,
                 "address": address ?? NSNull()
             ])
         case "addAppToBypass":

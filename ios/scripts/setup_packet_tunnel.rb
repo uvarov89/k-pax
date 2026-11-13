@@ -158,23 +158,28 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   end
 end
 
-# Link + Embed Libbox into PacketTunnel.appex (extension process needs its own copy)
+# Link Libbox into PacketTunnel with Embed & Sign (CodeSignOnCopy).
+# Do NOT add a separate "Embed Frameworks" Copy Files phase for the .xcframework —
+# that copies the xcframework wrapper and breaks codesign ("sealed resource invalid").
 if File.directory?(FRAMEWORKS)
   fw_group = project.main_group.find_subpath('Frameworks', true)
   fw_group.set_source_tree('<group>')
   fw_group.set_path('Frameworks')
   lib_ref = fw_group.files.find { |f| f.path.to_s.include?('Libbox.xcframework') }
   lib_ref ||= fw_group.new_file('Libbox.xcframework')
-  unless tunnel.frameworks_build_phase.files_references.include?(lib_ref)
-    tunnel.frameworks_build_phase.add_file_reference(lib_ref)
+  # Remove broken Copy Files embed of the raw xcframework if a previous run added it.
+  tunnel.copy_files_build_phases.select { |p| p.name == 'Embed Frameworks' }.each do |phase|
+    phase.files.to_a.each do |bf|
+      ref = bf.file_ref
+      next unless ref && ref.path.to_s.include?('Libbox')
+      phase.remove_build_file(bf)
+    end
   end
-  embed_fw = tunnel.copy_files_build_phases.find { |p| p.name == 'Embed Frameworks' }
-  unless embed_fw
-    embed_fw = tunnel.new_copy_files_build_phase('Embed Frameworks')
-    embed_fw.symbol_dst_subfolder_spec = :frameworks # 10
-  end
-  unless embed_fw.files_references.include?(lib_ref)
-    bf = embed_fw.add_file_reference(lib_ref)
+  existing = tunnel.frameworks_build_phase.files.find { |bf| bf.file_ref == lib_ref }
+  if existing
+    existing.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
+  else
+    bf = tunnel.frameworks_build_phase.add_file_reference(lib_ref)
     bf.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
   end
 end

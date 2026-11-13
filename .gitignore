@@ -78,3 +78,7 @@ third_party/sing_box/ios/Frameworks/Libbox.xcframework/
 /X-Plm-Setup-*.exe
 /k-pax-*-preview.apk
 
+.secrets/
+*.pem
+*.p8
+*.p12

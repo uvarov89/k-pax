@@ -9,6 +9,10 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      # UI: Application → Environment variables → group "code_signing"
+      # with secure CERTIFICATE_PRIVATE_KEY (RSA PEM). No Mac required.
+      groups:
+        - code_signing
       vars:
         BRAND: kpax
         BUNDLE_ID: space.kpax.app
@@ -73,6 +77,8 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      groups:
+        - code_signing
       vars:
         BRAND: xplm
         BUNDLE_ID: online.xplm.app

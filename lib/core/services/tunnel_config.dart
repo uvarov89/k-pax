@@ -17,6 +17,23 @@ const kClashPort = 9090;
 const _tunIpv4 = '172.19.0.1/30';
 const _tunIpv6 = 'fdfe:dcba:9876::1/126';
 
+/// RU mobile operator portals + OS captive probes. Full-tunnel often breaks
+/// Beeline/MTS/etc. until these resolve and connect outside the proxy.
+const _ispDirectDomainSuffixes = <String>[
+  'beeline.ru',
+  'mts.ru',
+  'megafon.ru',
+  'tele2.ru',
+  't2.ru',
+  'yota.ru',
+  'captive.apple.com',
+  'msftconnecttest.com',
+];
+
+const _ispDirectDomains = <String>[
+  'connectivitycheck.gstatic.com',
+];
+
 String buildTunnelConfig(
   TunnelNode node,
   ProSettings settings, {
@@ -63,7 +80,12 @@ String buildTunnelConfig(
       ],
       'rules': [
         {
-          'domain_suffix': [AppBrand.current.host, AppBrand.current.subHost],
+          'domain_suffix': [
+            AppBrand.current.host,
+            AppBrand.current.subHost,
+            ..._ispDirectDomainSuffixes,
+          ],
+          'domain': _ispDirectDomains,
           'server': 'dns-direct',
         },
       ],
@@ -113,6 +135,12 @@ List<Map<String, Object?>> _routeRules(
     {'action': 'sniff'},
     {'protocol': 'dns', 'action': 'hijack-dns'},
     {'ip_is_private': true, 'action': 'route', 'outbound': 'direct'},
+    {
+      'domain_suffix': _ispDirectDomainSuffixes,
+      'domain': _ispDirectDomains,
+      'action': 'route',
+      'outbound': 'direct',
+    },
   ];
   // Reality/VLESS is TCP-first. QUIC (HTTP/3) often stalls through it while the
   // same site works on TCP — reject QUIC so browsers/apps fall back to HTTPS.

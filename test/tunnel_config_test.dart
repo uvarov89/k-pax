@@ -65,6 +65,26 @@ void main() {
     expect((off['dns'] as Map)['final'], 'dns-remote-udp');
   });
 
+  test('RU ISP portals bypass the tunnel by default', () {
+    final built = config();
+    final dnsRules = (built['dns'] as Map)['rules'] as List;
+    final dnsDirect = dnsRules.cast<Map>().firstWhere(
+      (r) => r['server'] == 'dns-direct',
+    );
+    expect(
+      (dnsDirect['domain_suffix'] as List).cast<String>(),
+      contains('beeline.ru'),
+    );
+    final routeRules = (built['route'] as Map)['rules'] as List;
+    final isp = routeRules.cast<Map>().firstWhere(
+      (r) =>
+          r['outbound'] == 'direct' &&
+          (r['domain_suffix'] as List?)?.contains('beeline.ru') == true,
+    );
+    expect(isp['domain_suffix'], contains('mts.ru'));
+    expect(isp['domain'], contains('connectivitycheck.gstatic.com'));
+  });
+
   test('full tunnel rejects QUIC and IPv6 leak by default', () {
     final disabled = config();
     final disabledRules = (disabled['route'] as Map)['rules'] as List;

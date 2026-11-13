@@ -335,7 +335,7 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                 "downloadSpeed": downloadSpeed,
                 "uploadSpeed": uploadSpeed,
                 "success": isConnected,
-                "errorMessage": isConnected ? NSNull() : "Not connected to VPN"
+                "errorMessage": isConnected ? (NSNull() as Any) : ("Not connected to VPN" as Any)
             ])
         case "pingCurrentServer":
             // Ping uses current connection statistics
@@ -345,14 +345,19 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
             // Get server address from configuration
             let address: Any? = getCurrentServerAddress()
             
-            let errorMessage: Any = !isConnected
-                ? "Not connected to VPN"
-                : (ping == nil ? "Ping not available" : NSNull())
+            let errorMessage: Any
+            if !isConnected {
+                errorMessage = "Not connected to VPN"
+            } else if ping == nil {
+                errorMessage = "Ping not available"
+            } else {
+                errorMessage = NSNull()
+            }
             result([
                 "ping": ping ?? 0,
                 "success": isConnected && (ping ?? 0) > 0,
                 "errorMessage": errorMessage,
-                "address": address ?? NSNull()
+                "address": (address ?? NSNull()) as Any
             ])
         case "addAppToBypass":
             let args = call.arguments as? [String: Any]

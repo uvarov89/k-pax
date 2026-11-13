@@ -81,10 +81,9 @@
 			</array>
 		</dict>
 	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>network-authentication</string>
-	</array>
+	<!-- Do not set UIBackgroundModes network-authentication: ASC 90514 requires
+	     HotspotHelper/CaptiveNetworkPlugin entitlements Apple does not grant for VPN apps.
+	     Packet Tunnel runs as a Network Extension; no Runner background mode needed. -->
 	<!-- Standard TLS/HTTPS only for App Store export compliance questionnaire skip. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

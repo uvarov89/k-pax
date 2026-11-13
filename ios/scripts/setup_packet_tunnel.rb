@@ -158,16 +158,15 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   end
 end
 
-# Link Libbox into PacketTunnel with Embed & Sign (CodeSignOnCopy).
-# Do NOT add a separate "Embed Frameworks" Copy Files phase for the .xcframework —
-# that copies the xcframework wrapper and breaks codesign ("sealed resource invalid").
+# Link Libbox xcframework, then copy the platform slice into the appex Frameworks/.
+# Embedding the .xcframework via Copy Files / CodeSignOnCopy is unreliable and
+# either skips the binary or breaks codesign seal.
 if File.directory?(FRAMEWORKS)
   fw_group = project.main_group.find_subpath('Frameworks', true)
   fw_group.set_source_tree('<group>')
   fw_group.set_path('Frameworks')
   lib_ref = fw_group.files.find { |f| f.path.to_s.include?('Libbox.xcframework') }
   lib_ref ||= fw_group.new_file('Libbox.xcframework')
-  # Remove broken Copy Files embed of the raw xcframework if a previous run added it.
   tunnel.copy_files_build_phases.select { |p| p.name == 'Embed Frameworks' }.each do |phase|
     phase.files.to_a.each do |bf|
       ref = bf.file_ref
@@ -177,11 +176,56 @@ if File.directory?(FRAMEWORKS)
   end
   existing = tunnel.frameworks_build_phase.files.find { |bf| bf.file_ref == lib_ref }
   if existing
-    existing.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
+    existing.settings = {}
   else
-    bf = tunnel.frameworks_build_phase.add_file_reference(lib_ref)
-    bf.settings = { 'ATTRIBUTES' => ['CodeSignOnCopy', 'RemoveHeadersOnCopy'] }
+    tunnel.frameworks_build_phase.add_file_reference(lib_ref)
   end
+
+  embed_script_name = 'Embed Libbox into PacketTunnel'
+  tunnel.shell_script_build_phases.select { |p| p.name == embed_script_name }.each do |p|
+    tunnel.build_phases.delete(p)
+  end
+  phase = tunnel.new_shell_script_build_phase(embed_script_name)
+  phase.shell_path = '/bin/sh'
+  phase.show_env_vars_in_log = '0'
+  phase.shell_script = <<~'SCRIPT'
+    set -e
+    XCFRAMEWORK="${PROJECT_DIR}/Frameworks/Libbox.xcframework"
+    if [ ! -d "$XCFRAMEWORK" ]; then
+      echo "error: missing $XCFRAMEWORK" >&2
+      exit 1
+    fi
+    if [ "${PLATFORM_NAME}" = "iphonesimulator" ]; then
+      SLICE=$(ls -d "$XCFRAMEWORK"/ios-*-simulator 2>/dev/null | head -1)
+    else
+      SLICE="$XCFRAMEWORK/ios-arm64"
+      if [ ! -d "$SLICE" ]; then
+        SLICE=$(ls -d "$XCFRAMEWORK"/ios-arm64* 2>/dev/null | grep -v simulator | head -1)
+      fi
+    fi
+    SRC="$SLICE/Libbox.framework"
+    if [ ! -d "$SRC" ]; then
+      echo "error: Libbox.framework slice not found under $XCFRAMEWORK (platform=${PLATFORM_NAME})" >&2
+      ls -la "$XCFRAMEWORK" >&2 || true
+      exit 1
+    fi
+    DEST_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+    DEST="${DEST_DIR}/Libbox.framework"
+    mkdir -p "$DEST_DIR"
+    rm -rf "$DEST"
+    cp -R "$SRC" "$DEST"
+    if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+      /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,flags --generate-entitlement-der "$DEST" || \
+        /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "$DEST"
+    fi
+    echo "Embedded Libbox.framework into PacketTunnel from $SRC"
+  SCRIPT
+  # Run after compile/link so FRAMEWORKS_FOLDER_PATH exists, before codesign of appex.
+  phases = tunnel.build_phases
+  phases.delete(phase)
+  # Insert before the last phase when possible (often "[CP] ..." / codesign adjacent).
+  insert_at = [phases.length - 1, 0].max
+  phases.insert(insert_at, phase)
 end
 
 # Ensure Embed Foundation Extensions runs before Thin Binary

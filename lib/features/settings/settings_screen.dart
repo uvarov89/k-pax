@@ -402,42 +402,7 @@ class SettingsScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!AppBrand.current.isXplm)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(s.theme)),
-                      const SizedBox(width: 12),
-                      DropdownButtonHideUnderline(
-                        child: DropdownButton<AppThemePreference>(
-                          value: settings.theme,
-                          isDense: true,
-                          dropdownColor: surface,
-                          items: [
-                            DropdownMenuItem(
-                              value: AppThemePreference.dark,
-                              child: Text(s.themeDark),
-                            ),
-                            DropdownMenuItem(
-                              value: AppThemePreference.light,
-                              child: Text(s.themeLight),
-                            ),
-                          ],
-                          onChanged: (theme) {
-                            if (theme == null) return;
-                            controller.updateAppSettings(
-                              settings.copyWith(theme: theme),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              // K-Pax / X-Plm: dark theme only — no theme switcher.
             ],
           ),
           if (!xplm) ...[

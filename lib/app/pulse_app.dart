@@ -25,15 +25,12 @@ class PulseApp extends StatefulWidget {
 }
 
 class _PulseAppState extends State<PulseApp> {
-  late AppThemePreference _theme;
   DeepLinkService? _deepLinks;
   NetworkAutoConnect? _networkAuto;
 
   @override
   void initState() {
     super.initState();
-    _theme = widget.controller.appSettings.theme;
-    widget.controller.addListener(_onTheme);
     _bindTray();
     _deepLinks = DeepLinkService(widget.controller);
     _networkAuto = NetworkAutoConnect(widget.controller);
@@ -72,15 +69,8 @@ class _PulseAppState extends State<PulseApp> {
     ).invokeMethod<void>('setTrayState', state).catchError((_) {});
   }
 
-  void _onTheme() {
-    final next = widget.controller.appSettings.theme;
-    if (next == _theme || !mounted) return;
-    setState(() => _theme = next);
-  }
-
   @override
   void dispose() {
-    widget.controller.removeListener(_onTheme);
     widget.controller.removeListener(_pushTrayState);
     _deepLinks?.dispose();
     _networkAuto?.dispose();
@@ -115,15 +105,17 @@ class _PulseAppState extends State<PulseApp> {
   @override
   Widget build(BuildContext context) {
     final brand = AppBrand.current;
-    // X-Plm is dark neon; K-Pax follows user theme preference.
-    final isLight = !brand.isXplm && _theme == AppThemePreference.light;
+    // Dark only for all brands (theme switcher removed).
+    const isLight = false;
     return ChangeNotifierProvider.value(
       value: widget.controller,
       child: MaterialApp(
         title: brand.appName,
         debugShowCheckedModeBanner: false,
         scrollBehavior: brand.isXplm ? const XplmScrollBehavior() : null,
-        theme: _themeForWindow(NordSignalTheme.forPreference(_theme)),
+        theme: _themeForWindow(
+          NordSignalTheme.forPreference(AppThemePreference.dark),
+        ),
         builder: (context, child) {
           final overlay = SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,

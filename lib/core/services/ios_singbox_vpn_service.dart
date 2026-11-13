@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -70,7 +72,17 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     await applyAppSettings(appSettings);
     // Per-app split tunnel is not available on iOS; config is full-tunnel.
     final config = buildTunnelConfig(node, settings, appSettings: appSettings);
-    final started = await _singBox.connect(config);
+    final bool started;
+    try {
+      started = await _singBox
+          .connect(config)
+          .timeout(const Duration(seconds: 35));
+    } on TimeoutException {
+      try {
+        await _singBox.disconnect();
+      } catch (_) {}
+      throw StateError('Туннель не ответил при запуске (таймаут)');
+    }
     if (!started) {
       throw StateError('Разрешение VPN не выдано или расширение недоступно');
     }

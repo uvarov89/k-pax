@@ -93,9 +93,8 @@ class SettingsRepository {
     final p = await _prefs;
     return AppSettings(
       language: AppLanguageLabel.fromCode(p.getString(_kLanguage)),
-      theme: p.getString(_kTheme) == 'light'
-          ? AppThemePreference.light
-          : AppThemePreference.dark,
+      // Light theme removed from product UI — always dark.
+      theme: AppThemePreference.dark,
       notificationsEnabled: p.getBool(_kNotifications) ?? true,
       autoConnectOnLaunch: p.getBool(_kAutoLaunch) ?? false,
       launchAtLogin: p.getBool(_kLaunchAtLogin) ?? false,
@@ -110,10 +109,7 @@ class SettingsRepository {
   Future<void> saveAppSettings(AppSettings settings) async {
     final p = await _prefs;
     await p.setString(_kLanguage, settings.language.code);
-    await p.setString(
-      _kTheme,
-      settings.theme == AppThemePreference.light ? 'light' : 'dark',
-    );
+    await p.setString(_kTheme, 'dark');
     await p.setBool(_kNotifications, settings.notificationsEnabled);
     await p.setBool(_kAutoLaunch, settings.autoConnectOnLaunch);
     await p.setBool(_kLaunchAtLogin, settings.launchAtLogin);

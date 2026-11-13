@@ -37,7 +37,7 @@ class XplmHomeLayout extends StatelessWidget {
     if (controller.connectionState == VpnConnectionState.error) {
       cta = s.retry;
     } else if (controller.connectionState == VpnConnectionState.connecting) {
-      cta = s.connecting;
+      cta = s.disconnect;
     } else if (controller.connectionState == VpnConnectionState.disconnecting) {
       cta = s.disconnecting;
     } else if (connected) {
@@ -207,7 +207,9 @@ class XplmHomeLayout extends StatelessWidget {
                                 fontSize: 18,
                                 busy: busy,
                                 icon: Icons.power_settings_new_rounded,
-                                onPressed: busy
+                                // Allow cancel while connecting; block only while disconnecting.
+                                onPressed: controller.connectionState ==
+                                        VpnConnectionState.disconnecting
                                     ? null
                                     : () => onConnectPressed(),
                               ),
@@ -738,7 +740,7 @@ class _HomePrimaryButton extends StatelessWidget {
     child: Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: busy ? null : onPressed,
+        onTap: onPressed,
         borderRadius: BorderRadius.circular(25),
         child: SizedBox(
           height: height,

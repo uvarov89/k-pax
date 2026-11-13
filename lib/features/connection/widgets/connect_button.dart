@@ -34,8 +34,11 @@ class ConnectButton extends StatelessWidget {
     final xplm = AppBrand.current.isXplm;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connected = state == VpnConnectionState.connected;
-    final busy = state == VpnConnectionState.connecting ||
-        state == VpnConnectionState.disconnecting;
+    final connecting = state == VpnConnectionState.connecting;
+    final disconnecting = state == VpnConnectionState.disconnecting;
+    final busy = connecting || disconnecting;
+    // Allow cancel while connecting; only block during disconnecting.
+    final tapEnabled = !disconnecting && onPressed != null;
 
     final Color ringColor;
     final Color fillColor;
@@ -70,7 +73,8 @@ class ConnectButton extends StatelessWidget {
                 : NordColors.lightDisconnectFill);
         glowColor = ringColor;
         fillGradient = null;
-        label = connectingLabel;
+        // Tap cancels — show disconnect so the control is not a dead spinner.
+        label = disconnectLabel;
       case VpnConnectionState.disconnecting:
         ringColor = xplm ? XplmColors.cyan : NordColors.connecting;
         fillColor = xplm
@@ -119,7 +123,7 @@ class ConnectButton extends StatelessWidget {
       button: true,
       label: label,
       child: GestureDetector(
-        onTap: busy ? null : onPressed,
+        onTap: tapEnabled ? onPressed : null,
         child: SizedBox(
           width: diameter,
           height: diameter,

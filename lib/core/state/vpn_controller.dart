@@ -105,6 +105,8 @@ class VpnController extends ChangeNotifier {
   int _reconnectBudget = 0;
   bool _wantConnected = false;
   bool _reconnectInFlight = false;
+  /// Bumped to invalidate an in-flight [connect] / failover when user cancels.
+  int _connectEpoch = 0;
   UiFlash? _uiFlash;
   String? _dismissedHomeNoticeId;
 
@@ -1132,12 +1134,12 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> toggleConnection() async {
-    if (isBusy) return;
-    if (isConnected) {
+    if (connectionState == VpnConnectionState.disconnecting) return;
+    if (isConnected || connectionState == VpnConnectionState.connecting) {
       await disconnect();
-    } else {
-      await connect();
+      return;
     }
+    await connect();
   }
 
   Future<void> _start(TunnelNode node) async {
@@ -1222,6 +1224,7 @@ class VpnController extends ChangeNotifier {
     Object? lastError;
 
     Future<TunnelNode?> tryStart(TunnelNode node, {bool disconnectFirst = false}) async {
+      if (!_wantConnected) return null;
       tried.add(_endpointKey(node));
       triedCountries.add(node.countryId);
       if (disconnectFirst) {
@@ -1229,6 +1232,7 @@ class VpnController extends ChangeNotifier {
           await _service.disconnect();
         } catch (_) {}
       }
+      if (!_wantConnected) return null;
       try {
         await _start(node);
         return node;
@@ -1260,7 +1264,7 @@ class VpnController extends ChangeNotifier {
     }
 
     // Auto: jump to another country after same-country path is exhausted.
-    while (true) {
+    while (_wantConnected) {
       final TunnelNode next;
       try {
         next = await _selectNode(
@@ -1275,6 +1279,7 @@ class VpnController extends ChangeNotifier {
       final nextSpare = await trySpares(next);
       if (nextSpare != null) return nextSpare;
     }
+    throw lastError ?? StateError('connect cancelled');
   }
 
   /// Reachable server among near-best RTTs. Message lines stay out of the race
@@ -1494,6 +1499,7 @@ class VpnController extends ChangeNotifier {
       _reconnectBudget =
           proSettings.reconnectPolicy == ReconnectPolicy.aggressive ? 5 : 2;
     }
+    final epoch = ++_connectEpoch;
     connectionState = VpnConnectionState.connecting;
     errorMessage = null;
     notifyListeners();
@@ -1502,6 +1508,12 @@ class VpnController extends ChangeNotifier {
     try {
       seed = await _selectNode();
     } catch (error) {
+      if (epoch != _connectEpoch || !_wantConnected) {
+        connectionState = VpnConnectionState.disconnected;
+        errorMessage = null;
+        notifyListeners();
+        return true;
+      }
       connectionState = VpnConnectionState.error;
       errorMessage = _failureText(error);
       notifyListeners();
@@ -1510,6 +1522,18 @@ class VpnController extends ChangeNotifier {
 
     try {
       final node = await _startWithFailover(seed);
+      if (epoch != _connectEpoch || !_wantConnected) {
+        try {
+          await _service.disconnect();
+        } catch (_) {}
+        if (epoch == _connectEpoch) {
+          connectionState = VpnConnectionState.disconnected;
+          connectedNode = null;
+          errorMessage = null;
+          notifyListeners();
+        }
+        return true;
+      }
       await WindowsFirewall.clear();
       connectedNode = node;
       connectionState = VpnConnectionState.connected;
@@ -1522,24 +1546,36 @@ class VpnController extends ChangeNotifier {
         notifyListeners();
       });
     } catch (e) {
-      connectionState = VpnConnectionState.error;
-      errorMessage = _failureText(e);
+      if (epoch != _connectEpoch || !_wantConnected) {
+        connectionState = VpnConnectionState.disconnected;
+        connectedNode = null;
+        errorMessage = null;
+      } else {
+        connectionState = VpnConnectionState.error;
+        errorMessage = _failureText(e);
+      }
     }
     notifyListeners();
     return true;
   }
 
   Future<void> disconnect() async {
-    if (isBusy || connectionState == VpnConnectionState.disconnected) return;
+    if (connectionState == VpnConnectionState.disconnected ||
+        connectionState == VpnConnectionState.disconnecting) {
+      return;
+    }
     _wantConnected = false;
     _reconnectBudget = 0;
     _reconnectInFlight = false;
+    _connectEpoch++;
     connectionState = VpnConnectionState.disconnecting;
     notifyListeners();
 
     try {
       await _service.disconnect();
       await WindowsFirewall.clear();
+    } catch (_) {
+      // Still clear UI state so the user is never stuck on connecting.
     } finally {
       _sessionTimer?.cancel();
       _sessionTimer = null;

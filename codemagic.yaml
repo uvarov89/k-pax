@@ -19,9 +19,8 @@ workflows:
         BUNDLE_ID_EXT: space.kpax.app.extension
         APP_GROUP: group.space.kpax.app
         LIBBOX_SINGBOX_TAG: v1.13.21
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: space.kpax.app,space.kpax.app.extension
+      # Do not use environment.ios_signing here: it fails the build before
+      # scripts can create missing App Store profiles (VPN / Network Extension).
     scripts:
       - name: Get Flutter packages
         script: |
@@ -44,6 +43,17 @@ workflows:
           cd ios && pod install
       - name: Set up code signing
         script: |
+          set -e
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --strict-match-identifier
+          app-store-connect fetch-signing-files "$BUNDLE_ID_EXT" \
+            --type IOS_APP_STORE \
+            --create \
+            --strict-match-identifier
+          keychain add-certificates
           xcode-project use-profiles
       - name: Flutter build IPA
         script: |
@@ -85,9 +95,6 @@ workflows:
         BUNDLE_ID_EXT: online.xplm.app.extension
         APP_GROUP: group.online.xplm.app
         LIBBOX_SINGBOX_TAG: v1.13.21
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: online.xplm.app,online.xplm.app.extension
     scripts:
       - name: Get Flutter packages
         script: |
@@ -117,6 +124,17 @@ workflows:
           cd ios && pod install
       - name: Set up code signing
         script: |
+          set -e
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --strict-match-identifier
+          app-store-connect fetch-signing-files "$BUNDLE_ID_EXT" \
+            --type IOS_APP_STORE \
+            --create \
+            --strict-match-identifier
+          keychain add-certificates
           xcode-project use-profiles
       - name: Flutter build IPA (X-Plm)
         script: |

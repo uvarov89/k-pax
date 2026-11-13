@@ -9,6 +9,7 @@ import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/brand/brand_logo.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
+import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/features/settings/app_update_prompt.dart';
 import 'package:pulse_vpn/features/connection/widgets/connect_button.dart';
@@ -365,7 +366,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                   // Fixed slot so the connect button never jumps when
                                   // connected details appear above it.
                                   SizedBox(
-                                    height: 118,
+                                    height: controller.connectionState ==
+                                            VpnConnectionState.error
+                                        ? 150
+                                        : 118,
                                     width: double.infinity,
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.end,
@@ -373,15 +377,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                         Text(
                                           controller.statusLine,
                                           textAlign: TextAlign.center,
-                                          maxLines: 2,
+                                          maxLines: controller.connectionState ==
+                                                  VpnConnectionState.error
+                                              ? 5
+                                              : 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            fontSize: 18,
+                                            fontSize: controller.connectionState ==
+                                                    VpnConnectionState.error
+                                                ? 14
+                                                : 18,
                                             fontWeight: FontWeight.w600,
                                             color: controller.isConnected
                                                 ? (AppBrand.current.isXplm
                                                       ? XplmColors.ok
                                                       : NordColors.accent)
+                                                : controller.connectionState ==
+                                                      VpnConnectionState.error
+                                                ? NordColors.danger
                                                 : secondary,
                                           ),
                                         ),

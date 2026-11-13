@@ -83,7 +83,8 @@ class SingBoxTalkerObserver implements SingBoxObserver {
 
   @override
   void onConnect(String config) {
-    info('Connecting to VPN', {'config': config});
+    // Never log config / keys — length only for diagnostics.
+    info('Connecting to VPN', {'configChars': config.length});
   }
 
   @override

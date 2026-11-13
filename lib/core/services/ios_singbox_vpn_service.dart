@@ -15,37 +15,48 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     : _singBox = singBox ?? SingBox.instance;
 
   final SingBox _singBox;
+  static const _channel = MethodChannel('sing_box');
   bool _ready = false;
 
   Future<void> _ensureReady() async {
     if (_ready) return;
-    final ok = await _singBox.initialize();
-    if (!ok) {
-      throw StateError(
-        'Не удалось инициализировать iOS VPN (Network Extension)',
-      );
+    try {
+      final ok = await _singBox.initialize();
+      if (!ok) {
+        throw StateError(
+          '[INIT_FAILED] Не удалось инициализировать iOS VPN (Network Extension)',
+        );
+      }
+    } on PlatformException catch (e) {
+      throw StateError(_platformErrorText(e));
     }
     _ready = true;
+  }
+
+  static String _platformErrorText(PlatformException e) {
+    final code = e.code.trim();
+    final message = (e.message ?? '').trim();
+    if (code.isEmpty && message.isEmpty) {
+      return 'Ошибка VPN (без кода)';
+    }
+    if (message.isEmpty) return '[$code]';
+    if (code.isEmpty) return message;
+    return '[$code] $message';
   }
 
   @override
   Future<void> applyAppSettings(AppSettings settings) async {
     await _ensureReady();
-    await const MethodChannel('sing_box').invokeMethod<void>(
-      'configureOnDemand',
-      {
-        'wifi': settings.autoConnectOnWifi,
-        'cellular': settings.autoConnectOnMobile,
-      },
-    );
+    await _channel.invokeMethod<void>('configureOnDemand', {
+      'wifi': settings.autoConnectOnWifi,
+      'cellular': settings.autoConnectOnMobile,
+    });
   }
 
   @override
   Future<void> clearSavedAccess() async {
     await _ensureReady();
-    await const MethodChannel(
-      'sing_box',
-    ).invokeMethod<void>('clearSavedAccess');
+    await _channel.invokeMethod<void>('clearSavedAccess');
   }
 
   @override
@@ -76,21 +87,26 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     try {
       started = await _singBox
           .connect(config)
-          .timeout(const Duration(seconds: 35));
+          .timeout(const Duration(seconds: 45));
     } on TimeoutException {
       try {
         await _singBox.disconnect();
       } catch (_) {}
-      throw StateError('Туннель не ответил при запуске (таймаут)');
+      throw StateError('[CONNECT_TIMEOUT] Туннель не ответил при запуске');
+    } on PlatformException catch (e) {
+      throw StateError(_platformErrorText(e));
     }
     if (!started) {
-      throw StateError('Разрешение VPN не выдано или расширение недоступно');
+      throw StateError(
+        '[CONNECT_FALSE] Разрешение VPN не выдано или расширение недоступно',
+      );
     }
     await _waitUntilConnected();
   }
 
   Future<void> _waitUntilConnected() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    // First connect may show the system VPN permission sheet.
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
     var sawConnecting = false;
     while (DateTime.now().isBefore(deadline)) {
       final status = await _singBox.getConnectionStatus();
@@ -102,19 +118,53 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
           (status == SingBoxConnectionStatus.disconnected ||
               status == SingBoxConnectionStatus.error ||
               status == SingBoxConnectionStatus.connectionLost)) {
-        throw StateError('Туннель остановился при запуске');
+        final detail = await _lastTunnelStopReason();
+        throw StateError(
+          detail == null
+              ? '[TUNNEL_STOPPED] Туннель остановился при запуске'
+              : '[TUNNEL_STOPPED] $detail',
+        );
       }
       await Future<void>.delayed(const Duration(milliseconds: 400));
     }
-    throw StateError('Туннель не поднялся за отведённое время');
+    final detail = await _lastTunnelStopReason();
+    throw StateError(
+      detail == null
+          ? '[CONNECT_TIMEOUT] Туннель не поднялся за отведённое время'
+          : '[CONNECT_TIMEOUT] $detail',
+    );
+  }
+
+  /// Best-effort stop reason from Network Extension (no config/keys).
+  Future<String?> _lastTunnelStopReason() async {
+    try {
+      final raw = await _channel.invokeMethod<dynamic>('getLastTunnelError');
+      if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+      if (raw is Map) {
+        final code = '${raw['code'] ?? ''}'.trim();
+        final message = '${raw['message'] ?? ''}'.trim();
+        if (code.isEmpty && message.isEmpty) return null;
+        if (message.isEmpty) return code;
+        if (code.isEmpty) return message;
+        return '$code: $message';
+      }
+    } on PlatformException catch (e) {
+      final text = _platformErrorText(e);
+      if (text.isNotEmpty) return text;
+    } catch (_) {}
+    return null;
   }
 
   @override
   Future<void> disconnect() async {
     await _ensureReady();
-    final stopped = await _singBox.disconnect();
-    if (!stopped) {
-      throw StateError('Не удалось остановить VPN');
+    try {
+      final stopped = await _singBox.disconnect();
+      if (!stopped) {
+        throw StateError('[DISCONNECT_FALSE] Не удалось остановить VPN');
+      }
+    } on PlatformException catch (e) {
+      throw StateError(_platformErrorText(e));
     }
   }
 

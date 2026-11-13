@@ -106,7 +106,7 @@ class SingBox {
     } catch (e, stackTrace) {
       _observer.error('Failed to initialize SingBox plugin', e, stackTrace);
       _isInitialized = false;
-      return false;
+      rethrow;
     }
   }
 
@@ -128,9 +128,9 @@ class SingBox {
       }
       return result;
     } catch (e, stackTrace) {
-      _observer.onConnectionError(e.toString());
+      _observer.onConnectionError(e.runtimeType.toString());
       _observer.error('Error connecting to VPN', e, stackTrace);
-      return false;
+      rethrow;
     }
   }
 
@@ -147,7 +147,7 @@ class SingBox {
       return result;
     } catch (e, stackTrace) {
       _observer.error('Error disconnecting from VPN', e, stackTrace);
-      return false;
+      rethrow;
     }
   }
 

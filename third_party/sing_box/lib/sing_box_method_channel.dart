@@ -32,13 +32,9 @@ class MethodChannelSingBox extends SingBoxPlatform {
 
   @override
   Future<bool> initialize() async {
-    try {
-      final result = await methodChannel.invokeMethod<bool>('initialize');
-      return result ?? false;
-    } catch (e) {
-      debugPrint('Error initializing sing_box: $e');
-      return false;
-    }
+    // Let PlatformException (APP_GROUP_UNAVAILABLE, LIBBOX_SETUP_FAILED, …) propagate.
+    final result = await methodChannel.invokeMethod<bool>('initialize');
+    return result ?? false;
   }
 
   @override
@@ -49,24 +45,17 @@ class MethodChannelSingBox extends SingBoxPlatform {
 
   @override
   Future<bool> connect(String config) async {
-    try {
-      final result = await methodChannel.invokeMethod<bool>('connect', {'config': config});
-      return result ?? false;
-    } catch (e) {
-      debugPrint('Error connecting to VPN: $e');
-      return false;
-    }
+    // Do not swallow PlatformException — callers need code/message for UI.
+    final result = await methodChannel.invokeMethod<bool>('connect', {
+      'config': config,
+    });
+    return result ?? false;
   }
 
   @override
   Future<bool> disconnect() async {
-    try {
-      final result = await methodChannel.invokeMethod<bool>('disconnect');
-      return result ?? false;
-    } catch (e) {
-      debugPrint('Error disconnecting from VPN: $e');
-      return false;
-    }
+    final result = await methodChannel.invokeMethod<bool>('disconnect');
+    return result ?? false;
   }
 
   @override

@@ -110,7 +110,8 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     }
     
     override open func stopTunnel(with reason: NEProviderStopReason) async {
-        writeMessage("(packet-tunnel) stopping, reason: \(reason)")
+        // reason only — never log config or keys
+        writeMessage("(packet-tunnel) stopping, reason=\(reason.rawValue) \(String(describing: reason))")
         stopService()
         if let server = commandServer {
             try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)

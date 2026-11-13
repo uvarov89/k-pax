@@ -245,16 +245,30 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                         client.connect()
                     }
                     
-                    // Start VPN
+                    // Start VPN (system may show permission UI; Flutter waits for status)
                     try await profile.start()
                     
                     await MainActor.run {
                         result(true)
                     }
                 } catch {
-                    await MainActor.run {
-                        result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect: \(error.localizedDescription)", details: nil))
+                    let detail = await Self.lastDisconnectDetail(from: extensionProfile)
+                    let message: String
+                    if let detail, !detail.isEmpty {
+                        message = "Failed to connect: \(error.localizedDescription) | \(detail)"
+                    } else {
+                        message = "Failed to connect: \(error.localizedDescription)"
                     }
+                    await MainActor.run {
+                        result(FlutterError(code: "CONNECTION_FAILED", message: message, details: detail))
+                    }
+                }
+            }
+        case "getLastTunnelError":
+            Task {
+                let detail = await Self.lastDisconnectDetail(from: extensionProfile)
+                await MainActor.run {
+                    result(detail)
                 }
             }
         case "disconnect":
@@ -616,6 +630,21 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
     }
     
     // MARK: - Helper methods
+
+    /// Last Network Extension stop error for UI (never includes config/keys).
+    private static func lastDisconnectDetail(from profile: ExtensionProfile?) async -> String? {
+        guard let profile else { return nil }
+        if #available(iOS 16.0, *) {
+            do {
+                try await profile.fetchLastDisconnectError()
+                return nil
+            } catch {
+                let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty ? nil : text
+            }
+        }
+        return nil
+    }
     
     private func getCurrentServerAddress() -> String? {
         guard let config = currentConfig else {

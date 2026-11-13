@@ -358,7 +358,9 @@ class VpnController extends ChangeNotifier {
 
   Future<void> _onVpnStatus(String status) async {
     final normalized = status.trim().toLowerCase();
-    if (normalized != 'stopped') return;
+    // iOS sing_box emits disconnected / connectionLost / error (not Android "stopped").
+    const dropped = {'stopped', 'disconnected', 'connectionlost', 'error'};
+    if (!dropped.contains(normalized)) return;
     if (connectionState != VpnConnectionState.connected) return;
     if (_reconnectInFlight) return;
 
@@ -1464,10 +1466,13 @@ class VpnController extends ChangeNotifier {
   }
 
   String _failureText(Object error) {
-    final raw = error is StateError ? error.message : '';
+    final raw = error is StateError
+        ? error.message
+        : error.toString().replaceFirst(RegExp(r'^Exception:?\s*'), '');
     final detail = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (detail.isEmpty || detail == 'no node') return strings.connectFailed;
-    final short = detail.length > 180 ? detail.substring(0, 180) : detail;
+    // Keep platform codes like [CONNECTION_FAILED] for TestFlight diagnosis.
+    final short = detail.length > 240 ? '${detail.substring(0, 240)}…' : detail;
     return '${strings.connectFailed}\n$short';
   }
 

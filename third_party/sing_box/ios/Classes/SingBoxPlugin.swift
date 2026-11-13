@@ -445,13 +445,8 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
                         waitSeconds += 1
                     }
                     
-                    // Save new configuration
                     currentConfig = config
-                    if let groupDefaults = UserDefaults(suiteName: FilePath.groupName) {
-                        groupDefaults.set(config, forKey: "sing_box_current_config")
-                    } else {
-                        UserDefaults.standard.set(config, forKey: "sing_box_current_config")
-                    }
+                    try FilePath.writeTunnelConfig(config)
                     
                     // Reconnect
                     try await profile.start()

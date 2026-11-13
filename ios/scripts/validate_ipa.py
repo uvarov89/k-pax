@@ -36,8 +36,15 @@ def _extension_binary(extension: Path, ext_plist: dict) -> Path:
 
 def assert_libbox_in_extension(extension: Path, ext_plist: dict) -> None:
     frameworks = extension / "Frameworks"
-    if frameworks.is_dir() and list(frameworks.glob("Libbox.framework")):
-        print("Libbox.framework present in PacketTunnel.appex/Frameworks")
+    embedded = list(frameworks.glob("Libbox.framework")) if frameworks.is_dir() else []
+    if embedded:
+        fw = embedded[0]
+        lib_bin = fw / "Libbox"
+        if not lib_bin.is_file():
+            alt = fw / "Versions" / "Current" / "Libbox"
+            lib_bin = alt if alt.is_file() else lib_bin
+        assert lib_bin.is_file(), f"Libbox.framework present but binary missing: {fw}"
+        print(f"Libbox.framework OK in appex ({lib_bin.stat().st_size} bytes)")
         return
     binary = _extension_binary(extension, ext_plist)
     if binary.is_file():
@@ -49,8 +56,17 @@ def assert_libbox_in_extension(extension: Path, ext_plist: dict) -> None:
         )
         if linked.returncode == 0 and "Libbox" in linked.stdout:
             print("Libbox linked into PacketTunnel binary (no separate Frameworks copy)")
+            print(linked.stdout)
             return
-    raise AssertionError("Libbox not embedded/linked in PacketTunnel.appex")
+    listing = []
+    for p in sorted(extension.rglob("*")):
+        if p.is_file():
+            listing.append(str(p.relative_to(extension)))
+    preview = "\n".join(listing[:80])
+    raise AssertionError(
+        "Libbox not embedded/linked in PacketTunnel.appex\n"
+        f"appex tree (first 80 files):\n{preview}"
+    )
 
 def validate_archive(ipa, brand, signing=True):
     with tempfile.TemporaryDirectory(prefix="ios-archive-check-") as temp:

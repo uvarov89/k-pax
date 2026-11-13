@@ -140,11 +140,9 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   tcfg.build_settings['CURRENT_PROJECT_VERSION'] = '$(FLUTTER_BUILD_NUMBER)'
   tcfg.build_settings['MARKETING_VERSION'] = '$(FLUTTER_BUILD_NAME)'
   tcfg.build_settings['VERSIONING_SYSTEM'] = 'apple-generic'
-  if File.directory?(FRAMEWORKS)
-    tcfg.build_settings['FRAMEWORK_SEARCH_PATHS'] = '$(inherited) $(PROJECT_DIR)/Frameworks'
-    # Libbox (Go) references res_9_*; must link system libresolv
-    tcfg.build_settings['OTHER_LDFLAGS'] = '$(inherited) -framework Libbox -lresolv'
-  end
+  tcfg.build_settings['FRAMEWORK_SEARCH_PATHS'] = '$(inherited) $(PROJECT_DIR)/Frameworks'
+  # Libbox (Go) references res_9_*; must link system libresolv
+  tcfg.build_settings['OTHER_LDFLAGS'] = '$(inherited) -framework Libbox -lresolv'
 
   rcfg = runner.build_configurations.find { |c| c.name == cfg_name }
   next unless rcfg
@@ -161,72 +159,103 @@ end
 # Link Libbox xcframework, then copy the platform slice into the appex Frameworks/.
 # Embedding the .xcframework via Copy Files / CodeSignOnCopy is unreliable and
 # either skips the binary or breaks codesign seal.
-if File.directory?(FRAMEWORKS)
-  fw_group = project.main_group.find_subpath('Frameworks', true)
-  fw_group.set_source_tree('<group>')
-  fw_group.set_path('Frameworks')
-  lib_ref = fw_group.files.find { |f| f.path.to_s.include?('Libbox.xcframework') }
-  lib_ref ||= fw_group.new_file('Libbox.xcframework')
-  tunnel.copy_files_build_phases.select { |p| p.name == 'Embed Frameworks' }.each do |phase|
-    phase.files.to_a.each do |bf|
-      ref = bf.file_ref
-      next unless ref && ref.path.to_s.include?('Libbox')
-      phase.remove_build_file(bf)
-    end
-  end
-  existing = tunnel.frameworks_build_phase.files.find { |bf| bf.file_ref == lib_ref }
-  if existing
-    existing.settings = {}
-  else
-    tunnel.frameworks_build_phase.add_file_reference(lib_ref)
-  end
+abort "Missing #{FRAMEWORKS} — run ios/scripts/build_libbox.sh before setup_packet_tunnel.rb" unless File.directory?(FRAMEWORKS)
 
-  embed_script_name = 'Embed Libbox into PacketTunnel'
-  tunnel.shell_script_build_phases.select { |p| p.name == embed_script_name }.each do |p|
-    tunnel.build_phases.delete(p)
+fw_group = project.main_group.find_subpath('Frameworks', true)
+fw_group.set_source_tree('<group>')
+fw_group.set_path('Frameworks')
+lib_ref = fw_group.files.find { |f| f.path.to_s.include?('Libbox.xcframework') }
+lib_ref ||= fw_group.new_file('Libbox.xcframework')
+tunnel.copy_files_build_phases.select { |p| p.name == 'Embed Frameworks' }.each do |phase|
+  phase.files.to_a.each do |bf|
+    ref = bf.file_ref
+    next unless ref && ref.path.to_s.include?('Libbox')
+    phase.remove_build_file(bf)
   end
-  phase = tunnel.new_shell_script_build_phase(embed_script_name)
-  phase.shell_path = '/bin/sh'
-  phase.show_env_vars_in_log = '0'
-  phase.shell_script = <<~'SCRIPT'
-    set -e
-    XCFRAMEWORK="${PROJECT_DIR}/Frameworks/Libbox.xcframework"
-    if [ ! -d "$XCFRAMEWORK" ]; then
-      echo "error: missing $XCFRAMEWORK" >&2
-      exit 1
-    fi
-    if [ "${PLATFORM_NAME}" = "iphonesimulator" ]; then
-      SLICE=$(ls -d "$XCFRAMEWORK"/ios-*-simulator 2>/dev/null | head -1)
-    else
-      SLICE="$XCFRAMEWORK/ios-arm64"
-      if [ ! -d "$SLICE" ]; then
-        SLICE=$(ls -d "$XCFRAMEWORK"/ios-arm64* 2>/dev/null | grep -v simulator | head -1)
-      fi
-    fi
-    SRC="$SLICE/Libbox.framework"
-    if [ ! -d "$SRC" ]; then
-      echo "error: Libbox.framework slice not found under $XCFRAMEWORK (platform=${PLATFORM_NAME})" >&2
-      ls -la "$XCFRAMEWORK" >&2 || true
-      exit 1
-    fi
-    DEST_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
-    DEST="${DEST_DIR}/Libbox.framework"
-    mkdir -p "$DEST_DIR"
-    rm -rf "$DEST"
-    cp -R "$SRC" "$DEST"
-    if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
-      /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements,flags --generate-entitlement-der "$DEST" || \
-        /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "$DEST"
-    fi
-    echo "Embedded Libbox.framework into PacketTunnel from $SRC"
-  SCRIPT
-  # Run after compile/link so FRAMEWORKS_FOLDER_PATH exists, before codesign of appex.
-  phases = tunnel.build_phases
-  phases.delete(phase)
-  # Insert before the last phase when possible (often "[CP] ..." / codesign adjacent).
-  insert_at = [phases.length - 1, 0].max
-  phases.insert(insert_at, phase)
 end
+existing = tunnel.frameworks_build_phase.files.find { |bf| bf.file_ref == lib_ref }
+if existing
+  existing.settings = {}
+else
+  tunnel.frameworks_build_phase.add_file_reference(lib_ref)
+end
+
+embed_script_name = 'Embed Libbox into PacketTunnel'
+tunnel.shell_script_build_phases.select { |p| p.name == embed_script_name }.each do |p|
+  tunnel.build_phases.delete(p)
+end
+phase = tunnel.new_shell_script_build_phase(embed_script_name)
+phase.shell_path = '/bin/sh'
+phase.show_env_vars_in_log = '0'
+# Match CocoaPods: copy into TARGET_BUILD_DIR/FRAMEWORKS_FOLDER_PATH before codesign.
+phase.shell_script = <<~'SCRIPT'
+  set -euo pipefail
+  XCFRAMEWORK="${PROJECT_DIR}/Frameworks/Libbox.xcframework"
+  if [ ! -d "$XCFRAMEWORK" ]; then
+    echo "error: missing $XCFRAMEWORK" >&2
+    exit 1
+  fi
+  echo "Libbox xcframework contents:"
+  ls -la "$XCFRAMEWORK" || true
+
+  SLICE=""
+  if [ "${PLATFORM_NAME:-}" = "iphonesimulator" ]; then
+    for d in "$XCFRAMEWORK"/ios-*-simulator "$XCFRAMEWORK"/ios-arm64_x86_64-simulator; do
+      if [ -d "$d/Libbox.framework" ]; then SLICE="$d"; break; fi
+    done
+  else
+    if [ -d "$XCFRAMEWORK/ios-arm64/Libbox.framework" ]; then
+      SLICE="$XCFRAMEWORK/ios-arm64"
+    else
+      for d in "$XCFRAMEWORK"/ios-arm64*; do
+        case "$d" in *simulator*) continue ;; esac
+        if [ -d "$d/Libbox.framework" ]; then SLICE="$d"; break; fi
+      done
+    fi
+  fi
+  SRC="${SLICE}/Libbox.framework"
+  if [ -z "$SLICE" ] || [ ! -d "$SRC" ]; then
+    echo "error: Libbox.framework slice not found (platform=${PLATFORM_NAME:-unset})" >&2
+    find "$XCFRAMEWORK" -maxdepth 3 -type d -name 'Libbox.framework' >&2 || true
+    exit 1
+  fi
+
+  # CocoaPods uses TARGET_BUILD_DIR + FRAMEWORKS_FOLDER_PATH (not BUILT_PRODUCTS_DIR).
+  FFP="${FRAMEWORKS_FOLDER_PATH:-Frameworks}"
+  DEST_DIR="${TARGET_BUILD_DIR}/${FFP}"
+  if [ ! -d "${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME:-PacketTunnel.appex}" ] && [ -d "${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME:-PacketTunnel.appex}" ]; then
+    DEST_DIR="${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME:-PacketTunnel.appex}/Frameworks"
+  fi
+  DEST="${DEST_DIR}/Libbox.framework"
+  echo "Embedding Libbox: $SRC -> $DEST"
+  mkdir -p "$DEST_DIR"
+  rm -rf "$DEST"
+  /usr/bin/rsync -a --delete "$SRC/" "$DEST/" 2>/dev/null || cp -R "$SRC" "$DEST"
+
+  BINARY="$DEST/Libbox"
+  if [ ! -f "$BINARY" ] && [ -f "$DEST/Versions/Current/Libbox" ]; then
+    BINARY="$DEST/Versions/Current/Libbox"
+  fi
+  if [ ! -f "$BINARY" ]; then
+    echo "error: Libbox binary missing after copy in $DEST" >&2
+    ls -laR "$DEST" >&2 || true
+    exit 1
+  fi
+
+  IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
+  if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
+    IDENTITY="${CODE_SIGN_IDENTITY:-}"
+  fi
+  if [ -n "$IDENTITY" ] && [ "$IDENTITY" != "-" ]; then
+    /usr/bin/codesign --force --sign "$IDENTITY" --preserve-metadata=identifier,entitlements,flags --generate-entitlement-der "$DEST" \
+      || /usr/bin/codesign --force --sign "$IDENTITY" "$DEST"
+  fi
+  echo "OK Embedded Libbox.framework ($(du -sh "$DEST" | awk '{print $1}')) into PacketTunnel"
+SCRIPT
+# Must run after link, before Xcode codesigns the appex → keep as last build phase.
+phases = tunnel.build_phases
+phases.delete(phase)
+phases << phase
 
 # Ensure Embed Foundation Extensions runs before Thin Binary
 thin = runner.build_phases.find { |p| p.display_name.to_s.include?('Thin Binary') || p.respond_to?(:name) && p.name.to_s.include?('Thin Binary') }

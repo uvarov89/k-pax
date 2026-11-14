@@ -2,13 +2,15 @@
 # Build Libbox.xcframework from upstream sing-box (macOS / Codemagic).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Must match PacketTunnel Swift (LibboxNewCommandServer(handler, platform, &error),
 # StartOrReloadService, WriteMessage(level, message)). v1.12.x uses the old API.
 TAG="${LIBBOX_SINGBOX_TAG:-v1.13.21}"
 WORK="${TMPDIR:-/tmp}/kpax-libbox-build"
 OUT_PLUGIN="$ROOT/third_party/sing_box/ios/Frameworks"
 OUT_IOS="$ROOT/ios/Frameworks"
+NORM="$SCRIPT_DIR/normalize_libbox_framework.sh"
 
 mkdir -p "$OUT_PLUGIN" "$OUT_IOS" "$WORK"
 cd "$WORK"
@@ -58,7 +60,11 @@ cp -R "$FRAMEWORK" "$OUT_IOS/Libbox.xcframework"
 
 # gomobile multi-platform bind emits macOS Versions/A layouts; ASC 90171 rejects
 # those binaries unless each iOS slice is a shallow framework with a real dylib.
-NORM="$(cd "$(dirname "$0")" && pwd)/normalize_libbox_framework.sh"
+# Use absolute SCRIPT_DIR — cwd is $WORK/sing-box here, so relative ios/scripts fails.
+if [[ ! -f "$NORM" ]]; then
+  echo "error: missing $NORM" >&2
+  exit 1
+fi
 # shellcheck source=/dev/null
 source "$NORM"
 export LIBBOX_SINGBOX_TAG="$TAG"

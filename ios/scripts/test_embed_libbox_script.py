@@ -93,7 +93,8 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("ditto", norm)
         self.assertIn("relink_archive_to_dylib", norm)
         self.assertIn("-force_load", norm)
-        self.assertIn("ar archive", norm)
+        self.assertIn("is_archive", norm)
+        self.assertIn("clang -dynamiclib", norm)
 
     def test_validate_ipa_requires_host_libbox_forbids_appex_frameworks(self) -> None:
         text = VALIDATE.read_text(encoding="utf-8")

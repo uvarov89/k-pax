@@ -6,8 +6,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/distribution.dart';
-import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/services/android_update.dart';
+import 'package:pulse_vpn/core/services/update_clearnet.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 
 var _checking = false;
@@ -80,10 +80,14 @@ Future<void> checkForAndroidUpdate(
   _checking = true;
   final messenger = ScaffoldMessenger.maybeOf(context);
   try {
+    final controller = context.read<VpnController>();
+    final s = controller.strings;
+    // Never check/download through a live tunnel — a dead VPN blocks updates.
+    await ensureClearnetForUpdate(controller);
+    if (!context.mounted) return;
     final info = await PackageInfo.fromPlatform();
     final lookup = await const AndroidUpdateCheck().lookup(info.version);
     if (!context.mounted) return;
-    final s = context.read<VpnController>().strings;
     switch (lookup.status) {
       case AndroidUpdateStatus.unavailable:
         if (manual) {
@@ -116,6 +120,9 @@ Future<void> checkForAndroidUpdate(
           ),
         );
         if (install == true) {
+          if (!context.mounted) return;
+          await ensureClearnetForUpdate(context.read<VpnController>());
+          if (!context.mounted) return;
           messenger?.showSnackBar(SnackBar(content: Text(s.updateDownloading)));
           final file = await _downloadApk(release.url);
           if (!context.mounted) return;
@@ -124,11 +131,6 @@ Future<void> checkForAndroidUpdate(
               SnackBar(content: Text(s.updateApplyFailed)),
             );
             break;
-          }
-          final controller = context.read<VpnController>();
-          if (controller.connectionState != VpnConnectionState.disconnected &&
-              controller.connectionState != VpnConnectionState.disconnecting) {
-            await controller.disconnect();
           }
           final outcome = await _installApk(file);
           if (!context.mounted) return;

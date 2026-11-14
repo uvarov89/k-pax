@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
-import 'package:pulse_vpn/core/models/connection_models.dart';
+import 'package:pulse_vpn/core/services/update_clearnet.dart';
 import 'package:pulse_vpn/core/services/windows_update.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 
@@ -61,10 +61,14 @@ Future<void> checkForWindowsUpdate(
   _checking = true;
   final messenger = ScaffoldMessenger.maybeOf(context);
   try {
+    final controller = context.read<VpnController>();
+    final s = controller.strings;
+    // Never check/download through a live tunnel — a dead VPN blocks updates.
+    await ensureClearnetForUpdate(controller);
+    if (!context.mounted) return;
     final info = await PackageInfo.fromPlatform();
     final lookup = await const WindowsUpdateCheck().lookup(info.version);
     if (!context.mounted) return;
-    final s = context.read<VpnController>().strings;
     switch (lookup.status) {
       case WindowsUpdateStatus.unavailable:
         if (manual) {
@@ -97,6 +101,9 @@ Future<void> checkForWindowsUpdate(
           ),
         );
         if (install == true) {
+          if (!context.mounted) return;
+          await ensureClearnetForUpdate(context.read<VpnController>());
+          if (!context.mounted) return;
           messenger?.showSnackBar(SnackBar(content: Text(s.updateDownloading)));
           final file = await _downloadSetup(release.url);
           if (!context.mounted) return;
@@ -105,11 +112,6 @@ Future<void> checkForWindowsUpdate(
               SnackBar(content: Text(s.updateApplyFailed)),
             );
             break;
-          }
-          final controller = context.read<VpnController>();
-          if (controller.connectionState != VpnConnectionState.disconnected &&
-              controller.connectionState != VpnConnectionState.disconnecting) {
-            await controller.disconnect();
           }
           final started = await _applySetup(file);
           if (!started) {

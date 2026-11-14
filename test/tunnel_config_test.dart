@@ -88,6 +88,24 @@ void main() {
     expect(isp['domain'], contains('connectivitycheck.gstatic.com'));
   });
 
+  test('update and brand hosts bypass the tunnel for recovery downloads', () {
+    final built = config();
+    final routeRules = (built['route'] as Map)['rules'] as List;
+    final direct = routeRules.cast<Map>().firstWhere(
+      (r) =>
+          r['outbound'] == 'direct' &&
+          (r['domain_suffix'] as List?)?.contains('github.com') == true,
+    );
+    expect(direct['domain_suffix'], contains('github.com'));
+    expect(direct['domain'], contains('release-assets.githubusercontent.com'));
+    final dnsDirect = ((built['dns'] as Map)['rules'] as List).cast<Map>()
+        .firstWhere((r) => r['server'] == 'dns-direct');
+    expect(
+      (dnsDirect['domain_suffix'] as List).cast<String>(),
+      contains('github.com'),
+    );
+  });
+
   test('full tunnel rejects QUIC and IPv6; TUN stays IPv4-only', () {
     final disabled = config();
     final disabledRules = (disabled['route'] as Map)['rules'] as List;

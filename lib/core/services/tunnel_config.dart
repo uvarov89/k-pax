@@ -33,6 +33,20 @@ const _ispDirectDomains = <String>[
   'connectivitycheck.gstatic.com',
 ];
 
+/// Brand site + GitHub release CDN must stay reachable even when the proxy
+/// path is broken — otherwise Connected clients cannot download updates.
+List<String> _updateDirectDomainSuffixes() => [
+      AppBrand.current.host,
+      AppBrand.current.subHost,
+      'github.com',
+      'githubusercontent.com',
+    ];
+
+const _updateDirectDomains = <String>[
+  'release-assets.githubusercontent.com',
+  'objects.githubusercontent.com',
+];
+
 String buildTunnelConfig(
   TunnelNode node,
   ProSettings settings, {
@@ -73,11 +87,13 @@ String buildTunnelConfig(
       'rules': [
         {
           'domain_suffix': [
-            AppBrand.current.host,
-            AppBrand.current.subHost,
+            ..._updateDirectDomainSuffixes(),
             ..._ispDirectDomainSuffixes,
           ],
-          'domain': _ispDirectDomains,
+          'domain': [
+            ..._ispDirectDomains,
+            ..._updateDirectDomains,
+          ],
           'server': 'dns-direct',
         },
       ],
@@ -124,8 +140,14 @@ List<Map<String, Object?>> _routeRules(AppSettings? appSettings) {
     {'protocol': 'dns', 'action': 'hijack-dns'},
     {'ip_is_private': true, 'action': 'route', 'outbound': 'direct'},
     {
-      'domain_suffix': _ispDirectDomainSuffixes,
-      'domain': _ispDirectDomains,
+      'domain_suffix': [
+        ..._updateDirectDomainSuffixes(),
+        ..._ispDirectDomainSuffixes,
+      ],
+      'domain': [
+        ..._ispDirectDomains,
+        ..._updateDirectDomains,
+      ],
       'action': 'route',
       'outbound': 'direct',
     },

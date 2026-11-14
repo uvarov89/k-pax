@@ -91,6 +91,9 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         norm = (ROOT / "ios" / "scripts" / "normalize_libbox_framework.sh").read_text(encoding="utf-8")
         self.assertIn("io.nekohasekai.libbox", norm)
         self.assertIn("ditto", norm)
+        self.assertIn("relink_archive_to_dylib", norm)
+        self.assertIn("-force_load", norm)
+        self.assertIn("ar archive", norm)
 
     def test_validate_ipa_requires_host_libbox_forbids_appex_frameworks(self) -> None:
         text = VALIDATE.read_text(encoding="utf-8")

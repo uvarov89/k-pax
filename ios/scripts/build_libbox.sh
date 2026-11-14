@@ -27,14 +27,11 @@ git checkout --detach "$TAG"
 export PATH="$PATH:$(go env GOPATH)/bin"
 make lib_install
 
-# Prefer Makefile target when present; fall back to gomobile bind helper.
-if make -n lib_apple >/dev/null 2>&1; then
-  make lib_apple
-elif make -n ios >/dev/null 2>&1; then
-  make ios
-else
-  go run ./cmd/internal/build_libbox -target apple -platform ios
-fi
+# Flutter PacketTunnel only needs device + simulator. Full `lib_apple` also
+# builds tvOS/macOS and still emits static archives that we must relink.
+APPLE_PLATFORM="${LIBBOX_APPLE_PLATFORM:-ios,iossimulator}"
+echo "Building Libbox.xcframework ($TAG, platform=$APPLE_PLATFORM)"
+go run ./cmd/internal/build_libbox -target apple -platform "$APPLE_PLATFORM"
 
 FRAMEWORK=""
 for cand in \

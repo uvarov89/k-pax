@@ -41,8 +41,8 @@ class ProSettings {
     this.bypassMode = BypassMode.auto,
     this.dnsAutomatic = true,
     this.killSwitch = true,
-    // Disabled by default: capture IPv6 into TUN and reject it so apps use
-    // IPv4 via the proxy (avoids clearnet IPv6 leak / Telegram "Connecting…").
+    // Disabled by default: IPv4-only TUN + reject IPv6 so apps use IPv4 via
+    // the proxy (avoids clearnet IPv6 leak / Telegram "Connecting…").
     this.ipv6Mode = Ipv6Mode.disabled,
     this.protocolFallback = true,
     this.reconnectPolicy = ReconnectPolicy.normal,

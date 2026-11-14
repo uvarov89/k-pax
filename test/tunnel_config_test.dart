@@ -88,7 +88,7 @@ void main() {
     expect(isp['domain'], contains('connectivitycheck.gstatic.com'));
   });
 
-  test('full tunnel rejects QUIC and IPv6 leak by default', () {
+  test('full tunnel rejects QUIC and IPv6; TUN stays IPv4-only', () {
     final disabled = config();
     final disabledRules = (disabled['route'] as Map)['rules'] as List;
     expect((disabled['route'] as Map)['final'], 'proxy');
@@ -104,6 +104,10 @@ void main() {
       ),
       isTrue,
     );
+    expect(
+      ((disabled['inbounds'] as List).first as Map)['address'],
+      ['172.19.0.1/30'],
+    );
 
     final enabled = jsonDecode(
       buildTunnelConfig(
@@ -112,15 +116,19 @@ void main() {
       ),
     ) as Map<String, Object?>;
     final enabledRules = (enabled['route'] as Map)['rules'] as List;
+    // Proven path never dual-stacked the TUN; IPv6 is rejected so apps use IPv4.
     expect(
-      enabledRules.cast<Map>().any((r) => r['ip_version'] == 6),
-      isFalse,
+      enabledRules.cast<Map>().any(
+        (r) => r['ip_version'] == 6 && r['action'] == 'reject',
+      ),
+      isTrue,
     );
     expect((enabled['dns'] as Map)['strategy'], 'prefer_ipv4');
     expect(
       ((enabled['inbounds'] as List).first as Map)['address'],
-      ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+      ['172.19.0.1/30'],
     );
+    expect(((enabled['inbounds'] as List).first as Map)['stack'], 'mixed');
   });
 
   test('stats endpoint is added only when requested', () {

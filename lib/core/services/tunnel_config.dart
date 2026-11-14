@@ -11,10 +11,10 @@ import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
 const kClashPort = 9090;
 
-/// Default TUN is IPv4-only. Dual-stack ULA (1.0.51) blackholed traffic on
-/// Windows/Android for many users while Hiddify with the same sub worked.
+/// Proven TUN (~9db533c / pre-1.0.51): IPv4-only. Dual-stack ULA + DoH +
+/// Android `system` stack blackholed Win/Android while Hiddify with the same
+/// sub worked (XP-10054 / mass K-Pax outage).
 const _tunIpv4 = '172.19.0.1/30';
-const _tunIpv6 = 'fdfe:dcba:9876::1/126';
 
 /// RU mobile operator portals + OS captive probes. Full-tunnel often breaks
 /// Beeline/MTS/etc. until these resolve and connect outside the proxy.
@@ -40,10 +40,10 @@ String buildTunnelConfig(
   bool enableStats = false,
   String? clashSecret,
 }) {
-  // Default (disabled): IPv4-only TUN — dual-stack ULA broke Win/Android massively.
-  // enabled / tunnelOnly still get ULA + no IPv6 reject.
-  final allowIpv6 = settings.ipv6Mode != Ipv6Mode.disabled;
-  final dnsStrategy = allowIpv6 ? 'prefer_ipv4' : 'ipv4_only';
+  // Match proven path: only Ipv6Mode.enabled prefers IPv4 AAAA answers;
+  // TUN stays IPv4-only and IPv6 is always rejected so apps use IPv4 via proxy.
+  final ipv4Only = settings.ipv6Mode != Ipv6Mode.enabled;
+  final dnsStrategy = ipv4Only ? 'ipv4_only' : 'prefer_ipv4';
   // Proven path: UDP DNS via proxy. DoH-over-proxy (1.0.51) left TUN Connected
   // with zero traffic on Android/Windows (XP-10054 / mass K-Pax reports).
   final remoteDnsTag = settings.dnsAutomatic ? 'dns-remote' : 'dns-direct';
@@ -54,7 +54,6 @@ String buildTunnelConfig(
       'strategy': dnsStrategy,
     };
   }
-  final tunAddress = allowIpv6 ? [_tunIpv4, _tunIpv6] : [_tunIpv4];
   return jsonEncode({
     'log': {'level': 'warn', 'timestamp': true},
     'dns': {
@@ -89,7 +88,7 @@ String buildTunnelConfig(
       {
         'type': 'tun',
         'tag': 'tun-in',
-        'address': tunAddress,
+        'address': [_tunIpv4],
         'mtu': 1400,
         'auto_route': true,
         'strict_route': settings.killSwitch,
@@ -113,16 +112,13 @@ String buildTunnelConfig(
         'server': remoteDnsTag,
         'strategy': dnsStrategy,
       },
-      'rules': _routeRules(appSettings, allowIpv6: allowIpv6),
+      'rules': _routeRules(appSettings),
       'final': _finalOutbound(appSettings),
     },
   });
 }
 
-List<Map<String, Object?>> _routeRules(
-  AppSettings? appSettings, {
-  required bool allowIpv6,
-}) {
+List<Map<String, Object?>> _routeRules(AppSettings? appSettings) {
   final rules = <Map<String, Object?>>[
     {'action': 'sniff'},
     {'protocol': 'dns', 'action': 'hijack-dns'},
@@ -133,13 +129,12 @@ List<Map<String, Object?>> _routeRules(
       'action': 'route',
       'outbound': 'direct',
     },
+    // Reality/VLESS is TCP-first. QUIC (HTTP/3) often stalls through it while the
+    // same site works on TCP — reject QUIC so browsers/apps fall back to HTTPS.
+    {'protocol': 'quic', 'action': 'reject'},
+    // Proven: always reject IPv6 so apps fall back to IPv4 through the proxy.
+    {'ip_version': 6, 'action': 'reject'},
   ];
-  // Reality/VLESS is TCP-first. QUIC (HTTP/3) often stalls through it while the
-  // same site works on TCP — reject QUIC so browsers/apps fall back to HTTPS.
-  rules.add({'protocol': 'quic', 'action': 'reject'});
-  if (!allowIpv6) {
-    rules.add({'ip_version': 6, 'action': 'reject'});
-  }
   final names = _windowsProcessNames(appSettings);
   if (names.isEmpty || appSettings == null) return rules;
   if (appSettings.splitTunnelMode == SplitTunnelMode.excludeSelected) {

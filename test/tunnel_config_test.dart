@@ -49,11 +49,15 @@ void main() {
     expect(tun['strict_route'], isTrue);
     expect(dns['final'], 'dns-remote');
     expect(tun['address'], ['172.19.0.1/30', 'fdfe:dcba:9876::1/126']);
-    expect(tun['mtu'], 1280);
+    expect(tun['mtu'], 1400);
+    expect(tun['stack'], 'mixed');
     expect(dns['strategy'], 'ipv4_only');
     expect(
       (dns['servers'] as List).cast<Map>().any(
-        (s) => s['tag'] == 'dns-remote' && '${s['address']}'.contains('1.1.1.1'),
+        (s) =>
+            s['tag'] == 'dns-remote' &&
+            s['address'] == 'udp://1.1.1.1' &&
+            s['detour'] == 'proxy',
       ),
       isTrue,
     );
@@ -61,8 +65,7 @@ void main() {
     final off = config(killSwitch: false, dnsAutomatic: false);
     final tunOff = (off['inbounds'] as List).first as Map;
     expect(tunOff['strict_route'], isFalse);
-    // Still tunnel DNS (UDP via proxy) — never ISP resolver for foreign names.
-    expect((off['dns'] as Map)['final'], 'dns-remote-udp');
+    expect((off['dns'] as Map)['final'], 'dns-direct');
   });
 
   test('RU ISP portals bypass the tunnel by default', () {

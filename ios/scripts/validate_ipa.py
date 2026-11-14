@@ -87,7 +87,8 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         )
         plist_path = fw / "Info.plist"
         assert plist_path.is_file(), f"Libbox.framework missing Info.plist: {fw}"
-        assert (fw / "Resources" / "Info.plist").is_file(), (
+        resources_plist_path = fw / "Resources" / "Info.plist"
+        assert resources_plist_path.is_file(), (
             "Libbox.framework missing Resources/Info.plist (ASC 90171 risk)"
         )
         assert not (fw / "Versions").exists(), (
@@ -108,6 +109,14 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         )
         assert info.get("MinimumOSVersion") or info.get("LSMinimumSystemVersion"), (
             "Libbox MinimumOSVersion missing"
+        )
+        # ASC 90535: nested Resources bundle must not declare CFBundleExecutable.
+        resources_info = plistlib.loads(resources_plist_path.read_bytes())
+        assert "CFBundleExecutable" not in resources_info, (
+            "Libbox Resources/Info.plist must not contain CFBundleExecutable (ASC 90535)"
+        )
+        assert resources_info.get("CFBundlePackageType") == "BNDL", (
+            "Libbox Resources/Info.plist CFBundlePackageType must be BNDL (ASC 90535)"
         )
         size = lib_bin.stat().st_size
         print(f"Libbox.framework OK in Runner.app ({lib_bin.relative_to(app)}, {size} bytes)")

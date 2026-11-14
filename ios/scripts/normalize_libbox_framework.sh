@@ -10,6 +10,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KQUEUE_STUB="${SCRIPT_DIR}/libbox_message_pump_kqueue_stub.cpp"
 
+_libbox_marketing_version() {
+  # Git tags are v1.13.21; ASC iris 90060 rejects a leading "v" in CFBundleShortVersionString.
+  local marketing="${LIBBOX_SINGBOX_TAG:-1.13.21}"
+  marketing="${marketing#v}"
+  marketing="${marketing#V}"
+  if [[ ! "$marketing" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    echo "error: CFBundleShortVersionString must be at most three period-separated integers, got: $marketing" >&2
+    exit 1
+  fi
+  printf '%s' "$marketing"
+}
+
+# Root framework Info.plist (FMWK + executable). Do NOT copy this into Resources/
+# — ASC 90535 rejects CFBundleExecutable on the nested Resources bundle.
 patch_plist() {
   local plist="$1"
   local platform="$2" # iPhoneOS | iPhoneSimulator
@@ -25,25 +39,42 @@ patch_plist() {
       $pb -c "Add :$key $type $val" "$plist"
     fi
   }
+  local marketing
+  marketing="$(_libbox_marketing_version)"
   set_or_add CFBundleInfoDictionaryVersion string 6.0
   set_or_add CFBundlePackageType string FMWK
   set_or_add CFBundleExecutable string Libbox
   set_or_add CFBundleIdentifier string io.nekohasekai.libbox
   set_or_add CFBundleName string Libbox
   set_or_add CFBundleVersion string 1
-  # Git tags are v1.13.21; ASC iris 90060 rejects a leading "v" in CFBundleShortVersionString.
-  local marketing="${LIBBOX_SINGBOX_TAG:-1.13.21}"
-  marketing="${marketing#v}"
-  marketing="${marketing#V}"
-  if [[ ! "$marketing" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
-    echo "error: CFBundleShortVersionString must be at most three period-separated integers, got: $marketing" >&2
-    exit 1
-  fi
   set_or_add CFBundleShortVersionString string "$marketing"
   set_or_add MinimumOSVersion string 15.0
   $pb -c "Delete :CFBundleSupportedPlatforms" "$plist" >/dev/null 2>&1 || true
   $pb -c "Add :CFBundleSupportedPlatforms array" "$plist"
   $pb -c "Add :CFBundleSupportedPlatforms:0 string $platform" "$plist"
+}
+
+# Nested Resources/Info.plist must be a resource bundle (BNDL), not a second FMWK.
+# Apple: "Unexpected CFBundleExecutable Key" (ASC 90535) when Resources declares
+# an executable that is not inside that nested bundle.
+patch_resources_plist() {
+  local plist="$1"
+  local platform="$2"
+  local pb=/usr/libexec/PlistBuddy
+  /usr/bin/plutil -create xml1 "$plist"
+  local marketing
+  marketing="$(_libbox_marketing_version)"
+  $pb -c "Add :CFBundleInfoDictionaryVersion string 6.0" "$plist"
+  $pb -c "Add :CFBundlePackageType string BNDL" "$plist"
+  $pb -c "Add :CFBundleIdentifier string io.nekohasekai.libbox.resources" "$plist"
+  $pb -c "Add :CFBundleName string Libbox" "$plist"
+  $pb -c "Add :CFBundleVersion string 1" "$plist"
+  $pb -c "Add :CFBundleShortVersionString string $marketing" "$plist"
+  $pb -c "Add :MinimumOSVersion string 15.0" "$plist"
+  $pb -c "Add :CFBundleSupportedPlatforms array" "$plist"
+  $pb -c "Add :CFBundleSupportedPlatforms:0 string $platform" "$plist"
+  # Explicitly ensure no leftover executable key if plutil reused a file.
+  $pb -c "Delete :CFBundleExecutable" "$plist" >/dev/null 2>&1 || true
 }
 
 # Cronet (naive) pulls UIKit / telephony / UTType / LocalAuthentication / …
@@ -168,7 +199,8 @@ normalize_one() {
 
   patch_plist "$framework/Info.plist" "$platform"
   mkdir -p "$framework/Resources"
-  cp "$framework/Info.plist" "$framework/Resources/Info.plist"
+  # Fresh BNDL plist — never clone the FMWK root plist (ASC 90535).
+  patch_resources_plist "$framework/Resources/Info.plist" "$platform"
 
   local binary="$framework/Libbox"
   if [[ ! -f "$binary" ]]; then

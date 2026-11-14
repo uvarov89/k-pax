@@ -103,6 +103,10 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("CocoaPods rejects static+dynamic", norm)
         self.assertIn('marketing="${marketing#v}"', norm)
         self.assertIn("iris 90060", norm)
+        self.assertIn("patch_resources_plist", norm)
+        self.assertIn("ASC 90535", norm)
+        self.assertIn("BNDL", norm)
+        self.assertIn("CFBundlePackageType string BNDL", norm)
         build = (ROOT / "ios" / "scripts" / "build_libbox.sh").read_text(encoding="utf-8")
         self.assertIn('LIBBOX_APPLE_PLATFORM:-ios}', build)
         self.assertIn("NORMALIZE_SLICES", build)
@@ -117,6 +121,8 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("_soft_codesign_verify", text)
         self.assertIn(r"\d+(\.\d+){0,2}", text)
         self.assertIn("invalid for ASC", text)
+        self.assertIn("ASC 90535", text)
+        self.assertIn("BNDL", text)
 
     def test_device_slice_copied_into_runner_frameworks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

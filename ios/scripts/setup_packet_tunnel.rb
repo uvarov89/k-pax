@@ -297,6 +297,17 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: CFBundleExecutable='$EXEC' (want Libbox)" >&2
     exit 1
   fi
+  # ASC 90535: Resources/Info.plist must be BNDL without CFBundleExecutable.
+  RES_EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Resources/Info.plist" 2>/dev/null || true)
+  if [ -n "$RES_EXEC" ]; then
+    echo "error: Resources/Info.plist has CFBundleExecutable='$RES_EXEC' (ASC 90535)" >&2
+    exit 1
+  fi
+  RES_TYPE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$DEST/Resources/Info.plist" 2>/dev/null || true)
+  if [ "$RES_TYPE" != "BNDL" ]; then
+    echo "error: Resources/Info.plist CFBundlePackageType='$RES_TYPE' (want BNDL)" >&2
+    exit 1
+  fi
   /usr/bin/install_name_tool -id "@rpath/Libbox.framework/Libbox" "$BINARY" 2>/dev/null || true
 
   IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"

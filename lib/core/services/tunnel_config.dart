@@ -43,11 +43,10 @@ String buildTunnelConfig(
 }) {
   final allowIpv6 = settings.ipv6Mode != Ipv6Mode.disabled;
   final dnsStrategy = allowIpv6 ? 'prefer_ipv4' : 'ipv4_only';
-  // Anti-censorship: always resolve foreign names through the tunnel so ISP
-  // poison/NXDOMAIN cannot hide YouTube, Instagram, OpenAI, Spotify, etc.
-  // dnsAutomatic picks DoH vs UDP — both still detour=proxy, never ISP DNS.
-  final remoteDnsTag =
-      settings.dnsAutomatic ? 'dns-remote' : 'dns-remote-udp';
+  // Tunnel DNS must be UDP→proxy by default. DoH-over-proxy + Android
+  // `system` stack (1.0.51) left TUN "Connected" with zero traffic/DNS/ping
+  // while the same sub worked in Hiddify (XP-10054).
+  final remoteDnsTag = settings.dnsAutomatic ? 'dns-remote' : 'dns-direct';
   final outbound = Map<String, Object?>.from(node.outbound);
   if (InternetAddress.tryParse(node.host) == null) {
     outbound['domain_resolver'] = {
@@ -64,15 +63,8 @@ String buildTunnelConfig(
           'address': 'local',
           'detour': 'direct',
         },
-        // DoH via proxy — survives UDP/53 filtering on many exits.
         {
           'tag': 'dns-remote',
-          'address': 'https://1.1.1.1/dns-query',
-          'detour': 'proxy',
-          'strategy': dnsStrategy,
-        },
-        {
-          'tag': 'dns-remote-udp',
           'address': 'udp://1.1.1.1',
           'detour': 'proxy',
           'strategy': dnsStrategy,
@@ -91,17 +83,18 @@ String buildTunnelConfig(
       ],
       'final': remoteDnsTag,
       'strategy': dnsStrategy,
-      'independent_cache': true,
     },
     'inbounds': [
       {
         'type': 'tun',
         'tag': 'tun-in',
         'address': [_tunIpv4, _tunIpv6],
-        'mtu': 1280,
+        'mtu': 1400,
         'auto_route': true,
         'strict_route': settings.killSwitch,
-        'stack': (!kIsWeb && Platform.isAndroid) ? 'system' : 'mixed',
+        // `mixed` is proven on Android Libbox; `system` blackholed traffic for
+        // some devices when paired with dual-stack TUN (XP-10054).
+        'stack': 'mixed',
       },
     ],
     'outbounds': [

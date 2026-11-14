@@ -232,13 +232,42 @@ phase.shell_script = <<~'SCRIPT'
   rm -rf "$DEST"
   /usr/bin/rsync -a --delete "$SRC/" "$DEST/" 2>/dev/null || cp -R "$SRC" "$DEST"
 
-  # gomobile often ships a Versions/A layout; prefer the real binary over a symlink.
+  # gomobile ships a macOS-style Versions/A tree. iOS + IPA zip often leave the
+  # root "Libbox" as a tiny symlink stub (~20B) which breaks parent codesign seals.
+  # Flatten to a normal iOS framework: binary + Headers/Modules/Resources at root.
+  if [ -d "$DEST/Versions" ]; then
+    VER=""
+    for cand in "$DEST/Versions/A" "$DEST/Versions/Current"; do
+      if [ -d "$cand" ]; then VER="$cand"; break; fi
+    done
+    if [ -n "$VER" ]; then
+      echo "Flattening versioned Libbox.framework from $VER"
+      # Remove root symlinks/stubs before promoting Versions/A contents.
+      for name in Libbox Headers Modules Resources Info.plist; do
+        rm -rf "$DEST/$name"
+      done
+      /usr/bin/rsync -a "$VER/" "$DEST/" 2>/dev/null || cp -R "$VER"/. "$DEST"/
+      rm -rf "$DEST/Versions"
+    fi
+  fi
+
   BINARY=""
-  for cand in "$DEST/Versions/A/Libbox" "$DEST/Versions/Current/Libbox" "$DEST/Libbox"; do
-    if [ -f "$cand" ]; then BINARY="$cand"; break; fi
+  for cand in "$DEST/Libbox" "$DEST/Versions/A/Libbox" "$DEST/Versions/Current/Libbox"; do
+    if [ -f "$cand" ] && [ ! -L "$cand" ]; then BINARY="$cand"; break; fi
   done
   if [ -z "$BINARY" ]; then
+    for cand in "$DEST/Libbox" "$DEST/Versions/A/Libbox" "$DEST/Versions/Current/Libbox"; do
+      if [ -f "$cand" ]; then BINARY="$cand"; break; fi
+    done
+  fi
+  if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
     echo "error: Libbox binary missing after copy in $DEST" >&2
+    ls -laR "$DEST" >&2 || true
+    exit 1
+  fi
+  BIN_SIZE=$(/usr/bin/stat -f%z "$BINARY" 2>/dev/null || /usr/bin/stat -c%s "$BINARY")
+  if [ "${BIN_SIZE:-0}" -lt 1000000 ]; then
+    echo "error: Libbox binary too small (${BIN_SIZE} bytes) — refuse stub/symlink at $BINARY" >&2
     ls -laR "$DEST" >&2 || true
     exit 1
   fi
@@ -253,14 +282,14 @@ phase.shell_script = <<~'SCRIPT'
   fi
   # Unsigned copy: do not preserve old signature metadata (fails: code object is not signed).
   # Sign the Mach-O first, then the .framework bundle (Xcode 16+/26 nest check).
-  echo "Signing Libbox binary: $BINARY"
+  echo "Signing Libbox binary: $BINARY (${BIN_SIZE} bytes)"
   /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"
   echo "Signing Libbox.framework: $DEST"
   if ! /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none --generate-entitlement-der "$DEST"; then
     /usr/bin/codesign --force --deep --sign "$IDENTITY" --timestamp=none "$DEST"
   fi
   /usr/bin/codesign --verify "$DEST"
-  echo "OK Embedded Libbox.framework ($(du -sh "$DEST" | awk '{print $1}')) into PacketTunnel"
+  echo "OK Embedded Libbox.framework ($(du -sh "$DEST" | awk '{print $1}'), binary ${BIN_SIZE} bytes) into PacketTunnel"
 SCRIPT
 # Must run after link, before Xcode codesigns the appex → keep as last build phase.
 phases = tunnel.build_phases

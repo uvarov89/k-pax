@@ -2,8 +2,10 @@
 """Offline proof: embed path + slice pick match setup_packet_tunnel.rb (no bash/Xcode)."""
 from __future__ import annotations
 
+import importlib.util
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +14,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SETUP = ROOT / "ios" / "scripts" / "setup_packet_tunnel.rb"
 VALIDATE = ROOT / "ios" / "scripts" / "validate_ipa.py"
+
+
+def _load_validate():
+    spec = importlib.util.spec_from_file_location("validate_ipa", VALIDATE)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules["validate_ipa"] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def pick_slice(xcframework: Path, platform_name: str) -> Path | None:
@@ -75,6 +86,9 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertNotIn("--preserve-metadata", script)
         self.assertIn('codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"', script)
         self.assertIn("codesign --verify", script)
+        self.assertIn("Flattening versioned Libbox.framework", script)
+        self.assertIn("Libbox binary too small", script)
+        self.assertIn("1000000", script)
         # Must not rely on Copy Files / Code Sign On Copy for Libbox.
         self.assertNotRegex(
             text,
@@ -94,6 +108,9 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("assert_libbox_in_extension", text)
         self.assertIn("Libbox.framework", text)
         self.assertIn("Libbox not embedded", text)
+        self.assertIn("MIN_LIBBOX_BYTES", text)
+        self.assertIn("_soft_codesign_verify", text)
+        self.assertIn("_resolve_libbox_binary", text)
 
     def test_device_slice_copied_into_appex_frameworks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -157,6 +174,26 @@ class EmbedLibboxScriptTest(unittest.TestCase):
             self.assertEqual((orphan / "Libbox").read_bytes(), b"orphan")
             # IPA layout check equivalent: extension/Frameworks must contain Libbox.
             self.assertTrue((target / "Frameworks" / "Libbox.framework").is_dir())
+
+    def test_resolve_libbox_skips_symlink_stub(self) -> None:
+        validate = _load_validate()
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = Path(tmp) / "Libbox.framework"
+            (fw / "Versions" / "A").mkdir(parents=True)
+            (fw / "Libbox").write_bytes(b"Versions/Current/Libbox\n")  # 23-byte stub
+            real = fw / "Versions" / "A" / "Libbox"
+            real.write_bytes(b"x" * 1_500_000)
+            resolved = validate._resolve_libbox_binary(fw)
+            self.assertEqual(resolved, real)
+            with self.assertRaises(AssertionError):
+                # Pretend Versions/A is missing → stub alone must fail.
+                real.unlink()
+                appex = Path(tmp) / "PacketTunnel.appex"
+                (appex / "Frameworks").mkdir(parents=True)
+                # Move fw under appex/Frameworks for assert helper
+                dest = appex / "Frameworks" / "Libbox.framework"
+                shutil.copytree(fw, dest)
+                validate.assert_libbox_in_extension(appex, {"CFBundleExecutable": "PacketTunnel"})
 
     def test_simulator_slice_preferred_for_simulator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

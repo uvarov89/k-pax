@@ -66,7 +66,9 @@ patch_resources_plist() {
   marketing="$(_libbox_marketing_version)"
   $pb -c "Add :CFBundleInfoDictionaryVersion string 6.0" "$plist"
   $pb -c "Add :CFBundlePackageType string BNDL" "$plist"
-  $pb -c "Add :CFBundleIdentifier string io.nekohasekai.libbox.resources" "$plist"
+  # Must match framework CFBundleIdentifier — ASC 90334 rejects a nested
+  # .resources id when codesigning Libbox.framework (keep BNDL, no executable).
+  $pb -c "Add :CFBundleIdentifier string io.nekohasekai.libbox" "$plist"
   $pb -c "Add :CFBundleName string Libbox" "$plist"
   $pb -c "Add :CFBundleVersion string 1" "$plist"
   $pb -c "Add :CFBundleShortVersionString string $marketing" "$plist"

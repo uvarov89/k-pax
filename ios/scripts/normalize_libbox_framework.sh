@@ -31,7 +31,15 @@ patch_plist() {
   set_or_add CFBundleIdentifier string io.nekohasekai.libbox
   set_or_add CFBundleName string Libbox
   set_or_add CFBundleVersion string 1
-  set_or_add CFBundleShortVersionString string "${LIBBOX_SINGBOX_TAG:-1.13.21}"
+  # Git tags are v1.13.21; ASC iris 90060 rejects a leading "v" in CFBundleShortVersionString.
+  local marketing="${LIBBOX_SINGBOX_TAG:-1.13.21}"
+  marketing="${marketing#v}"
+  marketing="${marketing#V}"
+  if [[ ! "$marketing" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    echo "error: CFBundleShortVersionString must be at most three period-separated integers, got: $marketing" >&2
+    exit 1
+  fi
+  set_or_add CFBundleShortVersionString string "$marketing"
   set_or_add MinimumOSVersion string 15.0
   $pb -c "Delete :CFBundleSupportedPlatforms" "$plist" >/dev/null 2>&1 || true
   $pb -c "Add :CFBundleSupportedPlatforms array" "$plist"

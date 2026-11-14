@@ -2,6 +2,7 @@
 """Validate app/extension identity and signing prerequisites in an exported IPA."""
 import argparse
 import plistlib
+import re
 import subprocess
 import tempfile
 import zipfile
@@ -99,7 +100,12 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         )
         assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
         assert info.get("CFBundleVersion"), "Libbox CFBundleVersion missing"
-        assert info.get("CFBundleShortVersionString"), "Libbox CFBundleShortVersionString missing"
+        short_ver = str(info.get("CFBundleShortVersionString") or "")
+        assert short_ver, "Libbox CFBundleShortVersionString missing"
+        # ASC iris 90060: at most three non-negative integers, no leading "v".
+        assert re.fullmatch(r"\d+(\.\d+){0,2}", short_ver), (
+            f"Libbox CFBundleShortVersionString invalid for ASC: {short_ver!r}"
+        )
         assert info.get("MinimumOSVersion") or info.get("LSMinimumSystemVersion"), (
             "Libbox MinimumOSVersion missing"
         )

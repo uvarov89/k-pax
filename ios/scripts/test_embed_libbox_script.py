@@ -101,6 +101,8 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("prune_xcframework_slices", norm)
         self.assertIn("assert_xcframework_all_dylibs", norm)
         self.assertIn("CocoaPods rejects static+dynamic", norm)
+        self.assertIn('marketing="${marketing#v}"', norm)
+        self.assertIn("iris 90060", norm)
         build = (ROOT / "ios" / "scripts" / "build_libbox.sh").read_text(encoding="utf-8")
         self.assertIn('LIBBOX_APPLE_PLATFORM:-ios}', build)
         self.assertIn("NORMALIZE_SLICES", build)
@@ -113,6 +115,8 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("assert_libbox_in_host_app", text)
         self.assertIn("MIN_LIBBOX_BYTES", text)
         self.assertIn("_soft_codesign_verify", text)
+        self.assertIn(r"\d+(\.\d+){0,2}", text)
+        self.assertIn("invalid for ASC", text)
 
     def test_device_slice_copied_into_runner_frameworks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

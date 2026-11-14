@@ -232,11 +232,12 @@ phase.shell_script = <<~'SCRIPT'
   rm -rf "$DEST"
   /usr/bin/rsync -a --delete "$SRC/" "$DEST/" 2>/dev/null || cp -R "$SRC" "$DEST"
 
-  BINARY="$DEST/Libbox"
-  if [ ! -f "$BINARY" ] && [ -f "$DEST/Versions/Current/Libbox" ]; then
-    BINARY="$DEST/Versions/Current/Libbox"
-  fi
-  if [ ! -f "$BINARY" ]; then
+  # gomobile often ships a Versions/A layout; prefer the real binary over a symlink.
+  BINARY=""
+  for cand in "$DEST/Versions/A/Libbox" "$DEST/Versions/Current/Libbox" "$DEST/Libbox"; do
+    if [ -f "$cand" ]; then BINARY="$cand"; break; fi
+  done
+  if [ -z "$BINARY" ]; then
     echo "error: Libbox binary missing after copy in $DEST" >&2
     ls -laR "$DEST" >&2 || true
     exit 1
@@ -246,10 +247,19 @@ phase.shell_script = <<~'SCRIPT'
   if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
     IDENTITY="${CODE_SIGN_IDENTITY:-}"
   fi
-  if [ -n "$IDENTITY" ] && [ "$IDENTITY" != "-" ]; then
-    /usr/bin/codesign --force --sign "$IDENTITY" --preserve-metadata=identifier,entitlements,flags --generate-entitlement-der "$DEST" \
-      || /usr/bin/codesign --force --sign "$IDENTITY" "$DEST"
+  if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
+    echo "error: no code signing identity to sign embedded Libbox" >&2
+    exit 1
   fi
+  # Unsigned copy: never --preserve-metadata (fails with "code object is not signed at all").
+  # Sign the Mach-O first, then the .framework bundle (Xcode 16+/26 nest check).
+  echo "Signing Libbox binary: $BINARY"
+  /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"
+  echo "Signing Libbox.framework: $DEST"
+  if ! /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none --generate-entitlement-der "$DEST"; then
+    /usr/bin/codesign --force --deep --sign "$IDENTITY" --timestamp=none "$DEST"
+  fi
+  /usr/bin/codesign --verify "$DEST"
   echo "OK Embedded Libbox.framework ($(du -sh "$DEST" | awk '{print $1}')) into PacketTunnel"
 SCRIPT
 # Must run after link, before Xcode codesigns the appex → keep as last build phase.

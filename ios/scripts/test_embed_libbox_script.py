@@ -70,6 +70,9 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn('abort "Missing #{FRAMEWORKS}', text)
         self.assertIn("Libbox binary missing after copy", text)
         self.assertIn("Embed Libbox into PacketTunnel", text)
+        self.assertNotIn("--preserve-metadata", text)
+        self.assertIn('codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"', text)
+        self.assertIn("codesign --verify", text)
         # Must not rely on Copy Files / Code Sign On Copy for Libbox.
         self.assertNotRegex(
             text,

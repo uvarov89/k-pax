@@ -192,6 +192,103 @@ normalize_one() {
   echo "OK normalized $framework ($size bytes, $platform)"
 }
 
+# Drop slices that do not match mode and rewrite root Info.plist so CocoaPods
+# never sees mixed static (leftover archive) + dynamic (relinked) libraries.
+prune_xcframework_slices() {
+  local xc="$1"
+  local mode="$2"
+  local id keep plist pb=/usr/libexec/PlistBuddy
+  local -a remove_ids=()
+
+  plist="$xc/Info.plist"
+  [[ -f "$plist" ]] || return 0
+
+  # Walk AvailableLibraries by index until miss.
+  local i=0
+  while $pb -c "Print :AvailableLibraries:$i:LibraryIdentifier" "$plist" >/dev/null 2>&1; do
+    id="$($pb -c "Print :AvailableLibraries:$i:LibraryIdentifier" "$plist")"
+    keep=0
+    case "$mode" in
+      device)
+        # Pure device arm64 only — not ios-arm64_x86_64 or *-simulator.
+        [[ "$id" == "ios-arm64" ]] && keep=1
+        ;;
+      simulator)
+        case "$id" in *simulator*) keep=1 ;; esac
+        ;;
+      all)
+        case "$id" in
+          *macos*|*tvos*) keep=0 ;;
+          ios-arm64|*simulator*) keep=1 ;;
+        esac
+        ;;
+    esac
+    if [[ "$keep" -eq 0 ]]; then
+      remove_ids+=("$id")
+    fi
+    i=$((i + 1))
+  done
+
+  for id in "${remove_ids[@]+"${remove_ids[@]}"}"; do
+    echo "Prune xcframework slice $id (mode=$mode)"
+    rm -rf "$xc/$id"
+    # Remove matching AvailableLibraries entry (scan each time — indices shift).
+    i=0
+    while $pb -c "Print :AvailableLibraries:$i:LibraryIdentifier" "$plist" >/dev/null 2>&1; do
+      local cur
+      cur="$($pb -c "Print :AvailableLibraries:$i:LibraryIdentifier" "$plist")"
+      if [[ "$cur" == "$id" ]]; then
+        $pb -c "Delete :AvailableLibraries:$i" "$plist"
+        break
+      fi
+      i=$((i + 1))
+    done
+  done
+
+  # Also remove any leftover dirs not listed (cache residue).
+  local dir base
+  for dir in "$xc"/*; do
+    [[ -d "$dir" ]] || continue
+    base="$(basename "$dir")"
+    case "$base" in
+      _CodeSignature) continue ;;
+    esac
+    keep=0
+    case "$mode" in
+      device)
+        [[ "$base" == "ios-arm64" ]] && keep=1
+        ;;
+      simulator)
+        case "$base" in *simulator*) keep=1 ;; esac
+        ;;
+      all)
+        case "$base" in
+          ios-arm64|ios-*-simulator|ios-arm64_*-simulator) keep=1 ;;
+        esac
+        ;;
+    esac
+    if [[ "$keep" -eq 0 ]]; then
+      echo "Prune leftover dir $base (mode=$mode)"
+      rm -rf "$dir"
+    fi
+  done
+}
+
+assert_xcframework_all_dylibs() {
+  local xc="$1"
+  local fw binary desc
+  for fw in "$xc"/*/Libbox.framework; do
+    [[ -d "$fw" ]] || continue
+    binary="$fw/Libbox"
+    [[ -f "$binary" ]] || { echo "error: missing $binary" >&2; exit 1; }
+    desc=$(/usr/bin/file -b "$binary" || true)
+    if ! is_dylib "$desc"; then
+      echo "error: mixed/static Libbox in $fw ($desc) — CocoaPods rejects static+dynamic xcframeworks" >&2
+      exit 1
+    fi
+  done
+}
+
 # LIBBOX_NORMALIZE_SLICES=device|simulator|all (default: device for TestFlight)
 normalize_xcframework() {
   local xc="$1"
@@ -201,6 +298,10 @@ normalize_xcframework() {
   local fw platform
   local found=0
   local slices=()
+
+  # Drop simulator (or device) residue before relink so CocoaPods never sees
+  # archive + dylib in one xcframework (gomobile -target ios may emit both).
+  prune_xcframework_slices "$xc" "$mode"
 
   # Device first, then simulator — deterministic order independent of glob locale.
   case "$mode" in
@@ -248,6 +349,7 @@ normalize_xcframework() {
     ls -la "$xc" >&2 || true
     exit 1
   fi
+  assert_xcframework_all_dylibs "$xc"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

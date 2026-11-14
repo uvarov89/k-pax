@@ -40,6 +40,12 @@ if [[ -z "$NORMALIZE_SLICES" ]]; then
 fi
 export LIBBOX_NORMALIZE_SLICES="$NORMALIZE_SLICES"
 echo "Building Libbox.xcframework ($TAG, platform=$APPLE_PLATFORM, normalize=$NORMALIZE_SLICES)"
+# Drop previous xcframework so a cached WORK tree cannot leave static simulator
+# slices next to a freshly relinked device dylib (CocoaPods mixed linkage).
+rm -rf \
+  "$WORK/sing-box/Libbox.xcframework" \
+  "$WORK/sing-box-for-apple/Libbox.xcframework" \
+  "$WORK/Libbox.xcframework"
 go run ./cmd/internal/build_libbox -target apple -platform "$APPLE_PLATFORM"
 
 FRAMEWORK=""

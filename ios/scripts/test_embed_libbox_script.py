@@ -98,9 +98,14 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("UIKit", norm)
         self.assertIn("LIBBOX_NORMALIZE_SLICES", norm)
         self.assertIn("libbox_message_pump_kqueue_stub.cpp", norm)
+        self.assertIn("prune_xcframework_slices", norm)
+        self.assertIn("assert_xcframework_all_dylibs", norm)
+        self.assertIn("CocoaPods rejects static+dynamic", norm)
         build = (ROOT / "ios" / "scripts" / "build_libbox.sh").read_text(encoding="utf-8")
         self.assertIn('LIBBOX_APPLE_PLATFORM:-ios}', build)
         self.assertIn("NORMALIZE_SLICES", build)
+        self.assertIn("rm -rf", build)
+        self.assertIn("Libbox.xcframework", build)
 
     def test_validate_ipa_requires_host_libbox_forbids_appex_frameworks(self) -> None:
         text = VALIDATE.read_text(encoding="utf-8")

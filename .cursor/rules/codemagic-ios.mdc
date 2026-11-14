@@ -1,0 +1,36 @@
+---
+description: Windows + Codemagic iOS (K-Pax / X-Plm) — no local Xcode, declarative iOS only
+globs: codemagic.yaml,ios/**/*,pubspec.yaml,third_party/sing_box/ios/**/*
+alwaysApply: false
+---
+
+# iOS via Codemagic (from Windows)
+
+Dev machine is Windows. There is **no** local Xcode. Never ask to open `.xcodeproj` / `.xcworkspace` by hand.
+
+## Change iOS only through scripts / plists
+
+| Goal | Where |
+|------|--------|
+| Brand / bundle / app group | `ios/scripts/apply_ios_brand.rb` + `BRAND=kpax\|xplm` |
+| PacketTunnel target, Libbox link/embed | `ios/scripts/setup_packet_tunnel.rb` |
+| Libbox binary | `ios/scripts/build_libbox.sh` (Codemagic step) |
+| IPA contract | `ios/scripts/validate_ipa.py` |
+| Pipeline | `codemagic.yaml` workflows `ios-testflight` / `ios-testflight-xplm` |
+
+After changing tunnel/signing/embed logic: update `setup_packet_tunnel.rb` and the offline tests under `ios/scripts/test_*.py`. Bump `pubspec.yaml` build (`x.y.z+N`).
+
+## Hard App Store / NE rules (learned)
+
+- **Never** put `Frameworks/` inside `PacketTunnel.appex` (ASC **90205/90206**). Link Libbox in the extension; **embed** only in `Runner.app/Frameworks` and load via `@executable_path/../../Frameworks`.
+- Normalize Libbox via `ios/scripts/normalize_libbox_framework.sh` (shallow slice, dylib, root + `Resources/Info.plist`). Refuse stubs / non-dylib (ASC **90171**).
+- Do not re-sign with `--preserve-metadata` on an unsigned copy.
+- Keep PacketTunnel / Runner versions from Flutter xcconfig (`FLUTTER_BUILD_*`).
+- Signing on CI: `app-store-connect fetch-signing-files` + `xcode-project use-profiles` (integration `kpax`). No local certs.
+
+## codemagic.yaml
+
+- Validate YAML indentation when editing.
+- Keep `validate_ipa.py --brand …` after `flutter build ipa`.
+- Brands: K-Pax `space.kpax.app` / X-Plm `online.xplm.app` (+ `.extension`, `group.*`).
+- Prefer targeted local checks over burning CI minutes (see `pre-push-guard`).

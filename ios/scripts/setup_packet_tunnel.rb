@@ -221,10 +221,17 @@ runner_phase.shell_path = '/bin/sh'
 runner_phase.show_env_vars_in_log = '0'
 runner_phase.shell_script = <<~'SCRIPT'
   set -euo pipefail
+  # Re-normalize + replace whatever CocoaPods copied (must be shallow dylib framework).
   XCFRAMEWORK="${PROJECT_DIR}/Frameworks/Libbox.xcframework"
+  NORM="${PROJECT_DIR}/scripts/normalize_libbox_framework.sh"
   if [ ! -d "$XCFRAMEWORK" ]; then
     echo "error: missing $XCFRAMEWORK" >&2
     exit 1
+  fi
+  if [ -f "$NORM" ]; then
+    # shellcheck disable=SC1090
+    . "$NORM"
+    normalize_xcframework "$XCFRAMEWORK"
   fi
 
   SLICE=""
@@ -247,6 +254,10 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: Libbox.framework slice not found (platform=${PLATFORM_NAME:-unset})" >&2
     exit 1
   fi
+  if [ -d "$SRC/Versions" ]; then
+    echo "error: $SRC still has Versions/ — run normalize_libbox_framework.sh" >&2
+    exit 1
+  fi
 
   FFP="${FRAMEWORKS_FOLDER_PATH:-Frameworks}"
   DEST_DIR="${TARGET_BUILD_DIR}/${FFP}"
@@ -254,30 +265,11 @@ runner_phase.shell_script = <<~'SCRIPT'
   echo "Embedding Libbox into Runner: $SRC -> $DEST"
   mkdir -p "$DEST_DIR"
   rm -rf "$DEST"
-  /usr/bin/rsync -a --delete "$SRC/" "$DEST/" 2>/dev/null || cp -R "$SRC" "$DEST"
+  /usr/bin/ditto "$SRC" "$DEST"
 
-  if [ -d "$DEST/Versions" ]; then
-    VER=""
-    for cand in "$DEST/Versions/A" "$DEST/Versions/Current"; do
-      if [ -d "$cand" ]; then VER="$cand"; break; fi
-    done
-    if [ -n "$VER" ]; then
-      echo "Flattening versioned Libbox.framework from $VER"
-      for name in Libbox Headers Modules Resources Info.plist; do
-        rm -rf "$DEST/$name"
-      done
-      /usr/bin/rsync -a "$VER/" "$DEST/" 2>/dev/null || cp -R "$VER"/. "$DEST"/
-      rm -rf "$DEST/Versions"
-    fi
-  fi
-
-  BINARY=""
-  for cand in "$DEST/Libbox"; do
-    if [ -f "$cand" ] && [ ! -L "$cand" ]; then BINARY="$cand"; break; fi
-  done
-  if [ -z "$BINARY" ] && [ -f "$DEST/Libbox" ]; then BINARY="$DEST/Libbox"; fi
-  if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
-    echo "error: Libbox binary missing after copy in $DEST" >&2
+  BINARY="$DEST/Libbox"
+  if [ ! -f "$BINARY" ]; then
+    echo "error: Libbox binary missing in $DEST" >&2
     ls -laR "$DEST" >&2 || true
     exit 1
   fi
@@ -286,35 +278,26 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: Libbox binary too small (${BIN_SIZE} bytes) at $BINARY" >&2
     exit 1
   fi
-
-  # gomobile Info.plist often lacks ASC-required keys.
-  PLIST="$DEST/Info.plist"
-  if [ ! -f "$PLIST" ]; then
-    /usr/bin/plutil -create xml1 "$PLIST"
-  fi
-  PB=/usr/libexec/PlistBuddy
-  set_or_add() {
-    key="$1"; type="$2"; val="$3"
-    if $PB -c "Print :$key" "$PLIST" >/dev/null 2>&1; then
-      $PB -c "Set :$key $val" "$PLIST"
-    else
-      $PB -c "Add :$key $type $val" "$PLIST"
+  DESC=$(/usr/bin/file -b "$BINARY" || true)
+  case "$DESC" in
+    *dynamically\ linked*|*shared\ library*|*Mach-O*dylib*) ;;
+    *)
+      echo "error: Libbox is not a dylib ($DESC) — ASC 90171" >&2
+      exit 1
+      ;;
+  esac
+  for req in Info.plist Resources/Info.plist; do
+    if [ ! -f "$DEST/$req" ]; then
+      echo "error: missing $DEST/$req" >&2
+      exit 1
     fi
-  }
-  set_or_add CFBundlePackageType string FMWK
-  set_or_add CFBundleExecutable string Libbox
-  set_or_add CFBundleIdentifier string org.sagernet.libbox
-  set_or_add CFBundleName string Libbox
-  set_or_add CFBundleVersion string "${FLUTTER_BUILD_NUMBER:-1}"
-  set_or_add CFBundleShortVersionString string "${FLUTTER_BUILD_NAME:-1.0}"
-  set_or_add MinimumOSVersion string 15.0
-  $PB -c "Delete :CFBundleSupportedPlatforms" "$PLIST" >/dev/null 2>&1 || true
-  $PB -c "Add :CFBundleSupportedPlatforms array" "$PLIST"
-  if [ "${PLATFORM_NAME:-}" = "iphonesimulator" ]; then
-    $PB -c "Add :CFBundleSupportedPlatforms:0 string iPhoneSimulator" "$PLIST"
-  else
-    $PB -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" "$PLIST"
+  done
+  EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Info.plist" 2>/dev/null || true)
+  if [ "$EXEC" != "Libbox" ]; then
+    echo "error: CFBundleExecutable='$EXEC' (want Libbox)" >&2
+    exit 1
   fi
+  /usr/bin/install_name_tool -id "@rpath/Libbox.framework/Libbox" "$BINARY" 2>/dev/null || true
 
   IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
   if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
@@ -329,15 +312,22 @@ runner_phase.shell_script = <<~'SCRIPT'
     /usr/bin/codesign --force --deep --sign "$IDENTITY" --timestamp=none "$DEST"
   fi
   /usr/bin/codesign --verify "$DEST"
-  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), binary ${BIN_SIZE} bytes)"
+  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes)"
 SCRIPT
 
-# Keep Embed Foundation Extensions before Thin Binary; put Runner Libbox embed before Thin Binary too.
+# After CocoaPods embed (replace stub/bad copy), before Thin Binary / codesign.
 thin = runner.build_phases.find { |p| p.display_name.to_s.include?('Thin Binary') || p.respond_to?(:name) && p.name.to_s.include?('Thin Binary') }
+pods_embed = runner.build_phases.find do |p|
+  name = p.respond_to?(:name) ? p.name.to_s : p.display_name.to_s
+  name.include?('Embed Pods Frameworks')
+end
 runner_phases = runner.build_phases
 runner_phases.delete(runner_phase)
-if thin && (t_idx = runner_phases.index(thin))
-  runner_phases.insert(t_idx, runner_phase)
+insert_at = nil
+insert_at = runner_phases.index(pods_embed) + 1 if pods_embed && runner_phases.index(pods_embed)
+insert_at = runner_phases.index(thin) if insert_at.nil? && thin && runner_phases.index(thin)
+if insert_at
+  runner_phases.insert(insert_at, runner_phase)
 else
   runner_phases << runner_phase
 end

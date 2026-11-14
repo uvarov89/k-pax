@@ -55,4 +55,13 @@ fi
 rm -rf "$OUT_PLUGIN/Libbox.xcframework" "$OUT_IOS/Libbox.xcframework"
 cp -R "$FRAMEWORK" "$OUT_PLUGIN/Libbox.xcframework"
 cp -R "$FRAMEWORK" "$OUT_IOS/Libbox.xcframework"
-echo "Libbox.xcframework installed ($TAG) → Frameworks/"
+
+# gomobile multi-platform bind emits macOS Versions/A layouts; ASC 90171 rejects
+# those binaries unless each iOS slice is a shallow framework with a real dylib.
+NORM="$(cd "$(dirname "$0")" && pwd)/normalize_libbox_framework.sh"
+# shellcheck source=/dev/null
+source "$NORM"
+export LIBBOX_SINGBOX_TAG="$TAG"
+normalize_xcframework "$OUT_PLUGIN/Libbox.xcframework"
+normalize_xcframework "$OUT_IOS/Libbox.xcframework"
+echo "Libbox.xcframework installed ($TAG) → Frameworks/ (shallow iOS slices)"

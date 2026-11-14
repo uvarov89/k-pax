@@ -86,8 +86,18 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         )
         plist_path = fw / "Info.plist"
         assert plist_path.is_file(), f"Libbox.framework missing Info.plist: {fw}"
+        assert (fw / "Resources" / "Info.plist").is_file(), (
+            "Libbox.framework missing Resources/Info.plist (ASC 90171 risk)"
+        )
+        assert not (fw / "Versions").exists(), (
+            "Libbox.framework still has Versions/ — must be shallow for iOS ASC"
+        )
         info = plistlib.loads(plist_path.read_bytes())
         assert info.get("CFBundleIdentifier"), "Libbox CFBundleIdentifier missing"
+        assert info.get("CFBundleExecutable") == "Libbox", (
+            f"Libbox CFBundleExecutable={info.get('CFBundleExecutable')!r}"
+        )
+        assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
         assert info.get("CFBundleVersion"), "Libbox CFBundleVersion missing"
         assert info.get("CFBundleShortVersionString"), "Libbox CFBundleShortVersionString missing"
         assert info.get("MinimumOSVersion") or info.get("LSMinimumSystemVersion"), (

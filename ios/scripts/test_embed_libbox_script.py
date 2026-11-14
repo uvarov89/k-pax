@@ -79,16 +79,18 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("Strip Frameworks from PacketTunnel", text)
         self.assertIn("ASC 90206", text)
         self.assertIn("@executable_path/../../Frameworks", text)
-        self.assertIn("org.sagernet.libbox", text)
-        self.assertIn("CFBundleVersion", text)
-        self.assertIn("MinimumOSVersion", text)
-        # Old appex-embed phase must not be recreated as the primary embed.
-        self.assertNotIn("OK Embedded Libbox.framework", text)
+        self.assertIn("ASC 90171", text)
+        self.assertIn("normalize_libbox_framework.sh", text)
         self.assertIn("OK Libbox in Runner", text)
+        self.assertNotIn("OK Embedded Libbox.framework", text)
         script = text.split("runner_phase.shell_script = <<~'SCRIPT'", 1)[-1].split("SCRIPT", 1)[0]
         self.assertIn("TARGET_BUILD_DIR", script)
         self.assertIn("FRAMEWORKS_FOLDER_PATH", script)
+        self.assertIn("Resources/Info.plist", script)
         self.assertNotIn("--preserve-metadata", script)
+        norm = (ROOT / "ios" / "scripts" / "normalize_libbox_framework.sh").read_text(encoding="utf-8")
+        self.assertIn("io.nekohasekai.libbox", norm)
+        self.assertIn("ditto", norm)
 
     def test_validate_ipa_requires_host_libbox_forbids_appex_frameworks(self) -> None:
         text = VALIDATE.read_text(encoding="utf-8")

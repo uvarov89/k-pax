@@ -251,7 +251,7 @@ phase.shell_script = <<~'SCRIPT'
     echo "error: no code signing identity to sign embedded Libbox" >&2
     exit 1
   fi
-  # Unsigned copy: never --preserve-metadata (fails with "code object is not signed at all").
+  # Unsigned copy: do not preserve old signature metadata (fails: code object is not signed).
   # Sign the Mach-O first, then the .framework bundle (Xcode 16+/26 nest check).
   echo "Signing Libbox binary: $BINARY"
   /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"

@@ -70,9 +70,11 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn('abort "Missing #{FRAMEWORKS}', text)
         self.assertIn("Libbox binary missing after copy", text)
         self.assertIn("Embed Libbox into PacketTunnel", text)
-        self.assertNotIn("--preserve-metadata", text)
-        self.assertIn('codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"', text)
-        self.assertIn("codesign --verify", text)
+        # Only the shell phase matters — comments may mention the bad flag.
+        script = text.split("phase.shell_script = <<~'SCRIPT'", 1)[-1].split("SCRIPT", 1)[0]
+        self.assertNotIn("--preserve-metadata", script)
+        self.assertIn('codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"', script)
+        self.assertIn("codesign --verify", script)
         # Must not rely on Copy Files / Code Sign On Copy for Libbox.
         self.assertNotRegex(
             text,

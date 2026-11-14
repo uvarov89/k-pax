@@ -94,7 +94,13 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("relink_archive_to_dylib", norm)
         self.assertIn("-force_load", norm)
         self.assertIn("is_archive", norm)
-        self.assertIn("clang -dynamiclib", norm)
+        self.assertIn("clang++ -dynamiclib", norm)
+        self.assertIn("UIKit", norm)
+        self.assertIn("LIBBOX_NORMALIZE_SLICES", norm)
+        self.assertIn("libbox_message_pump_kqueue_stub.cpp", norm)
+        build = (ROOT / "ios" / "scripts" / "build_libbox.sh").read_text(encoding="utf-8")
+        self.assertIn('LIBBOX_APPLE_PLATFORM:-ios}', build)
+        self.assertIn("NORMALIZE_SLICES", build)
 
     def test_validate_ipa_requires_host_libbox_forbids_appex_frameworks(self) -> None:
         text = VALIDATE.read_text(encoding="utf-8")

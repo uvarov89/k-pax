@@ -27,10 +27,19 @@ git checkout --detach "$TAG"
 export PATH="$PATH:$(go env GOPATH)/bin"
 make lib_install
 
-# Flutter PacketTunnel only needs device + simulator. Full `lib_apple` also
-# builds tvOS/macOS and still emits static archives that we must relink.
-APPLE_PLATFORM="${LIBBOX_APPLE_PLATFORM:-ios,iossimulator}"
-echo "Building Libbox.xcframework ($TAG, platform=$APPLE_PLATFORM)"
+# TestFlight / device IPA: iphoneos arm64 only (default).
+# Simulator: LIBBOX_APPLE_PLATFORM=iossimulator LIBBOX_NORMALIZE_SLICES=simulator
+# Both:     LIBBOX_APPLE_PLATFORM=ios,iossimulator LIBBOX_NORMALIZE_SLICES=all
+APPLE_PLATFORM="${LIBBOX_APPLE_PLATFORM:-ios}"
+NORMALIZE_SLICES="${LIBBOX_NORMALIZE_SLICES:-}"
+if [[ -z "$NORMALIZE_SLICES" ]]; then
+  case "$APPLE_PLATFORM" in
+    *simulator*) NORMALIZE_SLICES=all ;;
+    *) NORMALIZE_SLICES=device ;;
+  esac
+fi
+export LIBBOX_NORMALIZE_SLICES="$NORMALIZE_SLICES"
+echo "Building Libbox.xcframework ($TAG, platform=$APPLE_PLATFORM, normalize=$NORMALIZE_SLICES)"
 go run ./cmd/internal/build_libbox -target apple -platform "$APPLE_PLATFORM"
 
 FRAMEWORK=""

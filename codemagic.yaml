@@ -19,6 +19,9 @@ workflows:
         BUNDLE_ID_EXT: space.kpax.app.extension
         APP_GROUP: group.space.kpax.app
         LIBBOX_SINGBOX_TAG: v1.13.21
+        # Device arm64 only for TestFlight (simulator Cronet/x86_64 relink is optional).
+        LIBBOX_APPLE_PLATFORM: ios
+        LIBBOX_NORMALIZE_SLICES: device
       # Do not use environment.ios_signing here: it fails the build before
       # scripts can create missing App Store profiles (VPN / Network Extension).
     cache:
@@ -114,6 +117,8 @@ workflows:
         BUNDLE_ID_EXT: online.xplm.app.extension
         APP_GROUP: group.online.xplm.app
         LIBBOX_SINGBOX_TAG: v1.13.21
+        LIBBOX_APPLE_PLATFORM: ios
+        LIBBOX_NORMALIZE_SLICES: device
     cache:
       cache_paths:
         - $HOME/.pub-cache

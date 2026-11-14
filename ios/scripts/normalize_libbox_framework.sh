@@ -7,6 +7,9 @@
 # so archives are relinked with clang -dynamiclib here.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KQUEUE_STUB="${SCRIPT_DIR}/libbox_message_pump_kqueue_stub.cpp"
+
 patch_plist() {
   local plist="$1"
   local platform="$2" # iPhoneOS | iPhoneSimulator
@@ -35,7 +38,7 @@ patch_plist() {
   $pb -c "Add :CFBundleSupportedPlatforms:0 string $platform" "$plist"
 }
 
-# clang flags shared when turning a Go c-archive into a loadable framework dylib.
+# Cronet (naive) pulls UIKit / telephony / UTType / LocalAuthentication / …
 _libbox_link_libs() {
   echo \
     -framework Foundation \
@@ -44,6 +47,13 @@ _libbox_link_libs() {
     -framework Network \
     -framework SystemConfiguration \
     -framework CFNetwork \
+    -framework UIKit \
+    -framework CoreTelephony \
+    -framework UniformTypeIdentifiers \
+    -framework LocalAuthentication \
+    -framework CryptoTokenKit \
+    -framework CoreGraphics \
+    -framework CoreText \
     -lresolv \
     -lobjc \
     -lc++
@@ -61,6 +71,11 @@ relink_archive_to_dylib() {
   local sysroot
   sysroot="$(xcrun --sdk "$sdk" --show-sdk-path)"
 
+  if [[ ! -f "$KQUEUE_STUB" ]]; then
+    echo "error: missing Cronet stub $KQUEUE_STUB" >&2
+    exit 1
+  fi
+
   local tmp
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/libbox-relink.XXXXXX")"
 
@@ -69,24 +84,32 @@ relink_archive_to_dylib() {
   echo "Relink archive → dylib ($platform, sdk=$sdk, archs=$archs)"
 
   local outs=()
-  local arch thin out target
+  local arch thin out target stub_o
   for arch in $archs; do
     thin="$tmp/Libbox-$arch.a"
     out="$tmp/Libbox-$arch.dylib"
+    stub_o="$tmp/kqueue-stub-$arch.o"
     lipo "$binary" -thin "$arch" -output "$thin"
     if [[ "$sdk" == "iphonesimulator" ]]; then
       target="${arch}-apple-ios15.0-simulator"
     else
       target="${arch}-apple-ios15.0"
     fi
-    # force_load pulls all Go/cgo objects out of the archive into the dylib.
+    xcrun clang++ -c -std=c++17 \
+      -target "$target" \
+      -isysroot "$sysroot" \
+      $min_flag \
+      -o "$stub_o" \
+      "$KQUEUE_STUB"
+    # force_load pulls all Go/cgo/Cronet objects out of the archive into the dylib.
     # shellcheck disable=SC2046
-    xcrun clang -dynamiclib \
+    xcrun clang++ -dynamiclib \
       -target "$target" \
       -isysroot "$sysroot" \
       $min_flag \
       -install_name "@rpath/Libbox.framework/Libbox" \
       -Wl,-force_load,"$thin" \
+      "$stub_o" \
       $(_libbox_link_libs) \
       -o "$out"
     outs+=("$out")
@@ -169,13 +192,49 @@ normalize_one() {
   echo "OK normalized $framework ($size bytes, $platform)"
 }
 
+# LIBBOX_NORMALIZE_SLICES=device|simulator|all (default: device for TestFlight)
 normalize_xcframework() {
   local xc="$1"
   [[ -d "$xc" ]] || { echo "error: missing $xc" >&2; exit 1; }
-  echo "Normalize iOS slices in $xc"
+  local mode="${LIBBOX_NORMALIZE_SLICES:-device}"
+  echo "Normalize iOS slices in $xc (mode=$mode)"
   local fw platform
   local found=0
-  for fw in "$xc"/ios-*/Libbox.framework; do
+  local slices=()
+
+  # Device first, then simulator — deterministic order independent of glob locale.
+  case "$mode" in
+    device)
+      for fw in "$xc"/ios-arm64/Libbox.framework "$xc"/ios-arm64_*/Libbox.framework; do
+        [[ -d "$fw" ]] || continue
+        case "$fw" in *simulator*) continue ;; esac
+        slices+=("$fw")
+      done
+      ;;
+    simulator)
+      for fw in "$xc"/ios-*-simulator/Libbox.framework; do
+        [[ -d "$fw" ]] || continue
+        slices+=("$fw")
+      done
+      ;;
+    all)
+      for fw in "$xc"/ios-arm64/Libbox.framework "$xc"/ios-arm64_*/Libbox.framework; do
+        [[ -d "$fw" ]] || continue
+        case "$fw" in *simulator*) continue ;; esac
+        slices+=("$fw")
+      done
+      for fw in "$xc"/ios-*-simulator/Libbox.framework; do
+        [[ -d "$fw" ]] || continue
+        slices+=("$fw")
+      done
+      ;;
+    *)
+      echo "error: LIBBOX_NORMALIZE_SLICES must be device|simulator|all (got $mode)" >&2
+      exit 1
+      ;;
+  esac
+
+  for fw in "${slices[@]+"${slices[@]}"}"; do
     [[ -d "$fw" ]] || continue
     found=1
     platform=iPhoneOS
@@ -185,7 +244,7 @@ normalize_xcframework() {
     normalize_one "$fw" "$platform"
   done
   if [[ "$found" -eq 0 ]]; then
-    echo "error: no ios-*/Libbox.framework under $xc" >&2
+    echo "error: no matching ios Libbox.framework under $xc (mode=$mode)" >&2
     ls -la "$xc" >&2 || true
     exit 1
   fi

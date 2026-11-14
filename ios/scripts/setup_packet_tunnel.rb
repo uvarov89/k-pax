@@ -156,9 +156,9 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   end
 end
 
-# Link Libbox xcframework, then copy the platform slice into the appex Frameworks/.
-# Embedding the .xcframework via Copy Files / CodeSignOnCopy is unreliable and
-# either skips the binary or breaks codesign seal.
+# App Store rejects Frameworks inside .appex (ASC 90205/90206). PacketTunnel only
+# *links* Libbox; the host Runner.app embeds the framework. Extension loads it via
+# @executable_path/../../Frameworks (set above in LD_RUNPATH_SEARCH_PATHS).
 abort "Missing #{FRAMEWORKS} — run ios/scripts/build_libbox.sh before setup_packet_tunnel.rb" unless File.directory?(FRAMEWORKS)
 
 fw_group = project.main_group.find_subpath('Frameworks', true)
@@ -166,6 +166,8 @@ fw_group.set_source_tree('<group>')
 fw_group.set_path('Frameworks')
 lib_ref = fw_group.files.find { |f| f.path.to_s.include?('Libbox.xcframework') }
 lib_ref ||= fw_group.new_file('Libbox.xcframework')
+
+# Never embed Libbox into the appex (Copy Files / old shell phase).
 tunnel.copy_files_build_phases.select { |p| p.name == 'Embed Frameworks' }.each do |phase|
   phase.files.to_a.each do |bf|
     ref = bf.file_ref
@@ -173,30 +175,57 @@ tunnel.copy_files_build_phases.select { |p| p.name == 'Embed Frameworks' }.each 
     phase.remove_build_file(bf)
   end
 end
+[
+  'Embed Libbox into PacketTunnel',
+  'Strip Frameworks from PacketTunnel',
+].each do |old_name|
+  tunnel.shell_script_build_phases.select { |p| p.name == old_name }.each do |p|
+    tunnel.build_phases.delete(p)
+  end
+end
+
 existing = tunnel.frameworks_build_phase.files.find { |bf| bf.file_ref == lib_ref }
 if existing
-  existing.settings = {}
+  existing.settings = {} # Do Not Embed — link only
 else
   tunnel.frameworks_build_phase.add_file_reference(lib_ref)
 end
 
-embed_script_name = 'Embed Libbox into PacketTunnel'
-tunnel.shell_script_build_phases.select { |p| p.name == embed_script_name }.each do |p|
-  tunnel.build_phases.delete(p)
+# Last resort: delete Frameworks/ if anything still copied into the appex.
+strip_name = 'Strip Frameworks from PacketTunnel'
+strip = tunnel.new_shell_script_build_phase(strip_name)
+strip.shell_path = '/bin/sh'
+strip.show_env_vars_in_log = '0'
+strip.shell_script = <<~'SCRIPT'
+  set -euo pipefail
+  APPEX="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}"
+  if [ ! -d "$APPEX" ]; then
+    APPEX="${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}"
+  fi
+  if [ -d "$APPEX/Frameworks" ]; then
+    echo "warning: removing disallowed Frameworks from PacketTunnel.appex (ASC 90206)"
+    rm -rf "$APPEX/Frameworks"
+  fi
+SCRIPT
+tunnel_phases = tunnel.build_phases
+tunnel_phases.delete(strip)
+tunnel_phases << strip
+
+# Embed + normalize Libbox into the *host* app (Runner), not the extension.
+runner_embed_name = 'Embed Libbox into Runner'
+runner.shell_script_build_phases.select { |p| p.name == runner_embed_name }.each do |p|
+  runner.build_phases.delete(p)
 end
-phase = tunnel.new_shell_script_build_phase(embed_script_name)
-phase.shell_path = '/bin/sh'
-phase.show_env_vars_in_log = '0'
-# Match CocoaPods: copy into TARGET_BUILD_DIR/FRAMEWORKS_FOLDER_PATH before codesign.
-phase.shell_script = <<~'SCRIPT'
+runner_phase = runner.new_shell_script_build_phase(runner_embed_name)
+runner_phase.shell_path = '/bin/sh'
+runner_phase.show_env_vars_in_log = '0'
+runner_phase.shell_script = <<~'SCRIPT'
   set -euo pipefail
   XCFRAMEWORK="${PROJECT_DIR}/Frameworks/Libbox.xcframework"
   if [ ! -d "$XCFRAMEWORK" ]; then
     echo "error: missing $XCFRAMEWORK" >&2
     exit 1
   fi
-  echo "Libbox xcframework contents:"
-  ls -la "$XCFRAMEWORK" || true
 
   SLICE=""
   if [ "${PLATFORM_NAME:-}" = "iphonesimulator" ]; then
@@ -216,25 +245,17 @@ phase.shell_script = <<~'SCRIPT'
   SRC="${SLICE}/Libbox.framework"
   if [ -z "$SLICE" ] || [ ! -d "$SRC" ]; then
     echo "error: Libbox.framework slice not found (platform=${PLATFORM_NAME:-unset})" >&2
-    find "$XCFRAMEWORK" -maxdepth 3 -type d -name 'Libbox.framework' >&2 || true
     exit 1
   fi
 
-  # CocoaPods uses TARGET_BUILD_DIR + FRAMEWORKS_FOLDER_PATH (not BUILT_PRODUCTS_DIR).
   FFP="${FRAMEWORKS_FOLDER_PATH:-Frameworks}"
   DEST_DIR="${TARGET_BUILD_DIR}/${FFP}"
-  if [ ! -d "${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME:-PacketTunnel.appex}" ] && [ -d "${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME:-PacketTunnel.appex}" ]; then
-    DEST_DIR="${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME:-PacketTunnel.appex}/Frameworks"
-  fi
   DEST="${DEST_DIR}/Libbox.framework"
-  echo "Embedding Libbox: $SRC -> $DEST"
+  echo "Embedding Libbox into Runner: $SRC -> $DEST"
   mkdir -p "$DEST_DIR"
   rm -rf "$DEST"
   /usr/bin/rsync -a --delete "$SRC/" "$DEST/" 2>/dev/null || cp -R "$SRC" "$DEST"
 
-  # gomobile ships a macOS-style Versions/A tree. iOS + IPA zip often leave the
-  # root "Libbox" as a tiny symlink stub (~20B) which breaks parent codesign seals.
-  # Flatten to a normal iOS framework: binary + Headers/Modules/Resources at root.
   if [ -d "$DEST/Versions" ]; then
     VER=""
     for cand in "$DEST/Versions/A" "$DEST/Versions/Current"; do
@@ -242,7 +263,6 @@ phase.shell_script = <<~'SCRIPT'
     done
     if [ -n "$VER" ]; then
       echo "Flattening versioned Libbox.framework from $VER"
-      # Remove root symlinks/stubs before promoting Versions/A contents.
       for name in Libbox Headers Modules Resources Info.plist; do
         rm -rf "$DEST/$name"
       done
@@ -252,14 +272,10 @@ phase.shell_script = <<~'SCRIPT'
   fi
 
   BINARY=""
-  for cand in "$DEST/Libbox" "$DEST/Versions/A/Libbox" "$DEST/Versions/Current/Libbox"; do
+  for cand in "$DEST/Libbox"; do
     if [ -f "$cand" ] && [ ! -L "$cand" ]; then BINARY="$cand"; break; fi
   done
-  if [ -z "$BINARY" ]; then
-    for cand in "$DEST/Libbox" "$DEST/Versions/A/Libbox" "$DEST/Versions/Current/Libbox"; do
-      if [ -f "$cand" ]; then BINARY="$cand"; break; fi
-    done
-  fi
+  if [ -z "$BINARY" ] && [ -f "$DEST/Libbox" ]; then BINARY="$DEST/Libbox"; fi
   if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
     echo "error: Libbox binary missing after copy in $DEST" >&2
     ls -laR "$DEST" >&2 || true
@@ -267,9 +283,37 @@ phase.shell_script = <<~'SCRIPT'
   fi
   BIN_SIZE=$(/usr/bin/stat -f%z "$BINARY" 2>/dev/null || /usr/bin/stat -c%s "$BINARY")
   if [ "${BIN_SIZE:-0}" -lt 1000000 ]; then
-    echo "error: Libbox binary too small (${BIN_SIZE} bytes) — refuse stub/symlink at $BINARY" >&2
-    ls -laR "$DEST" >&2 || true
+    echo "error: Libbox binary too small (${BIN_SIZE} bytes) at $BINARY" >&2
     exit 1
+  fi
+
+  # gomobile Info.plist often lacks ASC-required keys.
+  PLIST="$DEST/Info.plist"
+  if [ ! -f "$PLIST" ]; then
+    /usr/bin/plutil -create xml1 "$PLIST"
+  fi
+  PB=/usr/libexec/PlistBuddy
+  set_or_add() {
+    key="$1"; type="$2"; val="$3"
+    if $PB -c "Print :$key" "$PLIST" >/dev/null 2>&1; then
+      $PB -c "Set :$key $val" "$PLIST"
+    else
+      $PB -c "Add :$key $type $val" "$PLIST"
+    fi
+  }
+  set_or_add CFBundlePackageType string FMWK
+  set_or_add CFBundleExecutable string Libbox
+  set_or_add CFBundleIdentifier string org.sagernet.libbox
+  set_or_add CFBundleName string Libbox
+  set_or_add CFBundleVersion string "${FLUTTER_BUILD_NUMBER:-1}"
+  set_or_add CFBundleShortVersionString string "${FLUTTER_BUILD_NAME:-1.0}"
+  set_or_add MinimumOSVersion string 15.0
+  $PB -c "Delete :CFBundleSupportedPlatforms" "$PLIST" >/dev/null 2>&1 || true
+  $PB -c "Add :CFBundleSupportedPlatforms array" "$PLIST"
+  if [ "${PLATFORM_NAME:-}" = "iphonesimulator" ]; then
+    $PB -c "Add :CFBundleSupportedPlatforms:0 string iPhoneSimulator" "$PLIST"
+  else
+    $PB -c "Add :CFBundleSupportedPlatforms:0 string iPhoneOS" "$PLIST"
   fi
 
   IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
@@ -280,33 +324,32 @@ phase.shell_script = <<~'SCRIPT'
     echo "error: no code signing identity to sign embedded Libbox" >&2
     exit 1
   fi
-  # Unsigned copy: do not preserve old signature metadata (fails: code object is not signed).
-  # Sign the Mach-O first, then the .framework bundle (Xcode 16+/26 nest check).
-  echo "Signing Libbox binary: $BINARY (${BIN_SIZE} bytes)"
   /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"
-  echo "Signing Libbox.framework: $DEST"
   if ! /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none --generate-entitlement-der "$DEST"; then
     /usr/bin/codesign --force --deep --sign "$IDENTITY" --timestamp=none "$DEST"
   fi
   /usr/bin/codesign --verify "$DEST"
-  echo "OK Embedded Libbox.framework ($(du -sh "$DEST" | awk '{print $1}'), binary ${BIN_SIZE} bytes) into PacketTunnel"
+  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), binary ${BIN_SIZE} bytes)"
 SCRIPT
-# Must run after link, before Xcode codesigns the appex → keep as last build phase.
-phases = tunnel.build_phases
-phases.delete(phase)
-phases << phase
 
-# Ensure Embed Foundation Extensions runs before Thin Binary
+# Keep Embed Foundation Extensions before Thin Binary; put Runner Libbox embed before Thin Binary too.
 thin = runner.build_phases.find { |p| p.display_name.to_s.include?('Thin Binary') || p.respond_to?(:name) && p.name.to_s.include?('Thin Binary') }
+runner_phases = runner.build_phases
+runner_phases.delete(runner_phase)
+if thin && (t_idx = runner_phases.index(thin))
+  runner_phases.insert(t_idx, runner_phase)
+else
+  runner_phases << runner_phase
+end
 if thin && embed
-  phases = runner.build_phases
-  e_idx = phases.index(embed)
-  t_idx = phases.index(thin)
+  e_idx = runner_phases.index(embed)
+  t_idx = runner_phases.index(thin)
   if e_idx && t_idx && e_idx > t_idx
-    phases.delete(embed)
-    phases.insert(t_idx, embed)
+    runner_phases.delete(embed)
+    runner_phases.insert(t_idx, embed)
   end
 end
 
 project.save
-puts "PacketTunnel target ready (#{BUNDLE_EXT}), App Group #{APP_GROUP}"
+puts "PacketTunnel target ready (#{BUNDLE_EXT}), App Group #{APP_GROUP}; Libbox embeds into Runner only"
+

@@ -51,7 +51,6 @@ def _resolve_libbox_binary(fw: Path) -> Path | None:
     for cand in candidates:
         if not cand.exists():
             continue
-        # Skip tiny symlink stubs materialized as files in zip extracts.
         try:
             size = cand.stat().st_size
         except OSError:
@@ -64,17 +63,38 @@ def _resolve_libbox_binary(fw: Path) -> Path | None:
     return max(found, key=lambda p: p.stat().st_size)
 
 
-def assert_libbox_in_extension(extension: Path, ext_plist: dict) -> None:
+def assert_no_frameworks_in_appex(extension: Path) -> None:
+    """ASC 90205/90206: app extensions must not contain a Frameworks directory."""
     frameworks = extension / "Frameworks"
+    if frameworks.exists():
+        listing = sorted(p.relative_to(frameworks).as_posix() for p in frameworks.rglob("*") if p.is_file())
+        raise AssertionError(
+            "PacketTunnel.appex must not contain Frameworks/ (ASC 90206). Found:\n"
+            + "\n".join(listing[:40])
+        )
+    print("PacketTunnel.appex has no Frameworks/ (ASC OK)")
+
+
+def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> None:
+    frameworks = app / "Frameworks"
     embedded = list(frameworks.glob("Libbox.framework")) if frameworks.is_dir() else []
     if embedded:
         fw = embedded[0]
         lib_bin = _resolve_libbox_binary(fw)
         assert lib_bin is not None, (
-            f"Libbox.framework present but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
+            f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
+        )
+        plist_path = fw / "Info.plist"
+        assert plist_path.is_file(), f"Libbox.framework missing Info.plist: {fw}"
+        info = plistlib.loads(plist_path.read_bytes())
+        assert info.get("CFBundleIdentifier"), "Libbox CFBundleIdentifier missing"
+        assert info.get("CFBundleVersion"), "Libbox CFBundleVersion missing"
+        assert info.get("CFBundleShortVersionString"), "Libbox CFBundleShortVersionString missing"
+        assert info.get("MinimumOSVersion") or info.get("LSMinimumSystemVersion"), (
+            "Libbox MinimumOSVersion missing"
         )
         size = lib_bin.stat().st_size
-        print(f"Libbox.framework OK in appex ({lib_bin.relative_to(extension)} , {size} bytes)")
+        print(f"Libbox.framework OK in Runner.app ({lib_bin.relative_to(app)}, {size} bytes)")
         return
     binary = _extension_binary(extension, ext_plist)
     if binary.is_file():
@@ -85,17 +105,18 @@ def assert_libbox_in_extension(extension: Path, ext_plist: dict) -> None:
             text=True,
         )
         if linked.returncode == 0 and "Libbox" in linked.stdout:
-            print("Libbox linked into PacketTunnel binary (no separate Frameworks copy)")
+            print("Libbox linked into PacketTunnel binary (static / no separate Frameworks copy)")
             print(linked.stdout)
             return
     listing = []
-    for p in sorted(extension.rglob("*")):
-        if p.is_file():
-            listing.append(f"{p.relative_to(extension)} ({p.stat().st_size})")
-    preview = "\n".join(listing[:80])
+    app_fw = app / "Frameworks"
+    if app_fw.is_dir():
+        for p in sorted(app_fw.rglob("*")):
+            if p.is_file():
+                listing.append(f"{p.relative_to(app)} ({p.stat().st_size})")
     raise AssertionError(
-        "Libbox not embedded/linked in PacketTunnel.appex\n"
-        f"appex tree (first 80 files):\n{preview}"
+        "Libbox.framework missing from Runner.app/Frameworks (required for PacketTunnel rpath)\n"
+        f"Runner Frameworks preview:\n" + "\n".join(listing[:80])
     )
 
 
@@ -130,7 +151,8 @@ def validate_archive(ipa, brand, signing=True):
         app_plist = plistlib.loads((app / "Info.plist").read_bytes())
         ext_plist = plistlib.loads((extension / "Info.plist").read_bytes())
         validate_bundle_info(app_plist, ext_plist, brand)
-        assert_libbox_in_extension(extension, ext_plist)
+        assert_no_frameworks_in_appex(extension)
+        assert_libbox_in_host_app(app, extension, ext_plist)
         if signing:
             for path in (app, extension):
                 _soft_codesign_verify(path)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline proof: embed path + slice pick match setup_packet_tunnel.rb (no bash/Xcode)."""
+"""Offline proof: Libbox embeds into Runner only; appex must not contain Frameworks."""
 from __future__ import annotations
 
 import importlib.util
@@ -26,7 +26,6 @@ def _load_validate():
 
 
 def pick_slice(xcframework: Path, platform_name: str) -> Path | None:
-    """Mirror the shell slice logic from Embed Libbox into PacketTunnel."""
     if platform_name == "iphonesimulator":
         candidates = sorted(xcframework.glob("ios-*-simulator")) + list(
             xcframework.glob("ios-arm64_x86_64-simulator")
@@ -74,45 +73,31 @@ def embed_copy(
 
 
 class EmbedLibboxScriptTest(unittest.TestCase):
-    def test_setup_rb_uses_target_build_dir_and_hard_fails(self) -> None:
+    def test_setup_rb_embeds_into_runner_not_appex(self) -> None:
         text = SETUP.read_text(encoding="utf-8")
-        self.assertIn("TARGET_BUILD_DIR", text)
-        self.assertIn("FRAMEWORKS_FOLDER_PATH", text)
-        self.assertIn('abort "Missing #{FRAMEWORKS}', text)
-        self.assertIn("Libbox binary missing after copy", text)
-        self.assertIn("Embed Libbox into PacketTunnel", text)
-        # Only the shell phase matters — comments may mention the bad flag.
-        script = text.split("phase.shell_script = <<~'SCRIPT'", 1)[-1].split("SCRIPT", 1)[0]
+        self.assertIn("Embed Libbox into Runner", text)
+        self.assertIn("Strip Frameworks from PacketTunnel", text)
+        self.assertIn("ASC 90206", text)
+        self.assertIn("@executable_path/../../Frameworks", text)
+        self.assertIn("org.sagernet.libbox", text)
+        self.assertIn("CFBundleVersion", text)
+        self.assertIn("MinimumOSVersion", text)
+        # Old appex-embed phase must not be recreated as the primary embed.
+        self.assertNotIn("OK Embedded Libbox.framework", text)
+        self.assertIn("OK Libbox in Runner", text)
+        script = text.split("runner_phase.shell_script = <<~'SCRIPT'", 1)[-1].split("SCRIPT", 1)[0]
+        self.assertIn("TARGET_BUILD_DIR", script)
+        self.assertIn("FRAMEWORKS_FOLDER_PATH", script)
         self.assertNotIn("--preserve-metadata", script)
-        self.assertIn('codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"', script)
-        self.assertIn("codesign --verify", script)
-        self.assertIn("Flattening versioned Libbox.framework", script)
-        self.assertIn("Libbox binary too small", script)
-        self.assertIn("1000000", script)
-        # Must not rely on Copy Files / Code Sign On Copy for Libbox.
-        self.assertNotRegex(
-            text,
-            r"Embed Frameworks.*Libbox\.xcframework.*CodeSignOnCopy",
-        )
-        # Shell phase must be moved last.
-        self.assertIn("phases << phase", text)
-        # DEST must be under TARGET_BUILD_DIR (CocoaPods style), not only BUILT_PRODUCTS_DIR.
-        m = re.search(
-            r'DEST_DIR="\$\{TARGET_BUILD_DIR\}/\$\{FFP\}"',
-            text,
-        )
-        self.assertIsNotNone(m, "DEST_DIR must use TARGET_BUILD_DIR/FFP")
 
-    def test_validate_ipa_requires_libbox_binary(self) -> None:
+    def test_validate_ipa_requires_host_libbox_forbids_appex_frameworks(self) -> None:
         text = VALIDATE.read_text(encoding="utf-8")
-        self.assertIn("assert_libbox_in_extension", text)
-        self.assertIn("Libbox.framework", text)
-        self.assertIn("Libbox not embedded", text)
+        self.assertIn("assert_no_frameworks_in_appex", text)
+        self.assertIn("assert_libbox_in_host_app", text)
         self.assertIn("MIN_LIBBOX_BYTES", text)
         self.assertIn("_soft_codesign_verify", text)
-        self.assertIn("_resolve_libbox_binary", text)
 
-    def test_device_slice_copied_into_appex_frameworks(self) -> None:
+    def test_device_slice_copied_into_runner_frameworks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             slice_dir = (
@@ -120,21 +105,8 @@ class EmbedLibboxScriptTest(unittest.TestCase):
             )
             slice_dir.mkdir(parents=True)
             (slice_dir / "Libbox").write_bytes(b"fake-libbox-binary")
-            # Also plant a simulator slice that must NOT be picked for iphoneos.
-            sim = (
-                root
-                / "Frameworks"
-                / "Libbox.xcframework"
-                / "ios-arm64-simulator"
-                / "Libbox.framework"
-            )
-            sim.mkdir(parents=True)
-            (sim / "Libbox").write_bytes(b"simulator-binary")
-
-            # CocoaPods-style: TARGET_BUILD_DIR is the .appex itself.
-            target = root / "Build" / "Products" / "Release-iphoneos" / "PacketTunnel.appex"
+            target = root / "Build" / "Products" / "Release-iphoneos" / "Runner.app"
             target.mkdir(parents=True)
-
             binary = embed_copy(
                 project_dir=root,
                 target_build_dir=target,
@@ -142,58 +114,26 @@ class EmbedLibboxScriptTest(unittest.TestCase):
                 platform_name="iphoneos",
             )
             self.assertEqual(binary.read_bytes(), b"fake-libbox-binary")
-            dest = target / "Frameworks" / "Libbox.framework" / "Libbox"
-            self.assertTrue(dest.is_file(), dest)
-            self.assertEqual(dest.read_bytes(), b"fake-libbox-binary")
 
-    def test_correct_dest_is_inside_appex_not_products_sibling(self) -> None:
-        """validate_ipa only accepts appex/Frameworks/Libbox — not Products/Frameworks."""
+    def test_validate_rejects_appex_frameworks(self) -> None:
+        validate = _load_validate()
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            slice_dir = (
-                root / "Frameworks" / "Libbox.xcframework" / "ios-arm64" / "Libbox.framework"
-            )
-            slice_dir.mkdir(parents=True)
-            (slice_dir / "Libbox").write_bytes(b"bin")
-
-            products = root / "DerivedData" / "Build" / "Products" / "Release-iphoneos"
-            target = products / "PacketTunnel.appex"
-            target.mkdir(parents=True)
-            orphan = products / "Frameworks" / "Libbox.framework"
-            orphan.mkdir(parents=True)
-            (orphan / "Libbox").write_bytes(b"orphan")
-
-            embed_copy(
-                project_dir=root,
-                target_build_dir=target,
-                frameworks_folder_path="Frameworks",
-                platform_name="iphoneos",
-            )
-            inside = target / "Frameworks" / "Libbox.framework" / "Libbox"
-            self.assertEqual(inside.read_bytes(), b"bin")
-            self.assertEqual((orphan / "Libbox").read_bytes(), b"orphan")
-            # IPA layout check equivalent: extension/Frameworks must contain Libbox.
-            self.assertTrue((target / "Frameworks" / "Libbox.framework").is_dir())
+            appex = Path(tmp) / "PacketTunnel.appex"
+            (appex / "Frameworks" / "Libbox.framework").mkdir(parents=True)
+            (appex / "Frameworks" / "Libbox.framework" / "Libbox").write_bytes(b"x" * 1_500_000)
+            with self.assertRaises(AssertionError) as ctx:
+                validate.assert_no_frameworks_in_appex(appex)
+            self.assertIn("90206", str(ctx.exception))
 
     def test_resolve_libbox_skips_symlink_stub(self) -> None:
         validate = _load_validate()
         with tempfile.TemporaryDirectory() as tmp:
             fw = Path(tmp) / "Libbox.framework"
             (fw / "Versions" / "A").mkdir(parents=True)
-            (fw / "Libbox").write_bytes(b"Versions/Current/Libbox\n")  # 23-byte stub
+            (fw / "Libbox").write_bytes(b"Versions/Current/Libbox\n")
             real = fw / "Versions" / "A" / "Libbox"
             real.write_bytes(b"x" * 1_500_000)
-            resolved = validate._resolve_libbox_binary(fw)
-            self.assertEqual(resolved, real)
-            with self.assertRaises(AssertionError):
-                # Pretend Versions/A is missing → stub alone must fail.
-                real.unlink()
-                appex = Path(tmp) / "PacketTunnel.appex"
-                (appex / "Frameworks").mkdir(parents=True)
-                # Move fw under appex/Frameworks for assert helper
-                dest = appex / "Frameworks" / "Libbox.framework"
-                shutil.copytree(fw, dest)
-                validate.assert_libbox_in_extension(appex, {"CFBundleExecutable": "PacketTunnel"})
+            self.assertEqual(validate._resolve_libbox_binary(fw), real)
 
     def test_simulator_slice_preferred_for_simulator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,7 +152,7 @@ class EmbedLibboxScriptTest(unittest.TestCase):
             )
             sim.mkdir(parents=True)
             (sim / "Libbox").write_bytes(b"sim")
-            target = root / "PacketTunnel.appex"
+            target = root / "Runner.app"
             target.mkdir()
             binary = embed_copy(root, target, "Frameworks", "iphonesimulator")
             self.assertEqual(binary.read_bytes(), b"sim")

@@ -1,0 +1,30 @@
+---
+description: Local checks before Codemagic iOS burn — analyze, case paths, offline IPA scripts
+alwaysApply: true
+---
+
+# Pre-push guard (Windows → Codemagic)
+
+Do **not** push “try it on CI” for typos or script contract breaks. Codemagic iOS burns 15–20+ minutes.
+
+## When the task touches app / iOS
+
+Paths: `lib/`, `ios/`, `pubspec.yaml`, `codemagic.yaml`, `third_party/sing_box/ios/`.
+
+Before finishing (and before suggesting push):
+
+1. **Offline iOS contract** (no Mac needed), if `ios/scripts/*` changed:
+   - `python ios/scripts/test_embed_libbox_script.py`
+   - `python ios/scripts/test_validate_ipa.py` (if present / affected)
+2. **Dart** (if `lib/` or `pubspec.yaml` changed):
+   - Prefer targeted `dart analyze` on touched paths; full `flutter analyze` only when the user wants a release pass or the change is wide.
+3. **Case-sensitive paths**: Windows ignores case; Codemagic macOS does not. Imports and asset paths must match real filenames exactly.
+4. Fix analyzer/test failures in the same turn — do not leave known red for CI to discover.
+
+## When the task is server-only / docs-only
+
+Skip Flutter/iOS suite. Do not run long test matrices or full platform builds unless the user asked (`AGENTS.md`).
+
+## Push / commit
+
+Still: no commit or push unless the user explicitly asks.

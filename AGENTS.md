@@ -29,3 +29,9 @@ Canonical map (keep short): `.cursor/project-source-index.txt`
 1. **A — find:** Grep/Glob with a narrow path. Do not walk the whole workspace or `third_party/` without a reason.
 2. **B — read:** Open only the files (and line ranges) needed. Do not re-read an unchanged file in the same turn/session.
 3. If the target path is unclear after one focused search, ask which area (client / server / windows / ios) instead of broad exploration.
+
+## iOS from Windows (Codemagic)
+
+- Rules: `.cursor/rules/codemagic-ios.mdc`, `.cursor/rules/pre-push-guard.mdc`
+- Skills: `/prepare-release`, `/debug-codemagic`
+- No local Xcode — change iOS via `ios/scripts/*` + `codemagic.yaml` only.

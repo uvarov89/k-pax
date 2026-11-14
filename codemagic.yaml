@@ -21,6 +21,10 @@ workflows:
         LIBBOX_SINGBOX_TAG: v1.13.21
       # Do not use environment.ios_signing here: it fails the build before
       # scripts can create missing App Store profiles (VPN / Network Extension).
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
     scripts:
       - name: Get Flutter packages
         script: |
@@ -55,11 +59,26 @@ workflows:
             --strict-match-identifier
           keychain add-certificates
           xcode-project use-profiles
+      - name: Resolve TestFlight build number
+        script: |
+          set -e
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//' | tr -d '[:space:]')
+          if [ -n "${PROJECT_BUILD_NUMBER:-}" ]; then
+            BUILD_NUMBER="$PROJECT_BUILD_NUMBER"
+          else
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" --app-store-version "$BUILD_NAME" 2>/dev/null || \
+              app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo 0)
+            case "$LATEST" in
+              ''|*[!0-9]*) LATEST=0 ;;
+            esac
+            BUILD_NUMBER=$((LATEST + 1))
+          fi
+          echo "BUILD_NAME=$BUILD_NAME" >> "$CM_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$CM_ENV"
+          echo "Using build $BUILD_NAME ($BUILD_NUMBER)"
       - name: Flutter build IPA
         script: |
           set -e
-          BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//')
-          BUILD_NUMBER=${PROJECT_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}
           flutter build ipa --release \
             --dart-define=BRAND=kpax \
             --build-name="$BUILD_NAME" \
@@ -95,6 +114,10 @@ workflows:
         BUNDLE_ID_EXT: online.xplm.app.extension
         APP_GROUP: group.online.xplm.app
         LIBBOX_SINGBOX_TAG: v1.13.21
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
     scripts:
       - name: Get Flutter packages
         script: |
@@ -136,11 +159,26 @@ workflows:
             --strict-match-identifier
           keychain add-certificates
           xcode-project use-profiles
+      - name: Resolve TestFlight build number
+        script: |
+          set -e
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//' | tr -d '[:space:]')
+          if [ -n "${PROJECT_BUILD_NUMBER:-}" ]; then
+            BUILD_NUMBER="$PROJECT_BUILD_NUMBER"
+          else
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" --app-store-version "$BUILD_NAME" 2>/dev/null || \
+              app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo 0)
+            case "$LATEST" in
+              ''|*[!0-9]*) LATEST=0 ;;
+            esac
+            BUILD_NUMBER=$((LATEST + 1))
+          fi
+          echo "BUILD_NAME=$BUILD_NAME" >> "$CM_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$CM_ENV"
+          echo "Using build $BUILD_NAME ($BUILD_NUMBER)"
       - name: Flutter build IPA (X-Plm)
         script: |
           set -e
-          BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//')
-          BUILD_NUMBER=${PROJECT_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}
           flutter build ipa --release \
             --dart-define=BRAND=xplm \
             --build-name="$BUILD_NAME" \

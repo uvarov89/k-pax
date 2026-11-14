@@ -48,7 +48,7 @@ void main() {
     final dns = on['dns'] as Map;
     expect(tun['strict_route'], isTrue);
     expect(dns['final'], 'dns-remote');
-    expect(tun['address'], ['172.19.0.1/30', 'fdfe:dcba:9876::1/126']);
+    expect(tun['address'], ['172.19.0.1/30']);
     expect(tun['mtu'], 1400);
     expect(tun['stack'], 'mixed');
     expect(dns['strategy'], 'ipv4_only');
@@ -117,6 +117,10 @@ void main() {
       isFalse,
     );
     expect((enabled['dns'] as Map)['strategy'], 'prefer_ipv4');
+    expect(
+      ((enabled['inbounds'] as List).first as Map)['address'],
+      ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+    );
   });
 
   test('stats endpoint is added only when requested', () {

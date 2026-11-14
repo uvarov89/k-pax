@@ -11,9 +11,8 @@ import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
 const kClashPort = 9090;
 
-/// TUN IPv4 + ULA IPv6. Without an IPv6 TUN address the OS leaves ::/0 on
-/// clearnet — censored apps (Telegram, Instagram, YouTube, …) can hang while
-/// the VPN UI still shows Connected.
+/// Default TUN is IPv4-only. Dual-stack ULA (1.0.51) blackholed traffic on
+/// Windows/Android for many users while Hiddify with the same sub worked.
 const _tunIpv4 = '172.19.0.1/30';
 const _tunIpv6 = 'fdfe:dcba:9876::1/126';
 
@@ -41,11 +40,12 @@ String buildTunnelConfig(
   bool enableStats = false,
   String? clashSecret,
 }) {
+  // Default (disabled): IPv4-only TUN — dual-stack ULA broke Win/Android massively.
+  // enabled / tunnelOnly still get ULA + no IPv6 reject.
   final allowIpv6 = settings.ipv6Mode != Ipv6Mode.disabled;
   final dnsStrategy = allowIpv6 ? 'prefer_ipv4' : 'ipv4_only';
-  // Tunnel DNS must be UDP→proxy by default. DoH-over-proxy + Android
-  // `system` stack (1.0.51) left TUN "Connected" with zero traffic/DNS/ping
-  // while the same sub worked in Hiddify (XP-10054).
+  // Proven path: UDP DNS via proxy. DoH-over-proxy (1.0.51) left TUN Connected
+  // with zero traffic on Android/Windows (XP-10054 / mass K-Pax reports).
   final remoteDnsTag = settings.dnsAutomatic ? 'dns-remote' : 'dns-direct';
   final outbound = Map<String, Object?>.from(node.outbound);
   if (InternetAddress.tryParse(node.host) == null) {
@@ -54,6 +54,7 @@ String buildTunnelConfig(
       'strategy': dnsStrategy,
     };
   }
+  final tunAddress = allowIpv6 ? [_tunIpv4, _tunIpv6] : [_tunIpv4];
   return jsonEncode({
     'log': {'level': 'warn', 'timestamp': true},
     'dns': {
@@ -88,12 +89,10 @@ String buildTunnelConfig(
       {
         'type': 'tun',
         'tag': 'tun-in',
-        'address': [_tunIpv4, _tunIpv6],
+        'address': tunAddress,
         'mtu': 1400,
         'auto_route': true,
         'strict_route': settings.killSwitch,
-        // `mixed` is proven on Android Libbox; `system` blackholed traffic for
-        // some devices when paired with dual-stack TUN (XP-10054).
         'stack': 'mixed',
       },
     ],
@@ -138,7 +137,6 @@ List<Map<String, Object?>> _routeRules(
   // Reality/VLESS is TCP-first. QUIC (HTTP/3) often stalls through it while the
   // same site works on TCP — reject QUIC so browsers/apps fall back to HTTPS.
   rules.add({'protocol': 'quic', 'action': 'reject'});
-  // Capture IPv6 into TUN then drop → apps use IPv4 through the proxy.
   if (!allowIpv6) {
     rules.add({'ip_version': 6, 'action': 'reject'});
   }
@@ -168,7 +166,6 @@ String _finalOutbound(AppSettings? appSettings) {
       _windowsProcessNames(appSettings).isNotEmpty) {
     return 'direct';
   }
-  // Full-tunnel: every foreign site/app goes through the selected exit.
   return 'proxy';
 }
 

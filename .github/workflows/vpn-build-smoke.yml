@@ -35,6 +35,14 @@ jobs:
         run: flutter build apk --debug --flavor kpaxDirect --dart-define=BRAND=kpax
       - name: Build X-Plm Android (debug, unsigned for distribution)
         run: flutter build apk --debug --flavor xplmDirect --dart-define=BRAND=xplm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-test-apks-unsigned-release
+          path: |
+            build/app/outputs/flutter-apk/app-kpaxdirect-debug.apk
+            build/app/outputs/flutter-apk/app-xplmdirect-debug.apk
+          if-no-files-found: error
+          retention-days: 7
 
   windows-build:
     name: Windows K-Pax + X-Plm release compilation (not production signed)
@@ -59,6 +67,16 @@ jobs:
           flutter build windows --release --dart-define=BRAND=kpax
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path 'build/windows/x64/runner/Release/KPax.exe')) { throw 'Missing KPax.exe' }
+      - name: Package K-Pax Windows test bundle (not signed)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'artifacts/KPax-Windows-test.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kpax-windows-unsigned-test
+          path: artifacts/KPax-Windows-test.zip
+          retention-days: 7
       - name: Build X-Plm Windows
         shell: pwsh
         run: |
@@ -70,3 +88,13 @@ jobs:
           flutter build windows --release --dart-define=BRAND=xplm
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path 'build/windows/x64/runner/Release/XPlm.exe')) { throw 'Missing XPlm.exe' }
+      - name: Package X-Plm Windows test bundle (not signed)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'artifacts/XPlm-Windows-test.zip' -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xplm-windows-unsigned-test
+          path: artifacts/XPlm-Windows-test.zip
+          retention-days: 7

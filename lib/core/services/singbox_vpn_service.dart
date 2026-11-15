@@ -52,7 +52,7 @@ class SingboxVpnService implements VpnService {
     required AppSettings appSettings,
     required TunnelNode node,
   }) async {
-    final config = buildTunnelConfig(node, settings);
+    final config = buildTunnelConfig(node, settings, appSettings: appSettings);
     final saved = await _singbox.saveConfig(config);
     if (!saved) {
       throw StateError('Не удалось сохранить конфигурацию туннеля');

@@ -48,7 +48,7 @@ void main() {
     final dns = on['dns'] as Map;
     expect(tun['strict_route'], isTrue);
     expect(dns['final'], 'dns-remote');
-    expect(tun['address'], ['172.19.0.1/30']);
+    expect(tun['address'], ['172.19.0.1/30', 'fdfe:dcba:9876::1/126']);
     expect(tun['mtu'], 1400);
     expect(tun['stack'], 'mixed');
     expect(dns['strategy'], 'ipv4_only');
@@ -56,7 +56,7 @@ void main() {
       (dns['servers'] as List).cast<Map>().any(
         (s) =>
             s['tag'] == 'dns-remote' &&
-            s['address'] == 'udp://1.1.1.1' &&
+            s['address'] == 'tcp://1.1.1.1' &&
             s['detour'] == 'proxy',
       ),
       isTrue,
@@ -106,7 +106,7 @@ void main() {
     );
   });
 
-  test('full tunnel rejects QUIC and IPv6; TUN stays IPv4-only', () {
+  test('full tunnel captures IPv6 then rejects; QUIC rejected', () {
     final disabled = config();
     final disabledRules = (disabled['route'] as Map)['rules'] as List;
     expect((disabled['route'] as Map)['final'], 'proxy');
@@ -124,7 +124,7 @@ void main() {
     );
     expect(
       ((disabled['inbounds'] as List).first as Map)['address'],
-      ['172.19.0.1/30'],
+      ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
     );
 
     final enabled = jsonDecode(
@@ -134,17 +134,14 @@ void main() {
       ),
     ) as Map<String, Object?>;
     final enabledRules = (enabled['route'] as Map)['rules'] as List;
-    // Proven path never dual-stacked the TUN; IPv6 is rejected so apps use IPv4.
     expect(
-      enabledRules.cast<Map>().any(
-        (r) => r['ip_version'] == 6 && r['action'] == 'reject',
-      ),
-      isTrue,
+      enabledRules.cast<Map>().any((r) => r['ip_version'] == 6),
+      isFalse,
     );
     expect((enabled['dns'] as Map)['strategy'], 'prefer_ipv4');
     expect(
       ((enabled['inbounds'] as List).first as Map)['address'],
-      ['172.19.0.1/30'],
+      ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
     );
     expect(((enabled['inbounds'] as List).first as Map)['stack'], 'mixed');
   });

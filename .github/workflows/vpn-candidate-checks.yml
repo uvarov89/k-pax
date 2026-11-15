@@ -43,12 +43,18 @@ jobs:
         run: git diff --stat && git diff -- lib/core/services/tunnel_connectivity.dart lib/core/services/singbox_vpn_service.dart lib/core/services/windows_singbox_vpn_service.dart lib/core/services/windows_platform.dart test/tunnel_connectivity_test.dart | head -n 450
       - name: Analyze
         run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
-      - name: VPN and subscription regression tests
+      - name: Tunnel configuration and connectivity tests
         run: |
-          flutter test --timeout=3m \
+          timeout 150s flutter test --reporter=expanded --timeout=45s \
             test/tunnel_config_test.dart \
             test/tunnel_config_native_smoke_test.dart \
-            test/tunnel_connectivity_test.dart \
+            test/tunnel_connectivity_test.dart
+      - name: Subscription parsing and recovery tests
+        run: |
+          timeout 150s flutter test --reporter=expanded --timeout=45s \
             test/subscription_link_test.dart \
-            test/subscription_network_recovery_test.dart \
+            test/subscription_network_recovery_test.dart
+      - name: Node selection and failover tests
+        run: |
+          timeout 150s flutter test --reporter=expanded --timeout=45s \
             test/auto_server_selection_test.dart

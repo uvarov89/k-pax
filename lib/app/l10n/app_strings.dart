@@ -174,6 +174,9 @@ class AppStrings {
   String get killSwitchHint => isRu
       ? 'Блокировать трафик при обрыве'
       : 'Block traffic if the tunnel drops';
+  String get killSwitchWindowsUnavailable => isRu
+      ? 'В Windows временно недоступен: защита от утечек при обрыве ещё не реализована.'
+      : 'Temporarily unavailable on Windows: fail-closed leak protection is not implemented yet.';
   String get testNodes => isRu ? 'Проверить серверы' : 'Check servers';
   String get testingNodes => isRu ? 'Проверка…' : 'Checking…';
   String get probeEmpty => isRu

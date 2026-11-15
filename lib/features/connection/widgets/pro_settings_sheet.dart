@@ -186,12 +186,19 @@ class ProSettingsSheet extends StatelessWidget {
                   ),
                 _SettingsTile(
                   title: s.killSwitch,
-                  subtitle: s.killSwitchHint,
+                  subtitle: windows
+                      ? s.killSwitchWindowsUnavailable
+                      : s.killSwitchHint,
                   trailing: Switch(
-                    value: settings.killSwitch,
-                    onChanged: (v) => controller.updateProSettings(
-                      settings.copyWith(killSwitch: v),
-                    ),
+                    value: windows ? false : settings.killSwitch,
+                    // The previous netsh global BLOCK rule caused a machine-
+                    // wide outage and was removed. No fail-closed WFP
+                    // replacement exists yet: never claim it is enabled.
+                    onChanged: windows
+                        ? null
+                        : (v) => controller.updateProSettings(
+                              settings.copyWith(killSwitch: v),
+                            ),
                   ),
                 ),
                 _SettingsTile(

@@ -27,6 +27,7 @@ and `type: tcp` DNS server objects; native validation is mandatory.
 ## Security limitation
 
 **Windows persistent kill switch is NOT implemented by this patch.**
+The Windows Kill switch control is now disabled and labeled unavailable.
 The old firewall block-all mechanism is disabled because it causes a machine-
 wide outage. A verified WFP-based fail-closed design is required before Windows
 can advertise a guaranteed kill switch. Do not market the Windows toggle as a

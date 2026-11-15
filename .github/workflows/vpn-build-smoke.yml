@@ -60,6 +60,9 @@ jobs:
         run: ./scripts/provision-windows-native.ps1
       - name: Get packages
         run: flutter pub get
+      - name: Verify Windows-only routing rules
+        shell: pwsh
+        run: flutter test --no-pub test/tunnel_config_test.dart
       - name: Build K-Pax Windows
         shell: pwsh
         run: |

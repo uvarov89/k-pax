@@ -3,13 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 
-/// Removes a leftover outbound block and can put it back if the tunnel drops.
+/// Removes legacy Windows Firewall rules left by older K-Pax/X-Plm builds.
+/// This implementation does not provide a persistent fail-closed kill switch.
 class WindowsFirewall {
-  static String get _block =>
-      AppBrand.current.isXplm ? 'X-Plm-KillSwitch' : 'K-Pax-KillSwitch';
-  static String get _allow =>
-      AppBrand.current.isXplm ? 'X-Plm-KillSwitch-App' : 'K-Pax-KillSwitch-App';
-
   static Future<void> clear() async {
     if (kIsWeb || !Platform.isWindows) return;
     // Drop both brand rule names so white-label leftovers do not stick around.

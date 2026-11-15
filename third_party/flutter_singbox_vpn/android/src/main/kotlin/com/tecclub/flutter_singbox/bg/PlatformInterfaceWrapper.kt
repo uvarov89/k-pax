@@ -220,19 +220,18 @@ interface PlatformInterfaceWrapper : PlatformInterface {
         }
     }
 
-    private class StringArray(private val iterator: Iterator<String>) : StringIterator {
+    // Gomobile's StringIterator.len() must report the actual element count.
+    // Reporting zero discards DNS servers / interface addresses / certificates
+    // on libbox implementations that preallocate or check length.
+    private class StringArray(iterator: Iterator<String>) : StringIterator {
+        private val values: List<String> = iterator.asSequence().toList()
+        private var index = 0
 
-        override fun hasNext(): Boolean {
-            return iterator.hasNext()
-        }
+        override fun hasNext(): Boolean = index < values.size
 
-        override fun next(): String {
-            return iterator.next()
-        }
-        
-        override fun len(): Int {
-            return 0 // Iterator doesn't support len, return 0
-        }
+        override fun next(): String = values[index++]
+
+        override fun len(): Int = values.size
     }
 }
 

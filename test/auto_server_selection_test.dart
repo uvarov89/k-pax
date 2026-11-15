@@ -158,7 +158,7 @@ void main() {
     expect(controller.selectedLocation.isAuto, isTrue);
     expect(controller.locationMode, LocationMode.auto);
     await tester.pumpWidget(const SizedBox());
-  }, skip: Platform.isLinux ? 'UI smoke hangs on Linux runner; failover unit cases remain enabled' : null);
+  }, skip: Platform.isLinux);
 
   test('Auto connect fails over to another country after same-country spare', () async {
     final service = _ScriptedVpnService(

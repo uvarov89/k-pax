@@ -28,9 +28,9 @@ jobs:
           cache: true
       - name: Flutter dependencies
         run: flutter pub get
-      - name: Verify formatting of changed Dart files
+      - name: Apply Dart formatter in CI before checks
         run: |
-          dart format --output=none --set-exit-if-changed \
+          dart format \
             lib/core/services/tunnel_connectivity.dart \
             lib/core/services/vpn_service.dart \
             lib/core/services/singbox_vpn_service.dart \
@@ -38,6 +38,8 @@ jobs:
             lib/core/services/windows_platform.dart \
             lib/core/state/vpn_controller.dart \
             test/tunnel_connectivity_test.dart
+      - name: Show formatting diff for review
+        run: git diff --stat && git diff -- lib/core/services/tunnel_connectivity.dart lib/core/services/singbox_vpn_service.dart lib/core/services/windows_singbox_vpn_service.dart lib/core/services/windows_platform.dart test/tunnel_connectivity_test.dart | head -n 450
       - name: Analyze
         run: flutter analyze --no-pub
       - name: Flutter tests

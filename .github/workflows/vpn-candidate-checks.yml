@@ -1,0 +1,44 @@
+name: VPN candidate checks
+
+on:
+  push:
+    branches:
+      - 'fix/vpn-connectivity-*'
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'third_party/**'
+      - 'test/**'
+      - '.github/workflows/vpn-candidate-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-unit-tests:
+    name: Flutter analysis and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter dependencies
+        run: flutter pub get
+      - name: Verify formatting of changed Dart files
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/core/services/tunnel_connectivity.dart \
+            lib/core/services/vpn_service.dart \
+            lib/core/services/singbox_vpn_service.dart \
+            lib/core/services/windows_singbox_vpn_service.dart \
+            lib/core/services/windows_platform.dart \
+            lib/core/state/vpn_controller.dart \
+            test/tunnel_connectivity_test.dart
+      - name: Analyze
+        run: flutter analyze --no-pub
+      - name: Flutter tests
+        run: flutter test

@@ -9,10 +9,12 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 import 'package:pulse_vpn/core/services/tunnel_config.dart';
+import 'package:pulse_vpn/core/services/tunnel_connectivity.dart';
 import 'package:pulse_vpn/core/services/vpn_service.dart';
+import 'package:pulse_vpn/core/services/windows_platform.dart';
 
 /// Windows tunnel: sing-box.exe beside the app, with wintun.dll.
-class WindowsSingboxVpnService implements VpnService {
+class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier {
   Process? _process;
   HttpClient? _trafficClient;
   final StreamController<String> _status = StreamController<String>.broadcast();
@@ -72,6 +74,9 @@ class WindowsSingboxVpnService implements VpnService {
       throw StateError('sing-box.exe не найден рядом с приложением');
     }
     await disconnect();
+    // Remove leftovers from previous releases before starting the engine.
+    // If elevation is required, users can run the bundled repair script.
+    await WindowsFirewall.clear();
     final dir = _stateDir;
     await dir.create(recursive: true);
     // Prefer wiping leftover plaintext configs from older builds.
@@ -180,6 +185,9 @@ class WindowsSingboxVpnService implements VpnService {
       if (identical(_trafficClient, client)) _trafficClient = null;
     }
   }
+
+  @override
+  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
 
   @override
   Future<void> disconnect() async {

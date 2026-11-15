@@ -76,12 +76,14 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
         }
 
         val inet4Address = options.inet4Address
+        val hasInet4Address = inet4Address.hasNext()
         while (inet4Address.hasNext()) {
             val address = inet4Address.next()
             builder.addAddress(address.address(), address.prefix())
         }
 
         val inet6Address = options.inet6Address
+        val hasInet6Address = inet6Address.hasNext()
         while (inet6Address.hasNext()) {
             val address = inet6Address.next()
             builder.addAddress(address.address(), address.prefix())
@@ -96,7 +98,7 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
                     while (inet4RouteAddress.hasNext()) {
                         builder.addRoute(inet4RouteAddress.next().toIpPrefix())
                     }
-                } else if (options.inet4Address.hasNext()) {
+                } else if (hasInet4Address) {
                     builder.addRoute("0.0.0.0", 0)
                 }
 
@@ -105,7 +107,7 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
                     while (inet6RouteAddress.hasNext()) {
                         builder.addRoute(inet6RouteAddress.next().toIpPrefix())
                     }
-                } else if (options.inet6Address.hasNext()) {
+                } else if (hasInet6Address) {
                     builder.addRoute("::", 0)
                 }
 
@@ -125,6 +127,8 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
                         val address = inet4RouteAddress.next()
                         builder.addRoute(address.address(), address.prefix())
                     }
+                } else if (hasInet4Address) {
+                    builder.addRoute("0.0.0.0", 0)
                 }
 
                 val inet6RouteAddress = options.inet6RouteRange
@@ -133,6 +137,8 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
                         val address = inet6RouteAddress.next()
                         builder.addRoute(address.address(), address.prefix())
                     }
+                } else if (hasInet6Address) {
+                    builder.addRoute("::", 0)
                 }
             }
 

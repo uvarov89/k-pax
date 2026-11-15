@@ -32,30 +32,12 @@ class WindowsFirewall {
   }
 
   static Future<void> blockOutboundExceptApp() async {
-    if (kIsWeb || !Platform.isWindows) return;
-    await clear();
-    await Process.run('netsh', [
-      'advfirewall',
-      'firewall',
-      'add',
-      'rule',
-      'name=$_block',
-      'dir=out',
-      'action=block',
-      'enable=yes',
-    ]);
-    await Process.run('netsh', [
-      'advfirewall',
-      'firewall',
-      'add',
-      'rule',
-      'name=$_allow',
-      'dir=out',
-      'action=allow',
-      'program=${Platform.resolvedExecutable}',
-      'enable=yes',
-    ]);
+    // The previous machine-wide outbound BLOCK rule overrides its own ALLOW
+    // rules and can strand both the VPN process and the device offline.
+    // Disabled pending a correctly implemented and tested WFP kill switch.
+    // IMPORTANT: Windows does NOT provide a persistent fail-closed kill switch.
   }
+
 }
 
 typedef StartupCommand =

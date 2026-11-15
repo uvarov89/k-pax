@@ -3,6 +3,11 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
+/// Platform-specific network check; no change to mock or iOS VPN interfaces.
+abstract interface class TunnelConnectivityVerifier {
+  Future<void> verifyConnectivity();
+}
+
 /// Optional native settings support, separate from the tunnel contract.
 abstract interface class VpnSettingsService {
   Future<void> applyAppSettings(AppSettings settings);

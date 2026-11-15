@@ -377,7 +377,9 @@ class VpnController extends ChangeNotifier {
     if (!shouldRetry) {
       connectedNode = null;
       connectionState = VpnConnectionState.disconnected;
-      errorMessage = block ? strings.killSwitchHeld : null;
+      errorMessage = block && (!kIsWeb && Platform.isWindows)
+            ? strings.reconnectFailed
+            : (block ? strings.killSwitchHeld : null);
       notifyListeners();
       if (block) await WindowsFirewall.blockOutboundExceptApp();
       return;
@@ -432,7 +434,9 @@ class VpnController extends ChangeNotifier {
         return;
       }
       connectionState = VpnConnectionState.error;
-      errorMessage = block ? strings.killSwitchHeld : strings.reconnectFailed;
+      errorMessage = block && (kIsWeb || !Platform.isWindows)
+          ? strings.killSwitchHeld
+          : strings.reconnectFailed;
       notifyListeners();
     } finally {
       _reconnectInFlight = false;
@@ -1152,6 +1156,17 @@ class VpnController extends ChangeNotifier {
       appSettings: appSettings,
       node: node,
     );
+    if (_service is TunnelConnectivityVerifier) {
+      try {
+        // Running sing-box is not proof that the data path is healthy.
+        await (_service as TunnelConnectivityVerifier).verifyConnectivity();
+      } catch (_) {
+        try {
+          await _service.disconnect();
+        } catch (_) {}
+        rethrow; // Let existing node/protocol failover pick another endpoint.
+      }
+    }
   }
 
   List<TunnelKind> _kindOrder() {

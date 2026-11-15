@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
@@ -56,7 +57,9 @@ void main() {
       (dns['servers'] as List).cast<Map>().any(
         (s) =>
             s['tag'] == 'dns-remote' &&
-            s['address'] == 'tcp://1.1.1.1' &&
+            s['type'] == 'tcp' &&
+            s['server'] == '1.1.1.1' &&
+            s['server_port'] == 53 &&
             s['detour'] == 'proxy',
       ),
       isTrue,
@@ -183,5 +186,5 @@ void main() {
     expect(split.first['process_name'], ['chrome.exe']);
     expect(split.first['outbound'], 'direct');
     expect((built['route'] as Map)['final'], 'proxy');
-  });
+  }, skip: !Platform.isWindows);
 }

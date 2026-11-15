@@ -9,6 +9,7 @@ import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/split_tunnel.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 import 'package:pulse_vpn/core/services/tunnel_config.dart';
+import 'package:pulse_vpn/core/services/tunnel_connectivity.dart';
 import 'package:pulse_vpn/core/services/vpn_service.dart';
 import 'package:pulse_vpn/core/services/ios_singbox_vpn_service.dart';
 import 'package:pulse_vpn/core/services/windows_singbox_vpn_service.dart';
@@ -22,7 +23,7 @@ VpnService defaultVpnService() {
   return MockVpnService();
 }
 
-class SingboxVpnService implements VpnService {
+class SingboxVpnService implements VpnService, TunnelConnectivityVerifier {
   SingboxVpnService({FlutterSingbox? singbox}) : _singbox = singbox ?? FlutterSingbox();
 
   final FlutterSingbox _singbox;
@@ -99,6 +100,9 @@ class SingboxVpnService implements VpnService {
     }
     throw StateError('Туннель не поднялся за отведённое время');
   }
+
+  @override
+  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
 
   @override
   Future<void> disconnect() async {

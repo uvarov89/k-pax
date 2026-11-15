@@ -1,0 +1,60 @@
+name: VPN candidate checks
+
+on:
+  push:
+    branches:
+      - 'fix/vpn-connectivity-*'
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'third_party/**'
+      - 'test/**'
+      - '.github/workflows/vpn-candidate-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-unit-tests:
+    name: Flutter analysis and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.9'
+          cache: true
+      - name: Flutter dependencies
+        run: flutter pub get
+      - name: Apply Dart formatter in CI before checks
+        run: |
+          dart format \
+            lib/core/services/tunnel_connectivity.dart \
+            lib/core/services/vpn_service.dart \
+            lib/core/services/singbox_vpn_service.dart \
+            lib/core/services/windows_singbox_vpn_service.dart \
+            lib/core/services/windows_platform.dart \
+            lib/core/state/vpn_controller.dart \
+            test/tunnel_connectivity_test.dart
+      - name: Show formatting diff for review
+        run: git diff --stat && git diff -- lib/core/services/tunnel_connectivity.dart lib/core/services/singbox_vpn_service.dart lib/core/services/windows_singbox_vpn_service.dart lib/core/services/windows_platform.dart test/tunnel_connectivity_test.dart | head -n 450
+      - name: Analyze
+        run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
+      - name: Tunnel configuration and connectivity tests
+        run: |
+          timeout 150s flutter test --reporter=expanded --timeout=45s \
+            test/tunnel_config_test.dart \
+            test/tunnel_config_native_smoke_test.dart \
+            test/tunnel_connectivity_test.dart
+      - name: Subscription parsing and recovery tests
+        run: |
+          timeout 150s flutter test --reporter=expanded --timeout=45s \
+            test/subscription_link_test.dart \
+            test/subscription_network_recovery_test.dart
+      - name: Node selection and failover tests
+        run: |
+          timeout 150s flutter test --reporter=expanded --timeout=45s \
+            test/auto_server_selection_test.dart

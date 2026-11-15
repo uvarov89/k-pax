@@ -1,0 +1,49 @@
+name: sing-box native config validation
+
+on:
+  pull_request:
+    paths:
+      - 'lib/core/services/tunnel_config.dart'
+      - 'lib/core/models/**'
+      - 'test/tunnel_config_native_smoke_test.dart'
+      - '.github/workflows/singbox-config-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Generate sample TUN configurations from Dart
+        run: |
+          mkdir -p "$RUNNER_TEMP/singbox-config"
+          NATIVE_CONFIG_OUT="$RUNNER_TEMP/singbox-config" flutter test test/tunnel_config_native_smoke_test.dart
+      - name: Obtain pinned official sing-box 1.13.21
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/singbox.tar.gz" "https://github.com/SagerNet/sing-box/releases/download/v1.13.21/sing-box-1.13.21-linux-amd64.tar.gz"
+          echo "24f9ef8e7234e13e71e74c3598a4164c5fe07b7b67ccc6e96cf68b54789f72cd  $RUNNER_TEMP/singbox.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/singbox-bin"
+          tar -xf "$RUNNER_TEMP/singbox.tar.gz" -C "$RUNNER_TEMP/singbox-bin"
+      - name: Validate generated configs against real native parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=$(find "$RUNNER_TEMP/singbox-bin" -type f -name sing-box -print -quit)
+          test -n "$binary"
+          chmod +x "$binary"
+          "$binary" version
+          for config in "$RUNNER_TEMP"/singbox-config/*.json; do
+            echo "Validating $config"
+            "$binary" check -c "$config"
+          done

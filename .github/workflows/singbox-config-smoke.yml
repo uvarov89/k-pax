@@ -36,11 +36,27 @@ jobs:
           echo "24f9ef8e7234e13e71e74c3598a4164c5fe07b7b67ccc6e96cf68b54789f72cd  $RUNNER_TEMP/singbox.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/singbox-bin"
           tar -xf "$RUNNER_TEMP/singbox.tar.gz" -C "$RUNNER_TEMP/singbox-bin"
-      - name: Validate generated configs against real native parser
+      - name: Validate generated configs against sing-box 1.13.21 (Windows parity)
         shell: bash
         run: |
           set -euo pipefail
           binary=$(find "$RUNNER_TEMP/singbox-bin" -type f -name sing-box -print -quit)
+          test -n "$binary"
+          chmod +x "$binary"
+          "$binary" version
+          for config in "$RUNNER_TEMP"/singbox-config/*.json; do
+            echo "Validating $config"
+            "$binary" check -c "$config"
+          done
+      - name: Validate against sing-box 1.12.12 (Android libbox parity)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/singbox-android-parity.tar.gz" "https://github.com/SagerNet/sing-box/releases/download/v1.12.12/sing-box-1.12.12-linux-amd64.tar.gz"
+          echo "7c103cb2f9a7dc54cb82962043596718ed27989a478d6405f0939a9b775f889f  $RUNNER_TEMP/singbox-android-parity.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/singbox-android-parity"
+          tar -xf "$RUNNER_TEMP/singbox-android-parity.tar.gz" -C "$RUNNER_TEMP/singbox-android-parity"
+          binary=$(find "$RUNNER_TEMP/singbox-android-parity" -type f -name sing-box -print -quit)
           test -n "$binary"
           chmod +x "$binary"
           "$binary" version

@@ -10,8 +10,6 @@ class WindowsFirewall {
     if (kIsWeb || !Platform.isWindows) return;
     // Drop both brand rule names so white-label leftovers do not stick around.
     for (final name in [
-      _block,
-      _allow,
       'K-Pax-KillSwitch',
       'K-Pax-KillSwitch-App',
       'X-Plm-KillSwitch',

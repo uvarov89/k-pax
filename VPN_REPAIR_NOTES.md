@@ -3,6 +3,13 @@
 **Not production verified.** Apply to a dedicated test branch and test on
 actual Android and Windows devices before merging or distributing binaries.
 
+## Confirmed native-core failure
+
+The generated config used legacy DNS server `address` entries. The actual
+sing-box v1.13.21 native parser fails immediately without the deprecated DNS
+feature flag. The shared generator has been migrated to modern `type: local`
+and `type: tcp` DNS server objects; native validation is mandatory.
+
 ## Repairs
 
 - Android: fix API 33+ default route fallback, which previously re-checked an

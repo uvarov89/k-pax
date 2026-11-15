@@ -56,7 +56,9 @@ void main() {
       (dns['servers'] as List).cast<Map>().any(
         (s) =>
             s['tag'] == 'dns-remote' &&
-            s['address'] == 'tcp://1.1.1.1' &&
+            s['type'] == 'tcp' &&
+            s['server'] == '1.1.1.1' &&
+            s['server_port'] == 53 &&
             s['detour'] == 'proxy',
       ),
       isTrue,

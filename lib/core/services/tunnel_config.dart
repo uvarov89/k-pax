@@ -74,15 +74,18 @@ String buildTunnelConfig(
     'dns': {
       'servers': [
         {
+          // sing-box 1.12+ DNS server schema; legacy "address" now fails
+          // at startup unless an unsafe deprecated-feature flag is set.
           'tag': 'dns-direct',
-          'address': 'local',
+          'type': 'local',
           'detour': 'direct',
         },
         {
           'tag': 'dns-remote',
-          'address': 'tcp://1.1.1.1',
+          'type': 'tcp',
+          'server': '1.1.1.1',
+          'server_port': 53,
           'detour': 'proxy',
-          'strategy': dnsStrategy,
         },
       ],
       'rules': [

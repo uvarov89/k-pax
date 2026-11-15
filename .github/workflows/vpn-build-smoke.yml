@@ -1,0 +1,70 @@
+name: VPN Android and Windows build smoke
+
+on:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'windows/**'
+      - 'third_party/**'
+      - 'scripts/provision-windows-native.ps1'
+      - '.github/workflows/vpn-build-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-build:
+    name: Android K-Pax + X-Plm debug builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build K-Pax Android (debug, unsigned for distribution)
+        run: flutter build apk --debug --flavor kpaxDirect --dart-define=BRAND=kpax
+      - name: Build X-Plm Android (debug, unsigned for distribution)
+        run: flutter build apk --debug --flavor xplmDirect --dart-define=BRAND=xplm
+
+  windows-build:
+    name: Windows K-Pax + X-Plm release compilation (not production signed)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Download checksum-pinned native dependencies
+        shell: pwsh
+        run: ./scripts/provision-windows-native.ps1
+      - name: Get packages
+        run: flutter pub get
+      - name: Build K-Pax Windows
+        shell: pwsh
+        run: |
+          $env:APP_BRAND = 'kpax'
+          flutter build windows --release --dart-define=BRAND=kpax
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path 'build/windows/x64/runner/Release/KPax.exe')) { throw 'Missing KPax.exe' }
+      - name: Build X-Plm Windows
+        shell: pwsh
+        run: |
+          flutter clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:APP_BRAND = 'xplm'
+          flutter build windows --release --dart-define=BRAND=xplm
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path 'build/windows/x64/runner/Release/XPlm.exe')) { throw 'Missing XPlm.exe' }

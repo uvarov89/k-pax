@@ -28,6 +28,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.41.9'
           cache: true
       - run: flutter pub get
       - name: Build K-Pax Android (debug, unsigned for distribution)
@@ -37,13 +38,14 @@ jobs:
 
   windows-build:
     name: Windows K-Pax + X-Plm release compilation (not production signed)
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.41.9'
           cache: true
       - name: Download checksum-pinned native dependencies
         shell: pwsh

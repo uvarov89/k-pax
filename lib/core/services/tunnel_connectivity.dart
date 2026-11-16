@@ -6,21 +6,38 @@ typedef TunnelProbe = Future<bool> Function(Uri endpoint);
 /// Post-connect data-plane check. Verifies that a real HTTPS request works
 /// through platform networking after TUN start; does not independently prove
 /// the requested VPN exit IP (that needs device-level leak testing).
-Future<void> verifyTunnelConnectivity({TunnelProbe? probe}) async {
+Future<void> verifyTunnelConnectivity({
+  TunnelProbe? probe,
+  Duration settle = const Duration(milliseconds: 900),
+  int attemptsPerEndpoint = 2,
+}) async {
   final test = probe ?? _probeHttps;
   // Require a DNS-resolved HTTPS endpoint: IP-only probes can hide broken DNS.
   final endpoints = <Uri>[
     Uri.parse('https://www.gstatic.com/generate_204'),
     Uri.parse('https://www.cloudflare.com/cdn-cgi/trace'),
   ];
+  if (settle > Duration.zero) {
+    await Future<void>.delayed(settle);
+  }
   final failures = <String>[];
   for (final endpoint in endpoints) {
-    try {
-      if (await test(endpoint)) return;
-      failures.add('${endpoint.host}: unexpected response');
-    } catch (error) {
-      // Keep tokens, keys, link contents and credentials out of diagnostics.
-      failures.add('${endpoint.host}: ${error.runtimeType}');
+    for (var attempt = 0; attempt < attemptsPerEndpoint; attempt++) {
+      try {
+        if (await test(endpoint)) return;
+        if (attempt + 1 < attemptsPerEndpoint) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          continue;
+        }
+        failures.add('${endpoint.host}: unexpected response');
+      } catch (error) {
+        // Keep tokens, keys, link contents and credentials out of diagnostics.
+        if (attempt + 1 < attemptsPerEndpoint) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          continue;
+        }
+        failures.add('${endpoint.host}: ${error.runtimeType}');
+      }
     }
   }
   throw StateError(

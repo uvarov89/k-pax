@@ -78,13 +78,10 @@ class XplmDeviceSettingsScreen extends StatelessWidget {
               child: XplmPreferenceSwitch(
                 key: const ValueKey('device-kill-switch'),
                 title: s.killSwitch,
-                subtitle: s.killSwitchHint,
-                value: c.proSettings.killSwitch,
-                onChanged: c.canUseProNetworkTools
-                    ? (v) => c.updateProSettings(
-                        c.proSettings.copyWith(killSwitch: v),
-                      )
-                    : null,
+                // No safe WFP fail-closed kill switch on Windows yet.
+                subtitle: s.killSwitchWindowsUnavailable,
+                value: false,
+                onChanged: null,
               ),
             ),
           if (platform == TargetPlatform.android)

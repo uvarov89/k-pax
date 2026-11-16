@@ -143,6 +143,9 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
       rethrow;
     }
     if (!identical(_process, process)) return;
+    // Clash ready ≠ routes fully installed; brief settle before probe/UI.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!identical(_process, process)) return;
     _set('Started');
     unawaited(_pumpTraffic());
   }

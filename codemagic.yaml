@@ -97,7 +97,12 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Upload only → Internal TestFlight. Do NOT auto-submit beta review:
+        # ASC 422 "Another build is in review" fails post-processing even when
+        # the IPA already uploaded and Internal testing works without review.
+        # Re-enable (and optionally expire_build_submitted_for_review: true)
+        # when External beta / beta groups are needed.
+        submit_to_testflight: false
 
   ios-testflight-xplm:
     name: iOS TestFlight (X-Plm)
@@ -199,4 +204,5 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Same as K-Pax: Internal-ready upload; skip auto beta-review submit.
+        submit_to_testflight: false

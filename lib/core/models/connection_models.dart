@@ -40,9 +40,9 @@ class ProSettings {
     this.protocol = TunnelProtocol.auto,
     this.bypassMode = BypassMode.auto,
     this.dnsAutomatic = true,
+    // Android default on; Windows forces false in tunnel_config / settings load.
     this.killSwitch = true,
-    // Disabled by default: dual-stack TUN + reject IPv6 so apps use IPv4 via
-    // the proxy (blocks clearnet IPv6 hang / Telegram "Connecting…").
+    // Disabled by default: IPv4-only TUN + reject IPv6 (proven Win/Android path).
     this.ipv6Mode = Ipv6Mode.disabled,
     this.protocolFallback = true,
     this.reconnectPolicy = ReconnectPolicy.normal,

@@ -75,37 +75,53 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
             builder.setMetered(false)
         }
 
+        // Snapshot Libbox iterators before use. Some gomobile iterators make
+        // a second hasNext()/pass unreliable after partial consumption.
+        val inet4Addresses = mutableListOf<io.nekohasekai.libbox.RoutePrefix>()
         val inet4Address = options.inet4Address
-        val hasInet4Address = inet4Address.hasNext()
         while (inet4Address.hasNext()) {
-            val address = inet4Address.next()
+            inet4Addresses.add(inet4Address.next())
+        }
+        for (address in inet4Addresses) {
             builder.addAddress(address.address(), address.prefix())
         }
+        val hasInet4Address = inet4Addresses.isNotEmpty()
 
+        val inet6Addresses = mutableListOf<io.nekohasekai.libbox.RoutePrefix>()
         val inet6Address = options.inet6Address
-        val hasInet6Address = inet6Address.hasNext()
         while (inet6Address.hasNext()) {
-            val address = inet6Address.next()
+            inet6Addresses.add(inet6Address.next())
+        }
+        for (address in inet6Addresses) {
             builder.addAddress(address.address(), address.prefix())
         }
+        val hasInet6Address = inet6Addresses.isNotEmpty()
 
         if (options.autoRoute) {
             builder.addDnsServer(options.dnsServerAddress.value)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val inet4Routes = mutableListOf<io.nekohasekai.libbox.RoutePrefix>()
                 val inet4RouteAddress = options.inet4RouteAddress
-                if (inet4RouteAddress.hasNext()) {
-                    while (inet4RouteAddress.hasNext()) {
-                        builder.addRoute(inet4RouteAddress.next().toIpPrefix())
+                while (inet4RouteAddress.hasNext()) {
+                    inet4Routes.add(inet4RouteAddress.next())
+                }
+                if (inet4Routes.isNotEmpty()) {
+                    for (route in inet4Routes) {
+                        builder.addRoute(route.toIpPrefix())
                     }
                 } else if (hasInet4Address) {
                     builder.addRoute("0.0.0.0", 0)
                 }
 
+                val inet6Routes = mutableListOf<io.nekohasekai.libbox.RoutePrefix>()
                 val inet6RouteAddress = options.inet6RouteAddress
-                if (inet6RouteAddress.hasNext()) {
-                    while (inet6RouteAddress.hasNext()) {
-                        builder.addRoute(inet6RouteAddress.next().toIpPrefix())
+                while (inet6RouteAddress.hasNext()) {
+                    inet6Routes.add(inet6RouteAddress.next())
+                }
+                if (inet6Routes.isNotEmpty()) {
+                    for (route in inet6Routes) {
+                        builder.addRoute(route.toIpPrefix())
                     }
                 } else if (hasInet6Address) {
                     builder.addRoute("::", 0)
@@ -121,20 +137,26 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
                     builder.excludeRoute(inet6RouteExcludeAddress.next().toIpPrefix())
                 }
             } else {
+                val inet4Routes = mutableListOf<io.nekohasekai.libbox.RoutePrefix>()
                 val inet4RouteAddress = options.inet4RouteRange
-                if (inet4RouteAddress.hasNext()) {
-                    while (inet4RouteAddress.hasNext()) {
-                        val address = inet4RouteAddress.next()
+                while (inet4RouteAddress.hasNext()) {
+                    inet4Routes.add(inet4RouteAddress.next())
+                }
+                if (inet4Routes.isNotEmpty()) {
+                    for (address in inet4Routes) {
                         builder.addRoute(address.address(), address.prefix())
                     }
                 } else if (hasInet4Address) {
                     builder.addRoute("0.0.0.0", 0)
                 }
 
+                val inet6Routes = mutableListOf<io.nekohasekai.libbox.RoutePrefix>()
                 val inet6RouteAddress = options.inet6RouteRange
-                if (inet6RouteAddress.hasNext()) {
-                    while (inet6RouteAddress.hasNext()) {
-                        val address = inet6RouteAddress.next()
+                while (inet6RouteAddress.hasNext()) {
+                    inet6Routes.add(inet6RouteAddress.next())
+                }
+                if (inet6Routes.isNotEmpty()) {
+                    for (address in inet6Routes) {
                         builder.addRoute(address.address(), address.prefix())
                     }
                 } else if (hasInet6Address) {

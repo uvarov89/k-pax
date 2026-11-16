@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -142,7 +144,10 @@ class SettingsRepository {
         BypassMode.auto,
       ),
       dnsAutomatic: p.getBool(_kDns) ?? true,
-      killSwitch: p.getBool(_kKillSwitch) ?? true,
+      // Windows has no safe fail-closed kill switch yet; never hydrate true.
+      killSwitch: (!kIsWeb && Platform.isWindows)
+          ? false
+          : (p.getBool(_kKillSwitch) ?? true),
       ipv6Mode: _enumAt(Ipv6Mode.values, p.getInt(_kIpv6), Ipv6Mode.disabled),
       protocolFallback: p.getBool(_kFallback) ?? true,
       reconnectPolicy: _enumAt(

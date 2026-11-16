@@ -11,9 +11,9 @@ import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
 const kClashPort = 9090;
 
-/// IPv4 + ULA IPv6. IPv4-only TUN leaves ::/0 on clearnet — Telegram/Instagram
-/// Happy-Eyeballs hang on broken ISP IPv6 while Hiddify (dual-stack TUN) works
-/// with the same subscription.
+/// Proven default TUN (~9db533c / 0c9641a): IPv4-only. Dual-stack ULA from
+/// 1.0.51 / c02282a blackholed Win/Android for many users while Hiddify with
+/// the same subscription worked. Opt-in via [Ipv6Mode.enabled].
 const _tunIpv4 = '172.19.0.1/30';
 const _tunIpv6 = 'fdfe:dcba:9876::1/126';
 
@@ -48,6 +48,8 @@ const _updateDirectDomains = <String>[
   'objects.githubusercontent.com',
 ];
 
+bool _windowsPlatform() => !kIsWeb && Platform.isWindows;
+
 String buildTunnelConfig(
   TunnelNode node,
   ProSettings settings, {
@@ -55,13 +57,20 @@ String buildTunnelConfig(
   bool enableStats = false,
   String? clashSecret,
 }) {
-  // disabled (default): capture IPv6 into TUN and reject → apps use IPv4 via proxy.
-  // enabled / tunnelOnly: keep IPv6 on TUN without reject.
-  final allowIpv6 = settings.ipv6Mode != Ipv6Mode.disabled;
-  final dnsStrategy = allowIpv6 ? 'prefer_ipv4' : 'ipv4_only';
-  // TCP DNS via proxy (not UDP/53, not DoH). Survives exits that filter UDP
-  // DNS; avoids the DoH+system-stack blackhole from 1.0.51.
+  // Default (disabled): IPv4-only TUN + reject IPv6.
+  // tunnelOnly: dual-stack TUN + reject IPv6 (Happy-Eyeballs without exit IPv6).
+  // enabled: dual-stack TUN, IPv6 may exit via proxy.
+  final dualStackTun = settings.ipv6Mode != Ipv6Mode.disabled;
+  final allowIpv6Traffic = settings.ipv6Mode == Ipv6Mode.enabled;
+  final dnsStrategy = allowIpv6Traffic ? 'prefer_ipv4' : 'ipv4_only';
+  // Proven transport: UDP DNS via proxy. DoH blackholed 1.0.51; TCP DNS from
+  // c02282a did not restore field traffic. Modern 1.12+ schema (not legacy
+  // "address") is required for sing-box 1.13.21 on Windows.
   final remoteDnsTag = settings.dnsAutomatic ? 'dns-remote' : 'dns-direct';
+  // Windows kill-switch UI is disabled (no safe WFP yet), but ProSettings still
+  // defaults to killSwitch=true → strict_route WFP rules that break reconnect /
+  // local DNS. Never enable strict_route on Windows until a real kill switch.
+  final strictRoute = _windowsPlatform() ? false : settings.killSwitch;
   final outbound = Map<String, Object?>.from(node.outbound);
   if (InternetAddress.tryParse(node.host) == null) {
     outbound['domain_resolver'] = {
@@ -82,7 +91,7 @@ String buildTunnelConfig(
         },
         {
           'tag': 'dns-remote',
-          'type': 'tcp',
+          'type': 'udp',
           'server': '1.1.1.1',
           'server_port': 53,
           'detour': 'proxy',
@@ -108,10 +117,10 @@ String buildTunnelConfig(
       {
         'type': 'tun',
         'tag': 'tun-in',
-        'address': [_tunIpv4, _tunIpv6],
+        'address': dualStackTun ? [_tunIpv4, _tunIpv6] : [_tunIpv4],
         'mtu': 1400,
         'auto_route': true,
-        'strict_route': settings.killSwitch,
+        'strict_route': strictRoute,
         // mixed is reliable on Android Libbox; `system` + dual-stack blackholed
         // traffic in 1.0.51 while Hiddify with the same sub worked.
         'stack': 'mixed',
@@ -134,7 +143,7 @@ String buildTunnelConfig(
         'server': remoteDnsTag,
         'strategy': dnsStrategy,
       },
-      'rules': _routeRules(appSettings, allowIpv6: allowIpv6),
+      'rules': _routeRules(appSettings, allowIpv6Traffic: allowIpv6Traffic),
       'final': _finalOutbound(appSettings),
     },
   });
@@ -142,7 +151,7 @@ String buildTunnelConfig(
 
 List<Map<String, Object?>> _routeRules(
   AppSettings? appSettings, {
-  required bool allowIpv6,
+  required bool allowIpv6Traffic,
 }) {
   final rules = <Map<String, Object?>>[
     {'action': 'sniff'},
@@ -164,7 +173,8 @@ List<Map<String, Object?>> _routeRules(
     // same site works on TCP — reject QUIC so browsers/apps fall back to HTTPS.
     {'protocol': 'quic', 'action': 'reject'},
   ];
-  if (!allowIpv6) {
+  if (!allowIpv6Traffic) {
+    // Proven: reject IPv6 so apps fall back to IPv4 through the proxy.
     rules.add({'ip_version': 6, 'action': 'reject'});
   }
   final names = _windowsProcessNames(appSettings);

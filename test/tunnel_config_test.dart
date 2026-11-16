@@ -47,9 +47,10 @@ void main() {
     final on = config();
     final tun = (on['inbounds'] as List).first as Map;
     final dns = on['dns'] as Map;
-    expect(tun['strict_route'], isTrue);
+    // Windows never enables strict_route (no safe WFP kill switch yet).
+    expect(tun['strict_route'], Platform.isWindows ? isFalse : isTrue);
     expect(dns['final'], 'dns-remote');
-    expect(tun['address'], ['172.19.0.1/30', 'fdfe:dcba:9876::1/126']);
+    expect(tun['address'], ['172.19.0.1/30']);
     expect(tun['mtu'], 1400);
     expect(tun['stack'], 'mixed');
     expect(dns['strategy'], 'ipv4_only');
@@ -57,7 +58,7 @@ void main() {
       (dns['servers'] as List).cast<Map>().any(
         (s) =>
             s['tag'] == 'dns-remote' &&
-            s['type'] == 'tcp' &&
+            s['type'] == 'udp' &&
             s['server'] == '1.1.1.1' &&
             s['server_port'] == 53 &&
             s['detour'] == 'proxy',
@@ -109,7 +110,7 @@ void main() {
     );
   });
 
-  test('full tunnel captures IPv6 then rejects; QUIC rejected', () {
+  test('default IPv4-only TUN rejects IPv6; opt-in dual-stack; QUIC rejected', () {
     final disabled = config();
     final disabledRules = (disabled['route'] as Map)['rules'] as List;
     expect((disabled['route'] as Map)['final'], 'proxy');
@@ -127,7 +128,24 @@ void main() {
     );
     expect(
       ((disabled['inbounds'] as List).first as Map)['address'],
+      ['172.19.0.1/30'],
+    );
+
+    final tunnelOnly = jsonDecode(
+      buildTunnelConfig(
+        node,
+        const ProSettings(ipv6Mode: Ipv6Mode.tunnelOnly),
+      ),
+    ) as Map<String, Object?>;
+    expect(
+      ((tunnelOnly['inbounds'] as List).first as Map)['address'],
       ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+    );
+    expect(
+      ((tunnelOnly['route'] as Map)['rules'] as List).cast<Map>().any(
+        (r) => r['ip_version'] == 6 && r['action'] == 'reject',
+      ),
+      isTrue,
     );
 
     final enabled = jsonDecode(

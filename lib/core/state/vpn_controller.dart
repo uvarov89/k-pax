@@ -995,13 +995,17 @@ class VpnController extends ChangeNotifier {
 
   Future<void> updateProSettings(ProSettings settings) async {
     final previous = proSettings;
-    final lifted = proSettings.killSwitch && !settings.killSwitch;
-    proSettings = settings;
+    // Windows kill switch is unavailable; never persist or apply it.
+    final normalized = (!kIsWeb && Platform.isWindows)
+        ? settings.copyWith(killSwitch: false)
+        : settings;
+    final lifted = proSettings.killSwitch && !normalized.killSwitch;
+    proSettings = normalized;
     notifyListeners();
     try {
-      await _repository.saveProSettings(settings);
+      await _repository.saveProSettings(normalized);
     } catch (_) {
-      if (identical(proSettings, settings)) proSettings = previous;
+      if (identical(proSettings, normalized)) proSettings = previous;
       if (!_disposed) notifyListeners();
       rethrow;
     }

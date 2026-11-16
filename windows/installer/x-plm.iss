@@ -4,7 +4,7 @@
 
 #define MyAppName "X-Plm"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.58"
+#define MyAppVersion "1.0.59"
 #endif
 #define MyAppPublisher "X-Plm"
 #define MyAppURL "https://x-plm.online"

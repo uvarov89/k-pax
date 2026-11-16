@@ -68,6 +68,8 @@ class SingboxVpnService implements VpnService, TunnelConnectivityVerifier {
       throw StateError('Разрешение VPN не выдано');
     }
     await _waitUntilStarted();
+    // Let Android VpnService routes/DNS settle before the HTTPS probe.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
   }
 
   Future<void> _applySplitTunnel(AppSettings appSettings) async {

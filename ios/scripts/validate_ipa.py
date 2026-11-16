@@ -63,8 +63,8 @@ def _extension_binary(extension: Path, ext_plist: dict) -> Path:
 def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | None:
     """Prefer a real Mach-O over a root symlink stub left by versioned frameworks.
 
-    Canonical name is CFBundleExecutable (== CFBundleIdentifier) so exportArchive
-    basename stamping cannot yield Identifier=Libbox.
+    Exported IPA (after resign_libbox_in_ipa.sh) must use CFBundleExecutable ==
+    CFBundleIdentifier so Identifier=<basename> cannot yield Identifier=Libbox.
     """
     names: list[str] = []
     if executable:
@@ -72,7 +72,7 @@ def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | No
     names.extend(
         [
             "io.nekohasekai.libbox",
-            "Libbox",  # legacy short name — rejected later if still present
+            "Libbox",  # pre-resign short name — rejected later if still present
         ]
     )
     candidates: list[Path] = []
@@ -131,7 +131,7 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         exec_name = info.get("CFBundleExecutable")
         assert bundle_id, "Libbox CFBundleIdentifier missing"
         assert exec_name, "Libbox CFBundleExecutable missing"
-        # Basename-proof: codesign Identifier=<basename> must equal bundle id.
+        # Post-resign IPA: codesign Identifier=<basename> must equal bundle id.
         assert exec_name == bundle_id, (
             f"Libbox CFBundleExecutable={exec_name!r} must equal "
             f"CFBundleIdentifier={bundle_id!r} (ASC 90334 / Unable to Install)"
@@ -220,7 +220,7 @@ def _codesign_identifier(path: Path) -> str | None:
 def validate_libbox_signature_identifier(framework: Path) -> None:
     """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
 
-    exportArchive/ASC often re-stamp Identifier=<Mach-O basename>. Executable name
+    After post-export rename, Identifier=<Mach-O basename>. Executable name
     must equal CFBundleIdentifier so basename stamping cannot diverge.
     """
     info = plistlib.loads((framework / "Info.plist").read_bytes())

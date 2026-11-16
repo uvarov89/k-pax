@@ -3,8 +3,18 @@ from validate_ipa import validate_bundle_info
 
 class ArchiveContractTest(unittest.TestCase):
     def setUp(self):
-        self.app = {"CFBundleIdentifier": "online.xplm.app", "CFBundleDisplayName": "X-Plm", "CFBundleVersion": "43", "CFBundleShortVersionString": "1.0.43"}
-        self.ext = dict(self.app, CFBundleIdentifier="online.xplm.app.extension", NSExtension={"NSExtensionPointIdentifier": "com.apple.networkextension.packet-tunnel"})
+        self.app = {
+            "CFBundleIdentifier": "online.xplm.app",
+            "CFBundleDisplayName": "X-Plm",
+            "CFBundleVersion": "43",
+            "CFBundleShortVersionString": "1.0.43",
+            "MinimumOSVersion": "15.0",
+        }
+        self.ext = dict(
+            self.app,
+            CFBundleIdentifier="online.xplm.app.extension",
+            NSExtension={"NSExtensionPointIdentifier": "com.apple.networkextension.packet-tunnel"},
+        )
     def test_matching_app_and_extension(self):
         validate_bundle_info(self.app, self.ext, "xplm")
     def test_wrong_brand_rejected(self):
@@ -15,6 +25,13 @@ class ArchiveContractTest(unittest.TestCase):
     def test_unresolved_version_rejected(self):
         self.app["CFBundleVersion"] = "$(FLUTTER_BUILD_NUMBER)"
         self.ext["CFBundleVersion"] = self.app["CFBundleVersion"]
+        with self.assertRaises(AssertionError): validate_bundle_info(self.app, self.ext, "xplm")
+    def test_minimum_os_too_low_rejected(self):
+        self.app["MinimumOSVersion"] = "13.0"
+        self.ext["MinimumOSVersion"] = "13.0"
+        with self.assertRaises(AssertionError): validate_bundle_info(self.app, self.ext, "xplm")
+    def test_minimum_os_mismatch_rejected(self):
+        self.ext["MinimumOSVersion"] = "16.0"
         with self.assertRaises(AssertionError): validate_bundle_info(self.app, self.ext, "xplm")
 
 if __name__ == "__main__": unittest.main()

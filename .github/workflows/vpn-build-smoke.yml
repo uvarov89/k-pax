@@ -8,6 +8,8 @@ on:
       - 'windows/**'
       - 'third_party/**'
       - 'scripts/provision-windows-native.ps1'
+      - 'scripts/singbox-version-pins.env'
+      - 'scripts/check-singbox-version-pins.ps1'
       - '.github/workflows/vpn-build-smoke.yml'
   workflow_dispatch:
 
@@ -30,6 +32,9 @@ jobs:
           channel: stable
           flutter-version: '3.41.9'
           cache: true
+      - name: Check sing-box / Libbox version pins
+        shell: pwsh
+        run: ./scripts/check-singbox-version-pins.ps1
       - run: flutter pub get
       - name: Build K-Pax Android (debug, unsigned for distribution)
         run: flutter build apk --debug --flavor kpaxDirect --dart-define=BRAND=kpax
@@ -55,7 +60,10 @@ jobs:
           channel: stable
           flutter-version: '3.41.9'
           cache: true
-      - name: Download checksum-pinned native dependencies
+      - name: Check sing-box / Libbox version pins
+        shell: pwsh
+        run: ./scripts/check-singbox-version-pins.ps1
+      - name: Download checksum-pinned native dependencies (sing-box 1.13.21)
         shell: pwsh
         run: ./scripts/provision-windows-native.ps1
       - name: Get packages

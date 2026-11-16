@@ -112,9 +112,31 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
+# Release/CI must ship sing-box 1.13.21 (scripts/singbox-version-pins.env).
+# Local gitignored binaries may be stale — run scripts/provision-windows-native.ps1.
 set(SING_BOX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/sing-box/windows")
+set(SING_BOX_EXE "${SING_BOX_DIR}/sing-box.exe")
+set(SING_BOX_VERSION_FILE "${SING_BOX_DIR}/VERSION")
+if(NOT EXISTS "${SING_BOX_EXE}")
+  message(FATAL_ERROR
+    "Missing ${SING_BOX_EXE}. Run scripts/provision-windows-native.ps1 "
+    "(pins sing-box 1.13.21; see scripts/singbox-version-pins.env).")
+endif()
+if(EXISTS "${SING_BOX_VERSION_FILE}")
+  file(READ "${SING_BOX_VERSION_FILE}" SING_BOX_PROVISIONED_VERSION)
+  string(STRIP "${SING_BOX_PROVISIONED_VERSION}" SING_BOX_PROVISIONED_VERSION)
+  if(NOT SING_BOX_PROVISIONED_VERSION STREQUAL "1.13.21")
+    message(FATAL_ERROR
+      "Provisioned sing-box is '${SING_BOX_PROVISIONED_VERSION}', expected 1.13.21. "
+      "Re-run scripts/provision-windows-native.ps1.")
+  endif()
+else()
+  message(WARNING
+    "${SING_BOX_VERSION_FILE} missing — cannot verify sing-box 1.13.21. "
+    "Re-run scripts/provision-windows-native.ps1 before release builds.")
+endif()
 install(FILES
-  "${SING_BOX_DIR}/sing-box.exe"
+  "${SING_BOX_EXE}"
   "${SING_BOX_DIR}/wintun.dll"
   "${SING_BOX_DIR}/LICENSE"
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

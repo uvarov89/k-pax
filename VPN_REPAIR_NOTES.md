@@ -10,6 +10,32 @@ sing-box v1.13.21 native parser fails immediately without the deprecated DNS
 feature flag. The shared generator has been migrated to modern `type: local`
 and `type: tcp` DNS server objects; native validation is mandatory.
 
+## Android Libbox upgrade blocker (1.12.12 → 1.13.21)
+
+iOS/Windows are pinned to sing-box **1.13.21**. Android still uses JitPack
+`com.github.singbox-android:libbox:1.12.12` via `flutter_singbox_vpn`.
+
+**Do not bump the Android Gradle pin yet.** Inspected artifacts:
+
+| Source | Tag | `BoxService` / `Libbox.newService` |
+|--------|-----|-------------------------------------|
+| JitPack AAR | 1.12.12 | present (current pin) |
+| JitPack AAR | 1.13.0 … 1.13.21, 1.14.0 | **missing** (~90–118 MB AARs without VPN host API) |
+| GitHub Release AAR | 1.13.21 | **no assets** |
+| GitHub Release AAR | 1.14.4 | CommandServer only; no `newService`; larger PlatformInterface |
+
+A naive `1.13.21` Gradle bump would break APK compile (`Libbox.newService` /
+`io.nekohasekai.libbox.BoxService` used by `BoxService.kt`). Safe path later:
+build a full Android Libbox AAR from SagerNet/sing-box `v1.13.21` (gomobile),
+or wait for a complete published AAR; then update PlatformInterface
+(`findConnectionOwner` → `ConnectionOwner`, drop `packageNameByUid` /
+`uidByPackageName`, CommandServerHandler `serviceStop` /
+`writeDebugMessage`).
+
+Pins + CI drift guard: `scripts/singbox-version-pins.env` and
+`scripts/check-singbox-version-pins.ps1`. Config smoke still validates
+generated JSON against both 1.13.21 and Android 1.12.12.
+
 ## Repairs
 
 - Android: fix API 33+ default route fallback, which previously re-checked an

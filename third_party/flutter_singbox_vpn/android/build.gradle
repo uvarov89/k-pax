@@ -64,6 +64,9 @@ android {
 
 dependencies {
     implementation(fileTree(dir: "libs", include: ["*.jar"]))
+    // Keep in sync with scripts/singbox-version-pins.env (ANDROID_LIBBOX).
+    // Do not bump to 1.13.x via JitPack until the AAR exposes Libbox.newService /
+    // BoxService again — see VPN_REPAIR_NOTES.md. Target: ANDROID_LIBBOX_TARGET.
     implementation("com.github.singbox-android:libbox:1.12.12")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")

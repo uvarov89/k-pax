@@ -6,6 +6,12 @@ on:
       - 'lib/core/services/tunnel_config.dart'
       - 'lib/core/models/**'
       - 'test/tunnel_config_native_smoke_test.dart'
+      - 'scripts/singbox-version-pins.env'
+      - 'scripts/check-singbox-version-pins.ps1'
+      - 'scripts/provision-windows-native.ps1'
+      - 'third_party/flutter_singbox_vpn/android/build.gradle'
+      - 'ios/scripts/build_libbox.sh'
+      - 'codemagic.yaml'
       - '.github/workflows/singbox-config-smoke.yml'
   workflow_dispatch:
 
@@ -24,6 +30,9 @@ jobs:
           flutter-version: '3.41.9'
           cache: true
       - run: flutter pub get
+      - name: Check sing-box / Libbox version pins
+        shell: pwsh
+        run: ./scripts/check-singbox-version-pins.ps1
       - name: Generate sample TUN configurations from Dart
         run: |
           mkdir -p "$RUNNER_TEMP/singbox-config"
@@ -36,7 +45,7 @@ jobs:
           echo "24f9ef8e7234e13e71e74c3598a4164c5fe07b7b67ccc6e96cf68b54789f72cd  $RUNNER_TEMP/singbox.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/singbox-bin"
           tar -xf "$RUNNER_TEMP/singbox.tar.gz" -C "$RUNNER_TEMP/singbox-bin"
-      - name: Validate generated configs against sing-box 1.13.21 (Windows parity)
+      - name: Validate generated configs against sing-box 1.13.21 (Windows/iOS parity)
         shell: bash
         run: |
           set -euo pipefail
@@ -48,6 +57,8 @@ jobs:
             echo "Validating $config"
             "$binary" check -c "$config"
           done
+      # Android remains on Libbox 1.12.12 until a complete 1.13.x AAR with
+      # Libbox.newService ships (see VPN_REPAIR_NOTES.md + singbox-version-pins.env).
       - name: Validate against sing-box 1.12.12 (Android libbox parity)
         shell: bash
         run: |

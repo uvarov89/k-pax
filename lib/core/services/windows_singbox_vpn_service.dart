@@ -123,26 +123,82 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
         _set('Stopped');
       }
     });
-    final code = await Future.any<int?>([
-      exited.future,
-      Future<int?>.delayed(const Duration(seconds: 2)),
-    ]);
-    if (!identical(_process, process)) return;
-    if (code != null) {
-      _process = null;
+    try {
+      await _waitUntilClashReady(
+        process: process,
+        exited: exited,
+        secret: _clashSecret!,
+        stderr: stderr,
+        stderrDone: stderrDone,
+      );
+    } catch (_) {
+      if (identical(_process, process)) {
+        process.kill();
+        _process = null;
+      }
       await _wipeConfigFile(_activeConfig);
       _activeConfig = null;
       _clashSecret = null;
       _set('Stopped');
-      await stderrDone.future.timeout(
-        const Duration(milliseconds: 400),
-        onTimeout: () {},
-      );
-      final detail = stderr.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
-      throw StateError(detail.isEmpty ? 'Туннель не запустился' : detail);
+      rethrow;
     }
+    if (!identical(_process, process)) return;
     _set('Started');
     unawaited(_pumpTraffic());
+  }
+
+  /// Wait until clash API answers so TUN/inbound setup has finished before
+  /// [Started] and the post-connect HTTPS probe (avoids "alive 2s" races).
+  Future<void> _waitUntilClashReady({
+    required Process process,
+    required Completer<int> exited,
+    required String secret,
+    required StringBuffer stderr,
+    required Completer<void> stderrDone,
+  }) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(milliseconds: 500)
+      ..idleTimeout = const Duration(seconds: 2);
+    try {
+      while (DateTime.now().isBefore(deadline)) {
+        if (!identical(_process, process)) return;
+        if (exited.isCompleted) {
+          await stderrDone.future.timeout(
+            const Duration(milliseconds: 400),
+            onTimeout: () {},
+          );
+          final detail =
+              stderr.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+          throw StateError(
+            detail.isEmpty ? 'Туннель не запустился' : detail,
+          );
+        }
+        try {
+          final request = await client
+              .getUrl(Uri.parse('http://127.0.0.1:$kClashPort/version'))
+              .timeout(const Duration(milliseconds: 800));
+          request.headers.set(
+            HttpHeaders.authorizationHeader,
+            'Bearer $secret',
+          );
+          final response = await request.close().timeout(
+            const Duration(milliseconds: 800),
+          );
+          await response.drain<void>().timeout(
+            const Duration(milliseconds: 800),
+            onTimeout: () {},
+          );
+          if (response.statusCode == HttpStatus.ok) return;
+        } catch (_) {
+          // Clash API not listening yet (TUN still coming up).
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      throw StateError('Туннель не поднял Clash API за отведённое время');
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> _pumpTraffic() async {

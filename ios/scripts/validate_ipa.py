@@ -11,6 +11,20 @@ from pathlib import Path
 BRANDS = {"xplm": ("online.xplm.app", "X-Plm"), "kpax": ("space.kpax.app", "K-Pax")}
 # Real Libbox Mach-O is tens of MB; symlink stubs in IPA zips are ~20 bytes.
 MIN_LIBBOX_BYTES = 1_000_000
+# Podfile / PacketTunnel / Libbox all target iOS 15; lower values risk TF install failures.
+MIN_SUPPORTED_IOS = (15, 0)
+
+
+def _parse_ios_version(raw) -> tuple[int, ...]:
+    text = str(raw or "").strip()
+    assert re.fullmatch(r"\d+(\.\d+)*", text), f"Invalid MinimumOSVersion: {raw!r}"
+    return tuple(int(part) for part in text.split("."))
+
+
+def _minimum_os_version(plist: dict) -> tuple[int, ...]:
+    raw = plist.get("MinimumOSVersion") or plist.get("LSMinimumSystemVersion")
+    assert raw, "MinimumOSVersion missing"
+    return _parse_ios_version(raw)
 
 
 def validate_bundle_info(app, extension, brand):
@@ -23,6 +37,11 @@ def validate_bundle_info(app, extension, brand):
         assert value and "$" not in str(value), f"Unresolved app version: {key}"
         assert extension.get(key) == value, f"App/extension version mismatch: {key}"
     assert extension.get("NSExtension", {}).get("NSExtensionPointIdentifier") == "com.apple.networkextension.packet-tunnel", "Not a Packet Tunnel extension"
+    app_min = _minimum_os_version(app)
+    ext_min = _minimum_os_version(extension)
+    assert app_min >= MIN_SUPPORTED_IOS, f"App MinimumOSVersion {app_min} below {MIN_SUPPORTED_IOS}"
+    assert ext_min >= MIN_SUPPORTED_IOS, f"Extension MinimumOSVersion {ext_min} below {MIN_SUPPORTED_IOS}"
+    assert app_min == ext_min, f"App/extension MinimumOSVersion mismatch: {app_min} vs {ext_min}"
 
 
 def validate_signing(path, bundle):
@@ -107,8 +126,9 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         assert re.fullmatch(r"\d+(\.\d+){0,2}", short_ver), (
             f"Libbox CFBundleShortVersionString invalid for ASC: {short_ver!r}"
         )
-        assert info.get("MinimumOSVersion") or info.get("LSMinimumSystemVersion"), (
-            "Libbox MinimumOSVersion missing"
+        libbox_min = _minimum_os_version(info)
+        assert libbox_min >= MIN_SUPPORTED_IOS, (
+            f"Libbox MinimumOSVersion {libbox_min} below {MIN_SUPPORTED_IOS}"
         )
         # ASC 90535: nested Resources bundle must not declare CFBundleExecutable.
         resources_info = plistlib.loads(resources_plist_path.read_bytes())
@@ -117,6 +137,11 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         )
         assert resources_info.get("CFBundlePackageType") == "BNDL", (
             "Libbox Resources/Info.plist CFBundlePackageType must be BNDL (ASC 90535)"
+        )
+        # ASC 90334: nested Resources CFBundleIdentifier must match the framework id.
+        assert resources_info.get("CFBundleIdentifier") == info.get("CFBundleIdentifier"), (
+            "Libbox Resources CFBundleIdentifier must match framework "
+            f"(got {resources_info.get('CFBundleIdentifier')!r} vs {info.get('CFBundleIdentifier')!r})"
         )
         size = lib_bin.stat().st_size
         print(f"Libbox.framework OK in Runner.app ({lib_bin.relative_to(app)}, {size} bytes)")
@@ -145,8 +170,42 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
     )
 
 
+def validate_libbox_signature_identifier(framework: Path) -> None:
+    info = plistlib.loads((framework / "Info.plist").read_bytes())
+    expected = info["CFBundleIdentifier"]
+    result = subprocess.run(
+        ["codesign", "-d", "--verbose=4", str(framework)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    actual = next(
+        (line.removeprefix("Identifier=") for line in result.stderr.splitlines()
+         if line.startswith("Identifier=")),
+        None,
+    )
+    assert actual == expected, (
+        f"Libbox signature identifier {actual!r} must match {expected!r} (ASC 90334)"
+    )
+
+
+def _hard_codesign_verify(path: Path) -> None:
+    """Libbox must verify cleanly — sealed-resource failures cause device Unable to Install."""
+    result = subprocess.run(
+        ["codesign", "--verify", "--verbose=4", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print(f"codesign --verify OK: {path.name}")
+        return
+    detail = (result.stderr or result.stdout or "").strip()
+    raise AssertionError(f"codesign --verify failed for {path}: {detail}")
+
+
 def _soft_codesign_verify(path: Path) -> None:
-    """Nested gomobile frameworks can trip sealed-resource on otherwise valid IPAs."""
+    """Host app/appex can trip sealed-resource on otherwise valid Flutter IPAs."""
     result = subprocess.run(
         ["codesign", "--verify", str(path)],
         check=False,
@@ -179,6 +238,10 @@ def validate_archive(ipa, brand, signing=True):
         assert_no_frameworks_in_appex(extension)
         assert_libbox_in_host_app(app, extension, ext_plist)
         if signing:
+            libbox = app / "Frameworks" / "Libbox.framework"
+            if libbox.is_dir():
+                validate_libbox_signature_identifier(libbox)
+                _hard_codesign_verify(libbox)
             for path in (app, extension):
                 _soft_codesign_verify(path)
             bundle = BRANDS[brand][0]

@@ -308,6 +308,13 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: Resources/Info.plist CFBundlePackageType='$RES_TYPE' (want BNDL)" >&2
     exit 1
   fi
+  # ASC 90334: nested Resources id must match the framework CFBundleIdentifier.
+  FW_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Info.plist" 2>/dev/null || true)
+  RES_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Resources/Info.plist" 2>/dev/null || true)
+  if [ -z "$FW_ID" ] || [ "$FW_ID" != "$RES_ID" ]; then
+    echo "error: Libbox CFBundleIdentifier mismatch root='$FW_ID' resources='$RES_ID' (ASC 90334)" >&2
+    exit 1
+  fi
   /usr/bin/install_name_tool -id "@rpath/Libbox.framework/Libbox" "$BINARY" 2>/dev/null || true
 
   IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
@@ -318,12 +325,20 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: no code signing identity to sign embedded Libbox" >&2
     exit 1
   fi
-  /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$BINARY"
-  if ! /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none --generate-entitlement-der "$DEST"; then
-    /usr/bin/codesign --force --deep --sign "$IDENTITY" --timestamp=none "$DEST"
+  # Sign with the Info.plist identifier — default basename "Libbox" triggers ASC 90334 /
+  # device Unable to Install when the sealed signature id does not match CFBundleIdentifier.
+  LIBBOX_ID="${FW_ID:-io.nekohasekai.libbox}"
+  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$BINARY"
+  if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none --generate-entitlement-der "$DEST"; then
+    /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$DEST"
   fi
   /usr/bin/codesign --verify "$DEST"
-  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes)"
+  SIGN_ID=$(/usr/bin/codesign -d --verbose=4 "$DEST" 2>&1 | /usr/bin/sed -n 's/^Identifier=//p' | /usr/bin/head -1)
+  if [ "$SIGN_ID" != "$LIBBOX_ID" ]; then
+    echo "error: Libbox signature Identifier='$SIGN_ID' (want $LIBBOX_ID) (ASC 90334)" >&2
+    exit 1
+  fi
+  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes, id $SIGN_ID)"
 SCRIPT
 
 # After CocoaPods embed (replace stub/bad copy), before Thin Binary / codesign.

@@ -1239,13 +1239,14 @@ class VpnController extends ChangeNotifier {
     final tried = <String>{};
     final triedCountries = <String>{first.countryId};
     Object? lastError;
-    // iOS Packet Tunnel start is slow to fail; unbounded Auto failover feels like a freeze.
+    // iOS Packet Tunnel start is slow to fail; cap attempts/deadline so NE
+    // failover cannot feel like an unbounded freeze (Android allows more).
     final ios = !kIsWeb && Platform.isIOS;
     final deadline = DateTime.now().add(
-      Duration(seconds: ios ? 40 : 180),
+      Duration(seconds: ios ? 55 : 180),
     );
     var attempts = 0;
-    final maxAttempts = ios ? 2 : 12;
+    final maxAttempts = ios ? 4 : 12;
 
     Future<TunnelNode?> tryStart(TunnelNode node, {bool disconnectFirst = false}) async {
       if (!_wantConnected) return null;
@@ -1272,10 +1273,9 @@ class VpnController extends ChangeNotifier {
 
     Future<TunnelNode?> trySpares(TunnelNode from) async {
       if (!proSettings.protocolFallback) return null;
-      // On iOS one primary attempt is enough for first diagnosis / fast fail.
-      if (ios) return null;
       var spare = _spareFor(from, tried);
       while (spare != null) {
+        // tryStart enforces iOS maxAttempts + deadline; no separate iOS skip.
         final ok = await tryStart(spare, disconnectFirst: true);
         if (ok != null) return ok;
         spare = _spareFor(spare, tried);

@@ -6,11 +6,13 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
 import 'package:pulse_vpn/core/services/tunnel_config.dart';
+import 'package:pulse_vpn/core/services/tunnel_connectivity.dart';
 import 'package:pulse_vpn/core/services/vpn_service.dart';
 import 'package:sing_box/sing_box.dart';
 
 /// iOS VPN via Packet Tunnel + Libbox (vendored [sing_box] plugin).
-class IosSingboxVpnService implements VpnService, VpnSettingsService {
+class IosSingboxVpnService
+    implements VpnService, VpnSettingsService, TunnelConnectivityVerifier {
   IosSingboxVpnService({SingBox? singBox})
     : _singBox = singBox ?? SingBox.instance;
 
@@ -165,6 +167,9 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     } catch (_) {}
     return null;
   }
+
+  @override
+  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
 
   @override
   Future<void> disconnect() async {

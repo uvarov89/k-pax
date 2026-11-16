@@ -87,6 +87,15 @@ workflows:
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
+      - name: Re-sign Libbox identifiers in IPA
+        script: |
+          set -e
+          chmod +x ios/scripts/resign_libbox_in_ipa.sh
+          # exportArchive re-stamps nested Libbox Mach-O as basename "Libbox";
+          # restamp to CFBundleIdentifier before validate/upload (device install).
+          for ipa in build/ios/ipa/*.ipa; do
+            ios/scripts/resign_libbox_in_ipa.sh "$ipa"
+          done
       - name: Validate exported IPA and extension
         script: |
           set -e
@@ -194,6 +203,13 @@ workflows:
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
+      - name: Re-sign Libbox identifiers in IPA (X-Plm)
+        script: |
+          set -e
+          chmod +x ios/scripts/resign_libbox_in_ipa.sh
+          for ipa in build/ios/ipa/*.ipa; do
+            ios/scripts/resign_libbox_in_ipa.sh "$ipa"
+          done
       - name: Validate exported X-Plm IPA and extension
         script: |
           set -e

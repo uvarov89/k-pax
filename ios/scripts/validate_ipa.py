@@ -170,23 +170,42 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
     )
 
 
-def validate_libbox_signature_identifier(framework: Path) -> None:
-    info = plistlib.loads((framework / "Info.plist").read_bytes())
-    expected = info["CFBundleIdentifier"]
+def _codesign_identifier(path: Path) -> str | None:
     result = subprocess.run(
-        ["codesign", "-d", "--verbose=4", str(framework)],
+        ["codesign", "-d", "--verbose=4", str(path)],
         check=True,
         capture_output=True,
         text=True,
     )
-    actual = next(
-        (line.removeprefix("Identifier=") for line in result.stderr.splitlines()
-         if line.startswith("Identifier=")),
+    return next(
+        (
+            line.removeprefix("Identifier=")
+            for line in result.stderr.splitlines()
+            if line.startswith("Identifier=")
+        ),
         None,
     )
-    assert actual == expected, (
-        f"Libbox signature identifier {actual!r} must match {expected!r} (ASC 90334)"
-    )
+
+
+def validate_libbox_signature_identifier(framework: Path) -> None:
+    """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
+
+    exportArchive often re-stamps Libbox.framework/Libbox with basename "Libbox"
+    while the .framework still reports the plist id — device Unable to Install.
+    """
+    info = plistlib.loads((framework / "Info.plist").read_bytes())
+    expected = info["CFBundleIdentifier"]
+    binary = framework / "Libbox"
+    targets = [framework]
+    if binary.is_file():
+        targets.append(binary)
+    for path in targets:
+        actual = _codesign_identifier(path)
+        assert actual == expected, (
+            f"{path.name} signature identifier {actual!r} must match "
+            f"{expected!r} (ASC 90334 / Unable to Install)"
+        )
+        print(f"Libbox codesign Identifier OK: {path.name}={actual}")
 
 
 def _hard_codesign_verify(path: Path) -> None:

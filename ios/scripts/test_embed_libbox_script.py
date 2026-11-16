@@ -90,7 +90,15 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("--identifier=", script)
         self.assertIn("ASC 90334", script)
         self.assertIn("Libbox CFBundleIdentifier mismatch", script)
+        self.assertIn("Re-sign Libbox identifiers", text)
+        self.assertIn("after Thin Binary", text)
         self.assertNotIn("--preserve-metadata", script)
+        resign = (ROOT / "ios" / "scripts" / "resign_libbox_in_ipa.sh").read_text(encoding="utf-8")
+        self.assertIn("--identifier=", resign)
+        self.assertIn("exportArchive", resign)
+        self.assertIn("Apple Distribution", resign)
+        self.assertIn('BINARY="$LIBBOX/Libbox"', resign)
+        self.assertIn("codesign_identifier", resign)
         norm = (ROOT / "ios" / "scripts" / "normalize_libbox_framework.sh").read_text(encoding="utf-8")
         self.assertIn("io.nekohasekai.libbox", norm)
         self.assertIn("ditto", norm)
@@ -129,11 +137,15 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("ASC 90535", text)
         self.assertIn("BNDL", text)
         self.assertIn("validate_libbox_signature_identifier", text)
+        self.assertIn("_codesign_identifier", text)
         self.assertIn("ASC 90334", text)
+        self.assertIn("Unable to Install", text)
         self.assertIn("MIN_SUPPORTED_IOS", text)
         self.assertIn("_minimum_os_version", text)
         self.assertIn("_hard_codesign_verify", text)
         self.assertIn("Resources CFBundleIdentifier must match framework", text)
+        # Nested Mach-O must be checked — outer framework alone misses exportArchive basename.
+        self.assertIn('framework / "Libbox"', text)
 
     def test_device_slice_copied_into_runner_frameworks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

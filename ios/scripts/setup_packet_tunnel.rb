@@ -327,21 +327,68 @@ runner_phase.shell_script = <<~'SCRIPT'
   fi
   # Sign with the Info.plist identifier — default basename "Libbox" triggers ASC 90334 /
   # device Unable to Install when the sealed signature id does not match CFBundleIdentifier.
+  # Always stamp BOTH the Mach-O and the .framework: signing only the bundle can leave the
+  # nested binary Identifier=Libbox, and exportArchive later re-stamps basename again.
   LIBBOX_ID="${FW_ID:-io.nekohasekai.libbox}"
   /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$BINARY"
   if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none --generate-entitlement-der "$DEST"; then
     /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$DEST"
   fi
   /usr/bin/codesign --verify "$DEST"
-  SIGN_ID=$(/usr/bin/codesign -d --verbose=4 "$DEST" 2>&1 | /usr/bin/sed -n 's/^Identifier=//p' | /usr/bin/head -1)
-  if [ "$SIGN_ID" != "$LIBBOX_ID" ]; then
-    echo "error: Libbox signature Identifier='$SIGN_ID' (want $LIBBOX_ID) (ASC 90334)" >&2
-    exit 1
-  fi
-  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes, id $SIGN_ID)"
+  for CHECK in "$BINARY" "$DEST"; do
+    SIGN_ID=$(/usr/bin/codesign -d --verbose=4 "$CHECK" 2>&1 | /usr/bin/sed -n 's/^Identifier=//p' | /usr/bin/head -1)
+    if [ "$SIGN_ID" != "$LIBBOX_ID" ]; then
+      echo "error: $CHECK signature Identifier='$SIGN_ID' (want $LIBBOX_ID) (ASC 90334)" >&2
+      exit 1
+    fi
+  done
+  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes, id $LIBBOX_ID)"
 SCRIPT
 
-# After CocoaPods embed (replace stub/bad copy), before Thin Binary / codesign.
+# Late re-stamp after Flutter Thin Binary (embed_and_thin) and as last Run Script before
+# Xcode's product codesign. exportArchive still re-signs — Codemagic runs
+# resign_libbox_in_ipa.sh after flutter build ipa to survive that.
+resign_name = 'Re-sign Libbox identifiers'
+runner.shell_script_build_phases.select { |p| p.name == resign_name }.each do |p|
+  runner.build_phases.delete(p)
+end
+resign_phase = runner.new_shell_script_build_phase(resign_name)
+resign_phase.shell_path = '/bin/sh'
+resign_phase.show_env_vars_in_log = '0'
+resign_phase.shell_script = <<~'SCRIPT'
+  set -euo pipefail
+  FFP="${FRAMEWORKS_FOLDER_PATH:-Frameworks}"
+  DEST="${TARGET_BUILD_DIR}/${FFP}/Libbox.framework"
+  BINARY="$DEST/Libbox"
+  if [ ! -d "$DEST" ] || [ ! -f "$BINARY" ]; then
+    echo "error: Libbox.framework missing at $DEST — Embed Libbox into Runner must run first" >&2
+    exit 1
+  fi
+  LIBBOX_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Info.plist" 2>/dev/null || true)
+  LIBBOX_ID="${LIBBOX_ID:-io.nekohasekai.libbox}"
+  IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
+  if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
+    IDENTITY="${CODE_SIGN_IDENTITY:-}"
+  fi
+  if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
+    echo "error: no code signing identity to re-sign Libbox" >&2
+    exit 1
+  fi
+  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$BINARY"
+  if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none --generate-entitlement-der "$DEST"; then
+    /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$DEST"
+  fi
+  for CHECK in "$BINARY" "$DEST"; do
+    SIGN_ID=$(/usr/bin/codesign -d --verbose=4 "$CHECK" 2>&1 | /usr/bin/sed -n 's/^Identifier=//p' | /usr/bin/head -1)
+    if [ "$SIGN_ID" != "$LIBBOX_ID" ]; then
+      echo "error: $CHECK Identifier='$SIGN_ID' (want $LIBBOX_ID) after Thin Binary (ASC 90334)" >&2
+      exit 1
+    fi
+  done
+  echo "OK Libbox identifiers re-stamped after Thin Binary ($LIBBOX_ID)"
+SCRIPT
+
+# After CocoaPods embed (replace stub/bad copy), before Thin Binary; resign after Thin Binary.
 thin = runner.build_phases.find { |p| p.display_name.to_s.include?('Thin Binary') || p.respond_to?(:name) && p.name.to_s.include?('Thin Binary') }
 pods_embed = runner.build_phases.find do |p|
   name = p.respond_to?(:name) ? p.name.to_s : p.display_name.to_s
@@ -349,6 +396,7 @@ pods_embed = runner.build_phases.find do |p|
 end
 runner_phases = runner.build_phases
 runner_phases.delete(runner_phase)
+runner_phases.delete(resign_phase)
 insert_at = nil
 insert_at = runner_phases.index(pods_embed) + 1 if pods_embed && runner_phases.index(pods_embed)
 insert_at = runner_phases.index(thin) if insert_at.nil? && thin && runner_phases.index(thin)
@@ -356,6 +404,11 @@ if insert_at
   runner_phases.insert(insert_at, runner_phase)
 else
   runner_phases << runner_phase
+end
+if thin && runner_phases.index(thin)
+  runner_phases.insert(runner_phases.index(thin) + 1, resign_phase)
+else
+  runner_phases << resign_phase
 end
 if thin && embed
   e_idx = runner_phases.index(embed)

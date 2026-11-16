@@ -129,18 +129,19 @@ def assert_macho_arm64(path: Path, label: str | None = None) -> None:
 
 
 def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | None:
-    """Prefer a real Mach-O over a root symlink stub left by versioned frameworks.
+    """Prefer a real Mach-O over a short-name symlink stub.
 
-    Post-export resign keeps CFBundleExecutable=Libbox and stamps codesign
-    Identifier=CFBundleIdentifier (no Mach-O rename — ASC 90085).
+    Post-export resign renames Mach-O to CFBundleIdentifier (typically
+    io.nekohasekai.libbox); a Libbox → long-name symlink may remain for
+    LC_LOAD_DYLIB compatibility and must not be mistaken for the binary.
     """
     names: list[str] = []
     if executable:
         names.append(executable)
     names.extend(
         [
-            "Libbox",
-            "io.nekohasekai.libbox",  # legacy basename-proof name — rejected later
+            "io.nekohasekai.libbox",
+            "Libbox",  # may be a symlink stub (~20B) — skipped by size gate
         ]
     )
     candidates: list[Path] = []
@@ -199,25 +200,23 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         exec_name = info.get("CFBundleExecutable")
         assert bundle_id, "Libbox CFBundleIdentifier missing"
         assert exec_name, "Libbox CFBundleExecutable missing"
-        # Keep short Mach-O name; codesign --identifier stamps bundle id (ASC 90334).
-        # Renaming to CFBundleIdentifier + install_name_tool caused ASC 90085.
-        assert exec_name == "Libbox", (
-            f"Libbox CFBundleExecutable={exec_name!r} must stay 'Libbox' "
-            f"(no post-export rename; ASC 90085)"
+        # installd / ASC: CFBundleExecutable must equal CFBundleIdentifier; Mach-O
+        # file must use that name. Short "Libbox" symlink → long name is OK.
+        assert exec_name == bundle_id, (
+            f"Libbox CFBundleExecutable={exec_name!r} must equal "
+            f"CFBundleIdentifier={bundle_id!r}"
         )
         assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
+        long_macho = fw / str(bundle_id)
+        assert long_macho.exists(), (
+            f"Libbox.framework missing Mach-O named {bundle_id!r} "
+            f"(CFBundleExecutable / Unable to Install)"
+        )
         lib_bin = _resolve_libbox_binary(fw, str(exec_name))
         assert lib_bin is not None, (
             f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
         )
-        # Reject leftover long-name Mach-O from older basename-proof resigns.
-        long_name = fw / str(bundle_id)
-        if long_name.exists() and long_name.resolve() != lib_bin.resolve():
-            raise AssertionError(
-                f"Libbox.framework still has long-name Mach-O {bundle_id!r} beside "
-                f"'Libbox' — remove it (ASC 90085 / load-path drift)"
-            )
-        assert_macho_arm64(lib_bin, "Libbox.framework/Libbox")
+        assert_macho_arm64(lib_bin, f"Libbox.framework/{exec_name}")
         assert info.get("CFBundleVersion"), "Libbox CFBundleVersion missing"
         short_ver = str(info.get("CFBundleShortVersionString") or "")
         assert short_ver, "Libbox CFBundleShortVersionString missing"
@@ -289,12 +288,12 @@ def _codesign_identifier(path: Path) -> str | None:
 def validate_libbox_signature_identifier(framework: Path) -> None:
     """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
 
-    Mach-O basename stays Libbox; resign stamps Identifier via codesign
-    --identifier=CFBundleIdentifier (do not rename the binary).
+    Post-export resign renames Mach-O to CFBundleIdentifier and re-seals with
+    codesign --identifier matching that id.
     """
     info = plistlib.loads((framework / "Info.plist").read_bytes())
     expected = info["CFBundleIdentifier"]
-    exec_name = info.get("CFBundleExecutable") or "Libbox"
+    exec_name = info.get("CFBundleExecutable") or expected
     binary = framework / str(exec_name)
     targets = [framework]
     if binary.is_file():

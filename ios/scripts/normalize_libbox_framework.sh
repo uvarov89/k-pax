@@ -8,8 +8,9 @@
 #
 # Keep Mach-O basename as "Libbox" through normalize/link/export so Xcode
 # `-framework Libbox` and LC_LOAD_DYLIB=@rpath/Libbox.framework/Libbox work.
-# Post-export resign_libbox_in_ipa.sh stamps codesign Identifier=CFBundleIdentifier
-# without renaming (rename + install_name_tool on signed host caused ASC 90085).
+# Post-export resign_libbox_in_ipa.sh strips signatures, renames Mach-O to
+# CFBundleIdentifier (unsigned install_name_tool), then re-seals Distribution.
+# Never run install_name_tool on already-signed host Mach-Os (ASC 90085).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -213,7 +214,7 @@ normalize_one() {
   # Fresh BNDL plist — never clone the FMWK root plist (ASC 90535).
   patch_resources_plist "$framework/Resources/Info.plist" "$platform"
 
-  # Keep short-name Mach-O for Xcode link; post-IPA resign only re-stamps Identifier.
+  # Keep short-name Mach-O for Xcode link; post-IPA resign renames after strip.
   local binary="$framework/$LIBBOX_EXEC_NAME"
   if [[ ! -f "$binary" ]]; then
     echo "error: missing $binary after normalize" >&2

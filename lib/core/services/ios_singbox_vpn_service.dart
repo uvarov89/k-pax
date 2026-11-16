@@ -105,6 +105,8 @@ class IosSingboxVpnService
       );
     }
     await _waitUntilConnected();
+    // Match Android/Windows: let NE routes/DNS settle before HTTPS probe.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
   }
 
   Future<void> _waitUntilConnected() async {

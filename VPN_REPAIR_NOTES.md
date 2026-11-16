@@ -1,4 +1,29 @@
-# K-Pax and X-Plm: Android / Windows VPN repair
+# K-Pax and X-Plm: Android / Windows / iOS VPN repair
+
+## 1.0.60 hotfix (Hiddify-aligned data-plane)
+
+Field reports after 1.0.59: same subscription works in Hiddify, still fails in
+branded clients on Android and Windows (iOS expected to share the JSON).
+
+Deltas taken from Hiddify-app defaults + hiddify-core `setInbound` / `setDns`
+(patterns only — not copied source):
+
+1. **Remote DNS = TCP `8.8.8.8` via proxy** — Hiddify Flutter default
+   (`tcp://8.8.8.8`). UDP DNS through VLESS/Reality often stalls; 1.0.59 kept UDP.
+2. **Direct DNS = UDP `1.1.1.1` via direct** — not `local` alone. Under full TUN,
+   OS local DNS commonly points into the tunnel and blackholes bypass / host
+   resolution. Keep `dns-local` (`type: local`) as bootstrap peer.
+3. **TUN `172.19.0.1/28`, MTU 9000, `endpoint_independent_nat: true`** — match
+   Hiddify-core inbound defaults (was `/30` + 1400).
+4. **Port 53 → `hijack-dns`** in addition to sniffed DNS protocol (Hiddify steers
+   port 53 into dns-out).
+5. **Android `override_android_vpn: true`** — Hiddify route option under VpnService.
+6. **Windows `strict_route` still forced false** — no safe WFP kill switch yet.
+7. **iOS post-connect settle** before HTTPS probe (parity with Android/Windows).
+
+Keep modern DNS schema (`type: local` / `udp` / `tcp`) for sing-box 1.12.12
+(Android Libbox) and 1.13.21 (Windows/iOS). Keep clearnet update/ISP bypasses,
+IPv4-only TUN by default, QUIC reject, IPv6 reject unless opted in.
 
 ## 1.0.59 hotfix (data-plane)
 
@@ -13,16 +38,12 @@ Root causes addressed in 1.0.59:
    `strict_route: false` on Windows in `buildTunnelConfig`, hydrate/save
    killSwitch as false, disable X-Plm Windows toggle.
 2. **Dual-stack TUN + TCP DNS regression** — c02282a “Hiddify parity” undid the
-   proven IPv4-only + UDP DNS path (0c9641a / 9db533c). Restore IPv4-only TUN
-   by default, UDP DNS with modern 1.12+ schema (`type: udp`), always reject
-   IPv6 unless user opts into `Ipv6Mode.enabled`.
-3. **Probe race** — HTTPS probe now settles briefly and retries; Android/Windows
+   proven IPv4-only path but paired TCP DNS with dual-stack ULA. 1.0.59 restored
+   IPv4-only + UDP DNS; 1.0.60 keeps IPv4-only and switches remote DNS to TCP.
+3. **Probe race** — HTTPS probe settles briefly and retries; Android/Windows
    wait after TUN/Clash ready before probe.
 4. **Android TUN iterators** — snapshot Libbox route/address iterators before
    applying VpnService routes (defensive against partial consumption).
-
-Keep modern DNS schema (`type: local` / `type: udp`) — legacy `address` fails
-on sing-box 1.13.21 without deprecated flags.
 
 ## Android Libbox upgrade blocker (1.12.12 → 1.13.21)
 

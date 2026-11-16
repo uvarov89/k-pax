@@ -50,19 +50,51 @@ void main() {
     // Windows never enables strict_route (no safe WFP kill switch yet).
     expect(tun['strict_route'], Platform.isWindows ? isFalse : isTrue);
     expect(dns['final'], 'dns-remote');
-    expect(tun['address'], ['172.19.0.1/30']);
-    expect(tun['mtu'], 1400);
+    expect(tun['address'], ['172.19.0.1/28']);
+    expect(tun['mtu'], 9000);
     expect(tun['stack'], 'mixed');
+    expect(tun['endpoint_independent_nat'], isTrue);
     expect(dns['strategy'], 'ipv4_only');
     expect(
       (dns['servers'] as List).cast<Map>().any(
         (s) =>
-            s['tag'] == 'dns-remote' &&
+            s['tag'] == 'dns-local' &&
+            s['type'] == 'local' &&
+            s['detour'] == 'direct',
+      ),
+      isTrue,
+    );
+    expect(
+      (dns['servers'] as List).cast<Map>().any(
+        (s) =>
+            s['tag'] == 'dns-direct' &&
             s['type'] == 'udp' &&
             s['server'] == '1.1.1.1' &&
             s['server_port'] == 53 &&
+            s['detour'] == 'direct',
+      ),
+      isTrue,
+    );
+    expect(
+      (dns['servers'] as List).cast<Map>().any(
+        (s) =>
+            s['tag'] == 'dns-remote' &&
+            s['type'] == 'tcp' &&
+            s['server'] == '8.8.8.8' &&
+            s['server_port'] == 53 &&
             s['detour'] == 'proxy',
       ),
+      isTrue,
+    );
+    final route = on['route'] as Map;
+    if (Platform.isAndroid) {
+      expect(route['override_android_vpn'], isTrue);
+    } else {
+      expect(route.containsKey('override_android_vpn'), isFalse);
+    }
+    final rules = (route['rules'] as List).cast<Map>();
+    expect(
+      rules.any((r) => r['port'] == 53 && r['action'] == 'hijack-dns'),
       isTrue,
     );
 
@@ -128,7 +160,7 @@ void main() {
     );
     expect(
       ((disabled['inbounds'] as List).first as Map)['address'],
-      ['172.19.0.1/30'],
+      ['172.19.0.1/28'],
     );
 
     final tunnelOnly = jsonDecode(
@@ -139,7 +171,7 @@ void main() {
     ) as Map<String, Object?>;
     expect(
       ((tunnelOnly['inbounds'] as List).first as Map)['address'],
-      ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+      ['172.19.0.1/28', 'fdfe:dcba:9876::1/126'],
     );
     expect(
       ((tunnelOnly['route'] as Map)['rules'] as List).cast<Map>().any(
@@ -162,7 +194,7 @@ void main() {
     expect((enabled['dns'] as Map)['strategy'], 'prefer_ipv4');
     expect(
       ((enabled['inbounds'] as List).first as Map)['address'],
-      ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+      ['172.19.0.1/28', 'fdfe:dcba:9876::1/126'],
     );
     expect(((enabled['inbounds'] as List).first as Map)['stack'], 'mixed');
   });

@@ -11,11 +11,15 @@ import 'package:pulse_vpn/core/models/tunnel_node.dart';
 
 const kClashPort = 9090;
 
-/// Proven default TUN (~9db533c / 0c9641a): IPv4-only. Dual-stack ULA from
-/// 1.0.51 / c02282a blackholed Win/Android for many users while Hiddify with
-/// the same subscription worked. Opt-in via [Ipv6Mode.enabled].
-const _tunIpv4 = '172.19.0.1/30';
+/// Hiddify-core TUN IPv4 prefix (`172.19.0.1/28`). Narrower `/30` left some
+/// Libbox/Android path setups with too little headroom vs Hiddify on the same
+/// subscription.
+const _tunIpv4 = '172.19.0.1/28';
 const _tunIpv6 = 'fdfe:dcba:9876::1/126';
+
+/// Hiddify / sing-box docs default TUN MTU. 1400 was speculative and smaller
+/// than every working Hiddify profile we compared.
+const _tunMtu = 9000;
 
 /// RU mobile operator portals + OS captive probes. Full-tunnel often breaks
 /// Beeline/MTS/etc. until these resolve and connect outside the proxy.
@@ -49,6 +53,7 @@ const _updateDirectDomains = <String>[
 ];
 
 bool _windowsPlatform() => !kIsWeb && Platform.isWindows;
+bool _androidPlatform() => !kIsWeb && Platform.isAndroid;
 
 String buildTunnelConfig(
   TunnelNode node,
@@ -57,22 +62,21 @@ String buildTunnelConfig(
   bool enableStats = false,
   String? clashSecret,
 }) {
-  // Default (disabled): IPv4-only TUN + reject IPv6.
+  // Default (disabled): IPv4-only TUN + reject IPv6 — matches Hiddify ipv4_only.
   // tunnelOnly: dual-stack TUN + reject IPv6 (Happy-Eyeballs without exit IPv6).
   // enabled: dual-stack TUN, IPv6 may exit via proxy.
   final dualStackTun = settings.ipv6Mode != Ipv6Mode.disabled;
   final allowIpv6Traffic = settings.ipv6Mode == Ipv6Mode.enabled;
   final dnsStrategy = allowIpv6Traffic ? 'prefer_ipv4' : 'ipv4_only';
-  // Proven transport: UDP DNS via proxy. DoH blackholed 1.0.51; TCP DNS from
-  // c02282a did not restore field traffic. Modern 1.12+ schema (not legacy
-  // "address") is required for sing-box 1.13.21 on Windows.
   final remoteDnsTag = settings.dnsAutomatic ? 'dns-remote' : 'dns-direct';
   // Windows kill-switch UI is disabled (no safe WFP yet), but ProSettings still
   // defaults to killSwitch=true → strict_route WFP rules that break reconnect /
   // local DNS. Never enable strict_route on Windows until a real kill switch.
+  // Hiddify enables strict_route by default; they ship a working Windows service.
   final strictRoute = _windowsPlatform() ? false : settings.killSwitch;
   final outbound = Map<String, Object?>.from(node.outbound);
   if (InternetAddress.tryParse(node.host) == null) {
+    // Resolve proxy hostname on clearnet (Hiddify dns-direct), never via remote.
     outbound['domain_resolver'] = {
       'server': 'dns-direct',
       'strategy': dnsStrategy,
@@ -83,16 +87,27 @@ String buildTunnelConfig(
     'dns': {
       'servers': [
         {
-          // sing-box 1.12+ DNS server schema; legacy "address" now fails
-          // at startup unless an unsafe deprecated-feature flag is set.
-          'tag': 'dns-direct',
+          // Bootstrap / AddressResolver equivalent of Hiddify dns-local.
+          'tag': 'dns-local',
           'type': 'local',
           'detour': 'direct',
         },
         {
-          'tag': 'dns-remote',
+          // Hiddify direct DNS: UDP to a public resolver via clearnet — not
+          // `local` alone (under full TUN, OS local DNS often points into the
+          // tunnel and blackholes bypass / proxy-host resolution).
+          'tag': 'dns-direct',
           'type': 'udp',
           'server': '1.1.1.1',
+          'server_port': 53,
+          'detour': 'direct',
+        },
+        {
+          // Hiddify Flutter default remote DNS: TCP via proxy. UDP DNS through
+          // VLESS/Reality often stalls while the same node works in Hiddify.
+          'tag': 'dns-remote',
+          'type': 'tcp',
+          'server': '8.8.8.8',
           'server_port': 53,
           'detour': 'proxy',
         },
@@ -118,11 +133,14 @@ String buildTunnelConfig(
         'type': 'tun',
         'tag': 'tun-in',
         'address': dualStackTun ? [_tunIpv4, _tunIpv6] : [_tunIpv4],
-        'mtu': 1400,
+        'mtu': _tunMtu,
         'auto_route': true,
         'strict_route': strictRoute,
-        // mixed is reliable on Android Libbox; `system` + dual-stack blackholed
-        // traffic in 1.0.51 while Hiddify with the same sub worked.
+        // Hiddify sets this; mixed already uses gVisor UDP (endpoint-independent
+        // by default for system TCP). Harmless on mixed, helps if stack flips.
+        'endpoint_independent_nat': true,
+        // mixed is Hiddify's legacy TUN stack default and reliable on Android
+        // Libbox 1.12.12 / sing-box 1.13.21.
         'stack': 'mixed',
       },
     ],
@@ -139,6 +157,9 @@ String buildTunnelConfig(
       },
     'route': {
       'auto_detect_interface': true,
+      // Hiddify sets OverrideAndroidVPN; lets Libbox treat the underlying NIC
+      // correctly when auto_detect_interface runs under VpnService.
+      if (_androidPlatform()) 'override_android_vpn': true,
       'default_domain_resolver': {
         'server': remoteDnsTag,
         'strategy': dnsStrategy,
@@ -156,6 +177,9 @@ List<Map<String, Object?>> _routeRules(
   final rules = <Map<String, Object?>>[
     {'action': 'sniff'},
     {'protocol': 'dns', 'action': 'hijack-dns'},
+    // Hiddify also steers plain port 53 into the DNS outbound; without this,
+    // hard-coded resolvers that skip sniff can leak or stall as raw UDP.
+    {'port': 53, 'action': 'hijack-dns'},
     {'ip_is_private': true, 'action': 'route', 'outbound': 'direct'},
     {
       'domain_suffix': [

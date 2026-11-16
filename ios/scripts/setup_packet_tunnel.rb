@@ -267,10 +267,28 @@ runner_phase.shell_script = <<~'SCRIPT'
   rm -rf "$DEST"
   /usr/bin/ditto "$SRC" "$DEST"
 
-  BINARY="$DEST/Libbox"
+  for req in Info.plist Resources/Info.plist; do
+    if [ ! -f "$DEST/$req" ]; then
+      echo "error: missing $DEST/$req" >&2
+      exit 1
+    fi
+  done
+  FW_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Info.plist" 2>/dev/null || true)
+  EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Info.plist" 2>/dev/null || true)
+  LIBBOX_ID="${FW_ID:-io.nekohasekai.libbox}"
+  # Executable basename must equal bundle id so exportArchive/ASC Identifier=<basename> matches.
+  if [ -z "$EXEC" ] || [ "$EXEC" != "$LIBBOX_ID" ]; then
+    echo "error: CFBundleExecutable='$EXEC' (want $LIBBOX_ID) — rename Mach-O in normalize" >&2
+    exit 1
+  fi
+  BINARY="$DEST/$EXEC"
   if [ ! -f "$BINARY" ]; then
-    echo "error: Libbox binary missing in $DEST" >&2
+    echo "error: Libbox binary missing at $BINARY" >&2
     ls -laR "$DEST" >&2 || true
+    exit 1
+  fi
+  if [ -f "$DEST/Libbox" ] && [ "$DEST/Libbox" != "$BINARY" ]; then
+    echo "error: leftover short-name Mach-O $DEST/Libbox (basename would re-break ASC 90334)" >&2
     exit 1
   fi
   BIN_SIZE=$(/usr/bin/stat -f%z "$BINARY" 2>/dev/null || /usr/bin/stat -c%s "$BINARY")
@@ -286,17 +304,6 @@ runner_phase.shell_script = <<~'SCRIPT'
       exit 1
       ;;
   esac
-  for req in Info.plist Resources/Info.plist; do
-    if [ ! -f "$DEST/$req" ]; then
-      echo "error: missing $DEST/$req" >&2
-      exit 1
-    fi
-  done
-  EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Info.plist" 2>/dev/null || true)
-  if [ "$EXEC" != "Libbox" ]; then
-    echo "error: CFBundleExecutable='$EXEC' (want Libbox)" >&2
-    exit 1
-  fi
   # ASC 90535: Resources/Info.plist must be BNDL without CFBundleExecutable.
   RES_EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Resources/Info.plist" 2>/dev/null || true)
   if [ -n "$RES_EXEC" ]; then
@@ -309,13 +316,12 @@ runner_phase.shell_script = <<~'SCRIPT'
     exit 1
   fi
   # ASC 90334: nested Resources id must match the framework CFBundleIdentifier.
-  FW_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Info.plist" 2>/dev/null || true)
   RES_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Resources/Info.plist" 2>/dev/null || true)
   if [ -z "$FW_ID" ] || [ "$FW_ID" != "$RES_ID" ]; then
     echo "error: Libbox CFBundleIdentifier mismatch root='$FW_ID' resources='$RES_ID' (ASC 90334)" >&2
     exit 1
   fi
-  /usr/bin/install_name_tool -id "@rpath/Libbox.framework/Libbox" "$BINARY" 2>/dev/null || true
+  /usr/bin/install_name_tool -id "@rpath/Libbox.framework/${EXEC}" "$BINARY" 2>/dev/null || true
 
   IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
   if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
@@ -325,11 +331,8 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: no code signing identity to sign embedded Libbox" >&2
     exit 1
   fi
-  # Sign with the Info.plist identifier — default basename "Libbox" triggers ASC 90334 /
-  # device Unable to Install when the sealed signature id does not match CFBundleIdentifier.
-  # Always stamp BOTH the Mach-O and the .framework: signing only the bundle can leave the
-  # nested binary Identifier=Libbox, and exportArchive later re-stamps basename again.
-  LIBBOX_ID="${FW_ID:-io.nekohasekai.libbox}"
+  # Stamp BOTH Mach-O and .framework. Basename of Mach-O already equals LIBBOX_ID so
+  # exportArchive/ASC basename re-stamp still matches CFBundleIdentifier.
   /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$BINARY"
   if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none --generate-entitlement-der "$DEST"; then
     /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$DEST"
@@ -342,7 +345,7 @@ runner_phase.shell_script = <<~'SCRIPT'
       exit 1
     fi
   done
-  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes, id $LIBBOX_ID)"
+  echo "OK Libbox in Runner ($(du -sh "$DEST" | awk '{print $1}'), dylib ${BIN_SIZE} bytes, id $LIBBOX_ID, exec $EXEC)"
 SCRIPT
 
 # Late re-stamp after Flutter Thin Binary (embed_and_thin) and as last Run Script before
@@ -359,13 +362,19 @@ resign_phase.shell_script = <<~'SCRIPT'
   set -euo pipefail
   FFP="${FRAMEWORKS_FOLDER_PATH:-Frameworks}"
   DEST="${TARGET_BUILD_DIR}/${FFP}/Libbox.framework"
-  BINARY="$DEST/Libbox"
-  if [ ! -d "$DEST" ] || [ ! -f "$BINARY" ]; then
+  if [ ! -d "$DEST" ]; then
     echo "error: Libbox.framework missing at $DEST — Embed Libbox into Runner must run first" >&2
     exit 1
   fi
   LIBBOX_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Info.plist" 2>/dev/null || true)
   LIBBOX_ID="${LIBBOX_ID:-io.nekohasekai.libbox}"
+  EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Info.plist" 2>/dev/null || true)
+  EXEC="${EXEC:-$LIBBOX_ID}"
+  BINARY="$DEST/$EXEC"
+  if [ ! -f "$BINARY" ]; then
+    echo "error: Libbox Mach-O missing at $BINARY after Thin Binary" >&2
+    exit 1
+  fi
   IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-}"
   if [ -z "$IDENTITY" ] || [ "$IDENTITY" = "-" ]; then
     IDENTITY="${CODE_SIGN_IDENTITY:-}"
@@ -385,7 +394,7 @@ resign_phase.shell_script = <<~'SCRIPT'
       exit 1
     fi
   done
-  echo "OK Libbox identifiers re-stamped after Thin Binary ($LIBBOX_ID)"
+  echo "OK Libbox identifiers re-stamped after Thin Binary ($LIBBOX_ID, exec $EXEC)"
 SCRIPT
 
 # After CocoaPods embed (replace stub/bad copy), before Thin Binary; resign after Thin Binary.

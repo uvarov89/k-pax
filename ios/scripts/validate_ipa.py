@@ -60,13 +60,30 @@ def _extension_binary(extension: Path, ext_plist: dict) -> Path:
     return extension / name
 
 
-def _resolve_libbox_binary(fw: Path) -> Path | None:
-    """Prefer a real Mach-O over a root symlink stub left by versioned frameworks."""
-    candidates = [
-        fw / "Libbox",
-        fw / "Versions" / "A" / "Libbox",
-        fw / "Versions" / "Current" / "Libbox",
-    ]
+def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | None:
+    """Prefer a real Mach-O over a root symlink stub left by versioned frameworks.
+
+    Canonical name is CFBundleExecutable (== CFBundleIdentifier) so exportArchive
+    basename stamping cannot yield Identifier=Libbox.
+    """
+    names: list[str] = []
+    if executable:
+        names.append(executable)
+    names.extend(
+        [
+            "io.nekohasekai.libbox",
+            "Libbox",  # legacy short name — rejected later if still present
+        ]
+    )
+    candidates: list[Path] = []
+    for name in names:
+        candidates.extend(
+            [
+                fw / name,
+                fw / "Versions" / "A" / name,
+                fw / "Versions" / "Current" / name,
+            ]
+        )
     found: list[Path] = []
     for cand in candidates:
         if not cand.exists():
@@ -100,10 +117,6 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
     embedded = list(frameworks.glob("Libbox.framework")) if frameworks.is_dir() else []
     if embedded:
         fw = embedded[0]
-        lib_bin = _resolve_libbox_binary(fw)
-        assert lib_bin is not None, (
-            f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
-        )
         plist_path = fw / "Info.plist"
         assert plist_path.is_file(), f"Libbox.framework missing Info.plist: {fw}"
         resources_plist_path = fw / "Resources" / "Info.plist"
@@ -114,11 +127,28 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
             "Libbox.framework still has Versions/ — must be shallow for iOS ASC"
         )
         info = plistlib.loads(plist_path.read_bytes())
-        assert info.get("CFBundleIdentifier"), "Libbox CFBundleIdentifier missing"
-        assert info.get("CFBundleExecutable") == "Libbox", (
-            f"Libbox CFBundleExecutable={info.get('CFBundleExecutable')!r}"
+        bundle_id = info.get("CFBundleIdentifier")
+        exec_name = info.get("CFBundleExecutable")
+        assert bundle_id, "Libbox CFBundleIdentifier missing"
+        assert exec_name, "Libbox CFBundleExecutable missing"
+        # Basename-proof: codesign Identifier=<basename> must equal bundle id.
+        assert exec_name == bundle_id, (
+            f"Libbox CFBundleExecutable={exec_name!r} must equal "
+            f"CFBundleIdentifier={bundle_id!r} (ASC 90334 / Unable to Install)"
         )
         assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
+        lib_bin = _resolve_libbox_binary(fw, str(exec_name))
+        assert lib_bin is not None, (
+            f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
+        )
+        # Short-name Mach-O must not remain beside the canonical executable.
+        legacy = fw / "Libbox"
+        canonical = fw / str(exec_name)
+        if legacy.exists() and legacy.resolve() != canonical.resolve():
+            raise AssertionError(
+                "Libbox.framework still has short-name Mach-O 'Libbox' beside "
+                f"{exec_name!r} — exportArchive would re-break Identifier"
+            )
         assert info.get("CFBundleVersion"), "Libbox CFBundleVersion missing"
         short_ver = str(info.get("CFBundleShortVersionString") or "")
         assert short_ver, "Libbox CFBundleShortVersionString missing"
@@ -190,12 +220,13 @@ def _codesign_identifier(path: Path) -> str | None:
 def validate_libbox_signature_identifier(framework: Path) -> None:
     """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
 
-    exportArchive often re-stamps Libbox.framework/Libbox with basename "Libbox"
-    while the .framework still reports the plist id — device Unable to Install.
+    exportArchive/ASC often re-stamp Identifier=<Mach-O basename>. Executable name
+    must equal CFBundleIdentifier so basename stamping cannot diverge.
     """
     info = plistlib.loads((framework / "Info.plist").read_bytes())
     expected = info["CFBundleIdentifier"]
-    binary = framework / "Libbox"
+    exec_name = info.get("CFBundleExecutable") or expected
+    binary = framework / str(exec_name)
     targets = [framework]
     if binary.is_file():
         targets.append(binary)
@@ -209,7 +240,7 @@ def validate_libbox_signature_identifier(framework: Path) -> None:
 
 
 def _hard_codesign_verify(path: Path) -> None:
-    """Libbox must verify cleanly — sealed-resource failures cause device Unable to Install."""
+    """Must verify cleanly — sealed-resource failures cause device Unable to Install."""
     result = subprocess.run(
         ["codesign", "--verify", "--verbose=4", str(path)],
         check=False,
@@ -220,24 +251,6 @@ def _hard_codesign_verify(path: Path) -> None:
         print(f"codesign --verify OK: {path.name}")
         return
     detail = (result.stderr or result.stdout or "").strip()
-    raise AssertionError(f"codesign --verify failed for {path}: {detail}")
-
-
-def _soft_codesign_verify(path: Path) -> None:
-    """Host app/appex can trip sealed-resource on otherwise valid Flutter IPAs."""
-    result = subprocess.run(
-        ["codesign", "--verify", str(path)],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        print(f"codesign --verify OK: {path.name}")
-        return
-    detail = (result.stderr or result.stdout or "").strip()
-    if "sealed resource is missing or invalid" in detail:
-        print(f"codesign --verify soft-warn {path.name}: {detail}")
-        return
     raise AssertionError(f"codesign --verify failed for {path}: {detail}")
 
 
@@ -261,8 +274,17 @@ def validate_archive(ipa, brand, signing=True):
             if libbox.is_dir():
                 validate_libbox_signature_identifier(libbox)
                 _hard_codesign_verify(libbox)
+                lib_bin = libbox / str(
+                    plistlib.loads((libbox / "Info.plist").read_bytes()).get(
+                        "CFBundleExecutable"
+                    )
+                    or "io.nekohasekai.libbox"
+                )
+                if lib_bin.is_file():
+                    _hard_codesign_verify(lib_bin)
+            # After post-IPA resign, host/appex must verify — soft-warn hid seal breaks.
             for path in (app, extension):
-                _soft_codesign_verify(path)
+                _hard_codesign_verify(path)
             bundle = BRANDS[brand][0]
             app_team = validate_signing(app, bundle)
             extension_team = validate_signing(extension, bundle)

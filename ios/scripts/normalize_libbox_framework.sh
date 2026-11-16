@@ -5,10 +5,18 @@
 # sagernet/gomobile bind uses -buildmode=c-archive and places the .a (via lipo)
 # as Versions/A/Libbox. Embedding into Runner.app/Frameworks requires a dylib,
 # so archives are relinked with clang -dynamiclib here.
+#
+# Mach-O basename MUST equal CFBundleIdentifier: exportArchive / ASC re-sign often
+# stamp Identifier=<basename>. A binary named "Libbox" yields Identifier=Libbox while
+# plist stays io.nekohasekai.libbox → device Unable to Install (ASC 90334 class).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KQUEUE_STUB="${SCRIPT_DIR}/libbox_message_pump_kqueue_stub.cpp"
+# Framework folder stays Libbox.framework (-framework Libbox); executable name = bundle id.
+LIBBOX_BUNDLE_ID="io.nekohasekai.libbox"
+LIBBOX_EXEC_NAME="$LIBBOX_BUNDLE_ID"
+LIBBOX_INSTALL_NAME="@rpath/Libbox.framework/${LIBBOX_EXEC_NAME}"
 
 _libbox_marketing_version() {
   # Git tags are v1.13.21; ASC iris 90060 rejects a leading "v" in CFBundleShortVersionString.
@@ -43,8 +51,8 @@ patch_plist() {
   marketing="$(_libbox_marketing_version)"
   set_or_add CFBundleInfoDictionaryVersion string 6.0
   set_or_add CFBundlePackageType string FMWK
-  set_or_add CFBundleExecutable string Libbox
-  set_or_add CFBundleIdentifier string io.nekohasekai.libbox
+  set_or_add CFBundleExecutable string "$LIBBOX_EXEC_NAME"
+  set_or_add CFBundleIdentifier string "$LIBBOX_BUNDLE_ID"
   set_or_add CFBundleName string Libbox
   set_or_add CFBundleVersion string 1
   set_or_add CFBundleShortVersionString string "$marketing"
@@ -68,7 +76,7 @@ patch_resources_plist() {
   $pb -c "Add :CFBundlePackageType string BNDL" "$plist"
   # Must match framework CFBundleIdentifier — ASC 90334 rejects a nested
   # .resources id when codesigning Libbox.framework (keep BNDL, no executable).
-  $pb -c "Add :CFBundleIdentifier string io.nekohasekai.libbox" "$plist"
+  $pb -c "Add :CFBundleIdentifier string $LIBBOX_BUNDLE_ID" "$plist"
   $pb -c "Add :CFBundleName string Libbox" "$plist"
   $pb -c "Add :CFBundleVersion string 1" "$plist"
   $pb -c "Add :CFBundleShortVersionString string $marketing" "$plist"
@@ -148,7 +156,7 @@ relink_archive_to_dylib() {
       -target "$target" \
       -isysroot "$sysroot" \
       $min_flag \
-      -install_name "@rpath/Libbox.framework/Libbox" \
+      -install_name "$LIBBOX_INSTALL_NAME" \
       -Wl,-force_load,"$thin" \
       "$stub_o" \
       $(_libbox_link_libs) \
@@ -204,9 +212,14 @@ normalize_one() {
   # Fresh BNDL plist — never clone the FMWK root plist (ASC 90535).
   patch_resources_plist "$framework/Resources/Info.plist" "$platform"
 
-  local binary="$framework/Libbox"
-  if [[ ! -f "$binary" ]]; then
-    echo "error: missing $binary after normalize" >&2
+  # gomobile leaves the Mach-O as "Libbox"; rename so codesign basename == bundle id.
+  local binary=""
+  if [[ -f "$framework/$LIBBOX_EXEC_NAME" ]]; then
+    binary="$framework/$LIBBOX_EXEC_NAME"
+  elif [[ -f "$framework/Libbox" ]]; then
+    binary="$framework/Libbox"
+  else
+    echo "error: missing Libbox Mach-O after normalize in $framework" >&2
     ls -laR "$framework" >&2 || true
     exit 1
   fi
@@ -230,8 +243,17 @@ normalize_one() {
     exit 1
   fi
 
-  /usr/bin/install_name_tool -id "@rpath/Libbox.framework/Libbox" "$binary" 2>/dev/null || true
-  echo "OK normalized $framework ($size bytes, $platform)"
+  if [[ "$(basename "$binary")" != "$LIBBOX_EXEC_NAME" ]]; then
+    mv "$binary" "$framework/$LIBBOX_EXEC_NAME"
+    binary="$framework/$LIBBOX_EXEC_NAME"
+  fi
+  # Drop leftover short-name binary if both somehow exist.
+  if [[ -f "$framework/Libbox" && "$framework/Libbox" != "$binary" ]]; then
+    rm -f "$framework/Libbox"
+  fi
+
+  /usr/bin/install_name_tool -id "$LIBBOX_INSTALL_NAME" "$binary" 2>/dev/null || true
+  echo "OK normalized $framework ($size bytes, $platform, exec=$LIBBOX_EXEC_NAME)"
 }
 
 # Drop slices that do not match mode and rewrite root Info.plist so CocoaPods
@@ -321,8 +343,15 @@ assert_xcframework_all_dylibs() {
   local fw binary desc
   for fw in "$xc"/*/Libbox.framework; do
     [[ -d "$fw" ]] || continue
-    binary="$fw/Libbox"
-    [[ -f "$binary" ]] || { echo "error: missing $binary" >&2; exit 1; }
+    binary="$fw/$LIBBOX_EXEC_NAME"
+    if [[ ! -f "$binary" && -f "$fw/Libbox" ]]; then
+      binary="$fw/Libbox"
+    fi
+    [[ -f "$binary" ]] || { echo "error: missing $fw/$LIBBOX_EXEC_NAME" >&2; exit 1; }
+    if [[ "$(basename "$binary")" != "$LIBBOX_EXEC_NAME" ]]; then
+      echo "error: Libbox Mach-O basename must be $LIBBOX_EXEC_NAME (got $(basename "$binary"))" >&2
+      exit 1
+    fi
     desc=$(/usr/bin/file -b "$binary" || true)
     if ! is_dylib "$desc"; then
       echo "error: mixed/static Libbox in $fw ($desc) — CocoaPods rejects static+dynamic xcframeworks" >&2

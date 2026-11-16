@@ -2,9 +2,10 @@
 # Re-sign Libbox.framework inside an exported IPA so codesign Identifier matches
 # CFBundleIdentifier after Xcode/Flutter exportArchive.
 #
-# exportArchive re-signs nested Mach-O with the path basename ("Libbox"). That
-# survives ASC processing and outer-framework `codesign -d`, but iPhone install
-# rejects the IPA ("Unable to Install" / "Try again later") — class ASC 90334.
+# exportArchive / ASC often re-stamp nested Mach-O Identifier=<basename>. Normalize
+# names the binary io.nekohasekai.libbox so basename already matches; this step still
+# re-seals after any export drift. Distribution IPA re-sign must keep a secure
+# timestamp (disabling it breaks device install on modern iOS). Fail hard on verify.
 set -euo pipefail
 
 IPA="${1:?usage: resign_libbox_in_ipa.sh path/to/App.ipa}"
@@ -54,15 +55,32 @@ if [[ -z "$APP" || ! -d "$APP" ]]; then
 fi
 
 LIBBOX="$APP/Frameworks/Libbox.framework"
-BINARY="$LIBBOX/Libbox"
-if [[ ! -d "$LIBBOX" || ! -f "$BINARY" ]]; then
-  echo "error: missing $LIBBOX/Libbox" >&2
+if [[ ! -d "$LIBBOX" ]]; then
+  echo "error: missing $LIBBOX" >&2
   exit 1
 fi
 
 LIBBOX_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LIBBOX/Info.plist" 2>/dev/null || true)"
+EXEC="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$LIBBOX/Info.plist" 2>/dev/null || true)"
 if [[ -z "$LIBBOX_ID" ]]; then
   echo "error: Libbox Info.plist missing CFBundleIdentifier" >&2
+  exit 1
+fi
+if [[ -z "$EXEC" ]]; then
+  echo "error: Libbox Info.plist missing CFBundleExecutable" >&2
+  exit 1
+fi
+if [[ "$EXEC" != "$LIBBOX_ID" ]]; then
+  echo "error: CFBundleExecutable='$EXEC' must equal CFBundleIdentifier='$LIBBOX_ID' (basename-proof)" >&2
+  exit 1
+fi
+BINARY="$LIBBOX/$EXEC"
+if [[ ! -f "$BINARY" ]]; then
+  echo "error: missing $BINARY" >&2
+  exit 1
+fi
+if [[ -f "$LIBBOX/Libbox" && "$LIBBOX/Libbox" != "$BINARY" ]]; then
+  echo "error: leftover short-name Mach-O $LIBBOX/Libbox" >&2
   exit 1
 fi
 RES_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LIBBOX/Resources/Info.plist" 2>/dev/null || true)"
@@ -71,11 +89,11 @@ if [[ -z "$RES_ID" || "$RES_ID" != "$LIBBOX_ID" ]]; then
   exit 1
 fi
 
-echo "Stamping Libbox Identifier=$LIBBOX_ID (bundle + Mach-O)"
-# Bare Mach-O first — exportArchive often leaves Identifier=Libbox here.
-/usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$BINARY"
-if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none --generate-entitlement-der "$LIBBOX"; then
-  /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$LIBBOX"
+echo "Stamping Libbox Identifier=$LIBBOX_ID (bundle + Mach-O $EXEC)"
+# Secure timestamp required for Distribution IPA destined for device install.
+/usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$BINARY"
+if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp --generate-entitlement-der "$LIBBOX"; then
+  /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
 fi
 
 for path in "$BINARY" "$LIBBOX"; do
@@ -94,11 +112,13 @@ resign_bundle() {
   local ent="$TMP/$(basename "$bundle").entitlements.plist"
   /usr/bin/codesign -d --entitlements ":$ent" "$bundle" 2>/dev/null || true
   if [[ -f "$ent" && -s "$ent" ]]; then
-    /usr/bin/codesign --force --sign "$IDENTITY" --entitlements "$ent" --timestamp=none "$bundle"
+    /usr/bin/codesign --force --sign "$IDENTITY" --entitlements "$ent" \
+      --generate-entitlement-der --timestamp "$bundle"
   else
-    /usr/bin/codesign --force --sign "$IDENTITY" --timestamp=none "$bundle"
+    /usr/bin/codesign --force --sign "$IDENTITY" \
+      --generate-entitlement-der --timestamp "$bundle"
   fi
-  /usr/bin/codesign --verify "$bundle" || true
+  /usr/bin/codesign --verify --verbose=4 "$bundle"
 }
 
 if [[ -n "$APPEX" && -d "$APPEX" ]]; then
@@ -115,4 +135,4 @@ OUT="$TMP/repacked.ipa"
 )
 # Replace in place (preserve caller path).
 ditto "$OUT" "$IPA"
-echo "OK Libbox re-signed in IPA (id $LIBBOX_ID)"
+echo "OK Libbox re-signed in IPA (id $LIBBOX_ID, exec $EXEC)"

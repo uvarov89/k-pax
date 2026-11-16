@@ -53,8 +53,9 @@ codesign_identifier() {
 }
 
 # Distribution IPA destined for TestFlight/device must show Apple Distribution
-# authority and a secure timestamp (Signed Time). Ad-hoc / timestamp=none
-# signatures upload in some cases but installd rejects ("Unable to Install").
+# authority and a secure timestamp. Modern codesign -dvvv prints Timestamp=;
+# older tools print Signed Time=. Ad-hoc / timestamp=none signatures upload in
+# some cases but installd rejects ("Unable to Install").
 assert_distribution_seal() {
   local path="$1"
   local label="${2:-$path}"
@@ -65,8 +66,9 @@ assert_distribution_seal() {
     printf '%s\n' "$dump" >&2
     exit 1
   fi
-  if ! printf '%s\n' "$dump" | /usr/bin/grep -q 'Signed Time='; then
-    echo "error: $label missing Signed Time= (secure timestamp required; timestamp=none breaks device install):" >&2
+  # Accept Timestamp= (modern) or Signed Time= (legacy) as secure timestamp proof.
+  if ! printf '%s\n' "$dump" | /usr/bin/grep -Eq 'Timestamp=|Signed Time='; then
+    echo "error: $label missing Timestamp=/Signed Time= (secure timestamp required; timestamp=none breaks device install):" >&2
     printf '%s\n' "$dump" >&2
     exit 1
   fi

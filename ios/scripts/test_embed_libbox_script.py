@@ -117,7 +117,10 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("--generate-entitlement-der", resign_body)
         self.assertIn("assert_distribution_seal", resign)
         self.assertIn("Authority=Apple Distribution", resign)
+        # Modern codesign prints Timestamp=; legacy prints Signed Time=.
+        self.assertIn("Timestamp=", resign)
         self.assertIn("Signed Time=", resign)
+        self.assertRegex(resign, r"Timestamp=\|Signed Time=")
         self.assertIn("embedded.mobileprovision", resign_body)
         self.assertIn('BINARY="$LIBBOX/Libbox"', resign)
         self.assertIn("no post-export rename", resign)

@@ -7,6 +7,7 @@ workflows:
       app_store_connect: kpax
     environment:
       flutter: stable
+      # Pin after first green Internal TF install (currently Xcode-26.6 / altool 26.40.1).
       xcode: latest
       cocoapods: default
       # UI: Application → Environment variables → group "code_signing"

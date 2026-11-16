@@ -4,11 +4,18 @@
 #
 # Keep Mach-O basename "Libbox" (and CFBundleExecutable=Libbox) so
 # LC_LOAD_DYLIB=@rpath/Libbox.framework/Libbox stays valid. Do NOT rename the
-# binary or run install_name_tool on already-signed Runner/PacketTunnel —
-# lengthening the load path corrupts those Mach-Os and ASC returns 90085
-# ("No architectures in the binary"). Stamp Identifier via codesign
-# --identifier=CFBundleIdentifier instead (ASC 90334 / Unable to Install).
-# Distribution IPA re-sign must keep a secure timestamp. Fail hard on verify.
+# binary or run install_name_tool -change on already-signed Runner/PacketTunnel —
+# lengthening the load path (Libbox → io.nekohasekai.libbox) without link-time
+# header padding corrupts those Mach-Os → ASC 90085 ("No architectures").
+#
+# Stamp Identifier via codesign --identifier=CFBundleIdentifier (ASC 90334).
+# Keep reverse-DNS CFBundleIdentifier (must contain a '.') — a bare "Libbox" id
+# lets Xcode append a hash and recreate the mismatch.
+#
+# Forensic note (TF 1.0.59/37): post-export resign with --timestamp=none and
+# soft host verify produced device "Unable to Install" even when ASC accepted
+# the upload. Distribution re-sign MUST use secure --timestamp, DER entitlements,
+# and hard codesign --verify on Libbox → appex → app.
 set -euo pipefail
 
 IPA="${1:?usage: resign_libbox_in_ipa.sh path/to/App.ipa}"
@@ -43,6 +50,32 @@ codesign_identifier() {
   /usr/bin/codesign -d --verbose=4 "$path" 2>&1 \
     | /usr/bin/sed -n 's/^Identifier=//p' \
     | /usr/bin/head -1
+}
+
+# Distribution IPA destined for TestFlight/device must show Apple Distribution
+# authority and a secure timestamp (Signed Time). Ad-hoc / timestamp=none
+# signatures upload in some cases but installd rejects ("Unable to Install").
+assert_distribution_seal() {
+  local path="$1"
+  local label="${2:-$path}"
+  local dump
+  dump="$(/usr/bin/codesign -d --verbose=4 "$path" 2>&1 || true)"
+  if ! printf '%s\n' "$dump" | /usr/bin/grep -q 'Authority=Apple Distribution'; then
+    echo "error: $label missing Authority=Apple Distribution after resign:" >&2
+    printf '%s\n' "$dump" >&2
+    exit 1
+  fi
+  if ! printf '%s\n' "$dump" | /usr/bin/grep -q 'Signed Time='; then
+    echo "error: $label missing Signed Time= (secure timestamp required; timestamp=none breaks device install):" >&2
+    printf '%s\n' "$dump" >&2
+    exit 1
+  fi
+  if printf '%s\n' "$dump" | /usr/bin/grep -qi 'Signature=adhoc'; then
+    echo "error: $label looks ad-hoc after resign — refuse upload" >&2
+    printf '%s\n' "$dump" >&2
+    exit 1
+  fi
+  echo "Distribution seal OK: $label"
 }
 
 # Fail CI before ASC upload if a bundle executable is not a readable arm64 Mach-O.
@@ -134,6 +167,7 @@ for path in "$BINARY" "$LIBBOX"; do
     exit 1
   fi
   /usr/bin/codesign --verify --verbose=4 "$path"
+  assert_distribution_seal "$path" "$(basename "$path")"
 done
 
 assert_macho_arm64 "$BINARY" "Libbox.framework/Libbox (post-sign)"
@@ -144,15 +178,20 @@ APPEX="$(find "$APP/PlugIns" -maxdepth 1 -name '*.appex' -type d 2>/dev/null | h
 resign_bundle() {
   local bundle="$1"
   local ent="$TMP/$(basename "$bundle").entitlements.plist"
-  /usr/bin/codesign -d --entitlements ":$ent" "$bundle" 2>/dev/null || true
-  if [[ -f "$ent" && -s "$ent" ]]; then
-    /usr/bin/codesign --force --sign "$IDENTITY" --entitlements "$ent" \
-      --generate-entitlement-der --timestamp "$bundle"
-  else
-    /usr/bin/codesign --force --sign "$IDENTITY" \
-      --generate-entitlement-der --timestamp "$bundle"
+  # Keep embedded.mobileprovision; only refresh code signature + entitlements.
+  if [[ ! -f "$bundle/embedded.mobileprovision" ]]; then
+    echo "error: missing embedded.mobileprovision in $bundle" >&2
+    exit 1
   fi
+  /usr/bin/codesign -d --entitlements ":$ent" "$bundle" 2>/dev/null || true
+  if [[ ! -f "$ent" || ! -s "$ent" ]]; then
+    echo "error: could not extract entitlements from $bundle for re-seal" >&2
+    exit 1
+  fi
+  /usr/bin/codesign --force --sign "$IDENTITY" --entitlements "$ent" \
+    --generate-entitlement-der --timestamp "$bundle"
   /usr/bin/codesign --verify --verbose=4 "$bundle"
+  assert_distribution_seal "$bundle" "$(basename "$bundle")"
 }
 
 if [[ -n "$APPEX" && -d "$APPEX" ]]; then

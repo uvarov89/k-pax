@@ -1,5 +1,33 @@
+import struct
+import tempfile
 import unittest
-from validate_ipa import validate_bundle_info
+from pathlib import Path
+
+from validate_ipa import (
+    _CPU_TYPE_ARM64,
+    _MH_MAGIC_64,
+    _macho_mentions_arm64,
+    assert_macho_arm64,
+    validate_bundle_info,
+)
+
+
+class MachOArm64ContractTest(unittest.TestCase):
+    def test_thin_arm64_header_detected(self):
+        # Minimal little-endian MH_MAGIC_64 + CPU_TYPE_ARM64 header.
+        header = struct.pack("<II", _MH_MAGIC_64, _CPU_TYPE_ARM64) + b"\x00" * 64
+        self.assertTrue(_macho_mentions_arm64(header))
+
+    def test_non_macho_rejected(self):
+        self.assertFalse(_macho_mentions_arm64(b"not a macho binary!!!!"))
+
+    def test_assert_macho_arm64_accepts_synthetic(self):
+        header = struct.pack("<II", _MH_MAGIC_64, _CPU_TYPE_ARM64) + b"\x00" * 2048
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "fake"
+            path.write_bytes(header)
+            assert_macho_arm64(path, "synthetic")
+
 
 class ArchiveContractTest(unittest.TestCase):
     def setUp(self):

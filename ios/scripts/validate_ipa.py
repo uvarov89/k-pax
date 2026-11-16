@@ -3,6 +3,7 @@
 import argparse
 import plistlib
 import re
+import struct
 import subprocess
 import tempfile
 import zipfile
@@ -13,6 +14,15 @@ BRANDS = {"xplm": ("online.xplm.app", "X-Plm"), "kpax": ("space.kpax.app", "K-Pa
 MIN_LIBBOX_BYTES = 1_000_000
 # Podfile / PacketTunnel / Libbox all target iOS 15; lower values risk TF install failures.
 MIN_SUPPORTED_IOS = (15, 0)
+# Mach-O / fat magics (native endian + swapped).
+_MH_MAGIC_64 = 0xFEEDFACF
+_MH_CIGAM_64 = 0xCFFAEDFE
+_MH_MAGIC = 0xFEEDFACE
+_MH_CIGAM = 0xCEFAEDFE
+_FAT_MAGIC = 0xCAFEBABE
+_FAT_CIGAM = 0xBEBAFECA
+_CPU_TYPE_ARM64 = 0x0100000C
+_CPU_TYPE_ARM64_SWAPPED = 0x0C000001
 
 
 def _parse_ios_version(raw) -> tuple[int, ...]:
@@ -60,19 +70,77 @@ def _extension_binary(extension: Path, ext_plist: dict) -> Path:
     return extension / name
 
 
+def _macho_mentions_arm64(data: bytes) -> bool:
+    """True if bytes look like Mach-O / fat containing arm64 (no lipo needed)."""
+    if len(data) < 8:
+        return False
+    magic = struct.unpack(">I", data[:4])[0]
+    magic_le = struct.unpack("<I", data[:4])[0]
+    if magic in (_FAT_MAGIC, _FAT_CIGAM) or magic_le in (_FAT_MAGIC, _FAT_CIGAM):
+        swapped = magic == _FAT_CIGAM or magic_le == _FAT_CIGAM
+        nfat = struct.unpack(">I" if not swapped else "<I", data[4:8])[0]
+        off = 8
+        for _ in range(min(nfat, 16)):
+            if off + 20 > len(data):
+                break
+            fmt = ">II" if not swapped else "<II"
+            cputype, _cpusub = struct.unpack(fmt, data[off : off + 8])
+            if cputype in (_CPU_TYPE_ARM64, _CPU_TYPE_ARM64_SWAPPED):
+                return True
+            off += 20
+        return False
+    if magic_le in (_MH_MAGIC_64, _MH_MAGIC):
+        cputype = struct.unpack("<I", data[4:8])[0]
+        return cputype == _CPU_TYPE_ARM64
+    if magic in (_MH_CIGAM_64, _MH_CIGAM) or magic_le in (_MH_CIGAM_64, _MH_CIGAM):
+        cputype = struct.unpack(">I", data[4:8])[0]
+        return cputype == _CPU_TYPE_ARM64
+    return False
+
+
+def assert_macho_arm64(path: Path, label: str | None = None) -> None:
+    """ASC 90085: lipo must see arm64 in every bundle executable / Libbox dylib."""
+    name = label or path.name
+    assert path.is_file(), f"missing Mach-O for arch check: {name} ({path})"
+    size = path.stat().st_size
+    assert size >= 1024, f"{name} too small ({size} bytes) — ASC 90085"
+    # Prefer lipo on macOS CI; fall back to header parse (Windows offline).
+    lipo_err = "lipo unavailable"
+    try:
+        lipo = subprocess.run(
+            ["lipo", "-info", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if lipo.returncode == 0:
+            info = (lipo.stdout or lipo.stderr or "").strip()
+            assert "arm64" in info, f"{name} has no arm64 (lipo: {info}) — ASC 90085"
+            print(f"Mach-O arm64 OK: {name} ({info})")
+            return
+        lipo_err = (lipo.stderr or lipo.stdout or "").strip() or str(lipo.returncode)
+    except FileNotFoundError:
+        lipo_err = "lipo not found"
+    data = path.read_bytes()[:4096]
+    assert _macho_mentions_arm64(data), (
+        f"{name} is not a readable arm64 Mach-O (lipo failed: {lipo_err}) — ASC 90085"
+    )
+    print(f"Mach-O arm64 OK: {name} (header parse; {lipo_err})")
+
+
 def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | None:
     """Prefer a real Mach-O over a root symlink stub left by versioned frameworks.
 
-    Exported IPA (after resign_libbox_in_ipa.sh) must use CFBundleExecutable ==
-    CFBundleIdentifier so Identifier=<basename> cannot yield Identifier=Libbox.
+    Post-export resign keeps CFBundleExecutable=Libbox and stamps codesign
+    Identifier=CFBundleIdentifier (no Mach-O rename — ASC 90085).
     """
     names: list[str] = []
     if executable:
         names.append(executable)
     names.extend(
         [
-            "io.nekohasekai.libbox",
-            "Libbox",  # pre-resign short name — rejected later if still present
+            "Libbox",
+            "io.nekohasekai.libbox",  # legacy basename-proof name — rejected later
         ]
     )
     candidates: list[Path] = []
@@ -131,24 +199,25 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         exec_name = info.get("CFBundleExecutable")
         assert bundle_id, "Libbox CFBundleIdentifier missing"
         assert exec_name, "Libbox CFBundleExecutable missing"
-        # Post-resign IPA: codesign Identifier=<basename> must equal bundle id.
-        assert exec_name == bundle_id, (
-            f"Libbox CFBundleExecutable={exec_name!r} must equal "
-            f"CFBundleIdentifier={bundle_id!r} (ASC 90334 / Unable to Install)"
+        # Keep short Mach-O name; codesign --identifier stamps bundle id (ASC 90334).
+        # Renaming to CFBundleIdentifier + install_name_tool caused ASC 90085.
+        assert exec_name == "Libbox", (
+            f"Libbox CFBundleExecutable={exec_name!r} must stay 'Libbox' "
+            f"(no post-export rename; ASC 90085)"
         )
         assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
         lib_bin = _resolve_libbox_binary(fw, str(exec_name))
         assert lib_bin is not None, (
             f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
         )
-        # Short-name Mach-O must not remain beside the canonical executable.
-        legacy = fw / "Libbox"
-        canonical = fw / str(exec_name)
-        if legacy.exists() and legacy.resolve() != canonical.resolve():
+        # Reject leftover long-name Mach-O from older basename-proof resigns.
+        long_name = fw / str(bundle_id)
+        if long_name.exists() and long_name.resolve() != lib_bin.resolve():
             raise AssertionError(
-                "Libbox.framework still has short-name Mach-O 'Libbox' beside "
-                f"{exec_name!r} — exportArchive would re-break Identifier"
+                f"Libbox.framework still has long-name Mach-O {bundle_id!r} beside "
+                f"'Libbox' — remove it (ASC 90085 / load-path drift)"
             )
+        assert_macho_arm64(lib_bin, "Libbox.framework/Libbox")
         assert info.get("CFBundleVersion"), "Libbox CFBundleVersion missing"
         short_ver = str(info.get("CFBundleShortVersionString") or "")
         assert short_ver, "Libbox CFBundleShortVersionString missing"
@@ -220,12 +289,12 @@ def _codesign_identifier(path: Path) -> str | None:
 def validate_libbox_signature_identifier(framework: Path) -> None:
     """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
 
-    After post-export rename, Identifier=<Mach-O basename>. Executable name
-    must equal CFBundleIdentifier so basename stamping cannot diverge.
+    Mach-O basename stays Libbox; resign stamps Identifier via codesign
+    --identifier=CFBundleIdentifier (do not rename the binary).
     """
     info = plistlib.loads((framework / "Info.plist").read_bytes())
     expected = info["CFBundleIdentifier"]
-    exec_name = info.get("CFBundleExecutable") or expected
+    exec_name = info.get("CFBundleExecutable") or "Libbox"
     binary = framework / str(exec_name)
     targets = [framework]
     if binary.is_file():
@@ -269,6 +338,11 @@ def validate_archive(ipa, brand, signing=True):
         validate_bundle_info(app_plist, ext_plist, brand)
         assert_no_frameworks_in_appex(extension)
         assert_libbox_in_host_app(app, extension, ext_plist)
+        # ASC 90085: every bundle executable must still be a valid arm64 Mach-O.
+        app_exec = app / str(app_plist.get("CFBundleExecutable") or app.stem)
+        ext_exec = _extension_binary(extension, ext_plist)
+        assert_macho_arm64(app_exec, f"Runner/{app_exec.name}")
+        assert_macho_arm64(ext_exec, f"PacketTunnel/{ext_exec.name}")
         if signing:
             libbox = app / "Frameworks" / "Libbox.framework"
             if libbox.is_dir():
@@ -278,7 +352,7 @@ def validate_archive(ipa, brand, signing=True):
                     plistlib.loads((libbox / "Info.plist").read_bytes()).get(
                         "CFBundleExecutable"
                     )
-                    or "io.nekohasekai.libbox"
+                    or "Libbox"
                 )
                 if lib_bin.is_file():
                     _hard_codesign_verify(lib_bin)

@@ -293,8 +293,8 @@ runner_phase.shell_script = <<~'SCRIPT'
       ;;
   esac
   EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Info.plist" 2>/dev/null || true)
-  # Keep short name through archive so -framework Libbox / LC_LOAD_DYLIB stay valid.
-  # resign_libbox_in_ipa.sh renames Mach-O to CFBundleIdentifier after export.
+  # Keep short name forever so -framework Libbox / LC_LOAD_DYLIB stay valid.
+  # Post-IPA resign stamps Identifier via codesign --identifier (no rename).
   if [ "$EXEC" != "Libbox" ]; then
     echo "error: CFBundleExecutable='$EXEC' (want Libbox)" >&2
     exit 1
@@ -328,7 +328,7 @@ runner_phase.shell_script = <<~'SCRIPT'
     exit 1
   fi
   # Stamp BOTH Mach-O and .framework with bundle id. exportArchive may re-stamp
-  # Identifier=<basename>; Codemagic resign_libbox_in_ipa.sh renames + re-seals.
+  # Identifier=<basename>; Codemagic resign_libbox_in_ipa.sh re-seals with --identifier.
   LIBBOX_ID="${FW_ID:-io.nekohasekai.libbox}"
   /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none "$BINARY"
   if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp=none --generate-entitlement-der "$DEST"; then

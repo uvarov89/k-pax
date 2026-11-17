@@ -86,22 +86,32 @@ assert_distribution_seal() {
   echo "Distribution seal OK: $label"
 }
 
+# Resolve symlinks to an absolute path. macOS readlink has no portable -f;
+# stating a Versions/... symlink itself reports ~11B (link text), not the Mach-O
+# — that false "ASC 90085 too small" aborted Codemagic resign on M2.
+resolve_real_file() {
+  local path="$1"
+  if [[ ! -e "$path" && ! -L "$path" ]]; then
+    echo ""
+    return 0
+  fi
+  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$path"
+}
+
 # Fail CI before ASC upload if a bundle executable is not a readable arm64 Mach-O.
 assert_macho_arm64() {
   local path="$1"
   local label="${2:-$path}"
-  if [[ ! -f "$path" ]]; then
+  path="$(resolve_real_file "$path")"
+  if [[ -z "$path" || ! -f "$path" ]]; then
     echo "error: missing Mach-O for lipo check: $label ($path)" >&2
     exit 1
-  fi
-  # Symlinks: resolve to the real file for size/arch checks.
-  if [[ -L "$path" ]]; then
-    path="$(/usr/bin/readlink -f "$path" 2>/dev/null || /usr/bin/readlink "$path")"
   fi
   local size
   size="$(/usr/bin/stat -f%z "$path" 2>/dev/null || /usr/bin/stat -c%s "$path")"
   if [[ "${size:-0}" -lt 1024 ]]; then
     echo "error: $label is too small (${size} bytes) — not a real Mach-O (ASC 90085)" >&2
+    ls -la "$(dirname "$path")" >&2 || true
     exit 1
   fi
   local desc archs
@@ -288,20 +298,44 @@ fi
 remove_signature "$APP" "$(basename "$APP")"
 
 # ---------------------------------------------------------------------------
-# 2) Rename Mach-O to CFBundleIdentifier; CFBundleExecutable must match.
+# 2) Place Mach-O as CFBundleIdentifier; CFBundleExecutable must match.
 # 3) Symlink short name → long name for existing LC_LOAD_DYLIB paths.
 # ---------------------------------------------------------------------------
 BINARY="$LIBBOX/$LONG_EXEC"
-if [[ -f "$LIBBOX/$SHORT_EXEC" && ! -L "$LIBBOX/$SHORT_EXEC" ]]; then
-  echo "Renaming Mach-O $SHORT_EXEC → $LONG_EXEC"
-  /bin/mv -f "$LIBBOX/$SHORT_EXEC" "$BINARY"
-elif [[ -f "$BINARY" ]]; then
-  echo "Mach-O already named $LONG_EXEC"
-else
-  echo "error: cannot locate Libbox Mach-O to rename" >&2
-  ls -la "$LIBBOX" >&2 || true
+# Prefer the real dylib (Versions/A/Libbox) over a short symlink stub (~11B).
+REAL_BIN=""
+if [[ -e "$SHORT_BINARY" || -L "$SHORT_BINARY" ]]; then
+  REAL_BIN="$(resolve_real_file "$SHORT_BINARY")"
+fi
+if [[ -z "$REAL_BIN" || ! -f "$REAL_BIN" ]]; then
+  # validate_ipa-style fallbacks when root name is a text/symlink stub
+  for cand in \
+    "$LIBBOX/Versions/Current/Libbox" \
+    "$LIBBOX/Versions/A/Libbox" \
+    "$LIBBOX/$LONG_EXEC"; do
+    if [[ -f "$cand" && ! -L "$cand" ]]; then
+      REAL_BIN="$(resolve_real_file "$cand")"
+      break
+    fi
+  done
+fi
+if [[ -z "$REAL_BIN" || ! -f "$REAL_BIN" ]]; then
+  echo "error: cannot locate real Libbox Mach-O to rename" >&2
+  ls -laR "$LIBBOX" >&2 || true
   exit 1
 fi
+assert_macho_arm64 "$REAL_BIN" "Libbox (resolved source before rename)"
+
+if [[ "$REAL_BIN" == "$BINARY" ]]; then
+  echo "Mach-O already named $LONG_EXEC"
+elif [[ -f "$LIBBOX/$SHORT_EXEC" && ! -L "$LIBBOX/$SHORT_EXEC" && "$REAL_BIN" == "$(resolve_real_file "$LIBBOX/$SHORT_EXEC")" ]]; then
+  echo "Renaming Mach-O $SHORT_EXEC → $LONG_EXEC"
+  /bin/mv -f "$LIBBOX/$SHORT_EXEC" "$BINARY"
+else
+  echo "Copying resolved Mach-O → $LONG_EXEC (was symlink/Versions layout)"
+  /bin/cp -f "$REAL_BIN" "$BINARY"
+fi
+assert_macho_arm64 "$BINARY" "Libbox.framework/$LONG_EXEC (pre-sign)"
 
 # Always (re)create short-name symlink so hosts keep loading OLD_LOAD.
 if [[ -e "$LIBBOX/$SHORT_EXEC" || -L "$LIBBOX/$SHORT_EXEC" ]]; then

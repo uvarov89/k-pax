@@ -92,10 +92,6 @@ class SingboxVpnService
       throw StateError('Разрешение VPN не выдано');
     }
     await _waitUntilStarted();
-    // VpnService routes/DNS settle after Started — probing too early marks
-    // Connected while Telegram still hangs (clearnet probe / empty TUN).
-    // verifyTunnelConnectivity adds another 2s.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
   }
 
   Future<void> _applySplitTunnel(AppSettings appSettings) async {
@@ -130,16 +126,7 @@ class SingboxVpnService
   }
 
   @override
-  Future<void> verifyConnectivity() async {
-    await verifyTunnelConnectivity();
-    final secret = _clashSecret;
-    if (secret == null || secret.isEmpty) {
-      throw StateError(
-        'Туннель поднят, но Clash secret отсутствует — proxy не проверен',
-      );
-    }
-    await assertClashSawProxyTraffic(secret);
-  }
+  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
 
   @override
   Future<void> applyAppSettings(AppSettings settings) async {

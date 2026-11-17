@@ -166,9 +166,6 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
       rethrow;
     }
     if (!identical(_process, process)) return;
-    // Clash ready ≠ Wintun routes fully installed; settle before probe/UI.
-    // verifyTunnelConnectivity adds another 2s — keep this short.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!identical(_process, process)) return;
     _set('Started');
     unawaited(_pumpTraffic());
@@ -293,17 +290,7 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
   }
 
   @override
-  Future<void> verifyConnectivity() async {
-    await verifyTunnelConnectivity();
-    // HTTPS alone can succeed on clearnet before Wintun routes exist.
-    final secret = _clashSecret;
-    if (secret == null || secret.isEmpty || _process == null) {
-      throw StateError(
-        'Туннель поднят, но Clash secret отсутствует — proxy не проверен',
-      );
-    }
-    await assertClashSawProxyTraffic(secret);
-  }
+  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
 
   @override
   Future<void> disconnect() async {

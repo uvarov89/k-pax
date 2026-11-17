@@ -132,8 +132,10 @@ void main() {
       ..proSettings = const ProSettings(protocolFallback: true);
     addTearDown(controller.dispose);
 
-    final ok = await controller.connect().timeout(const Duration(seconds: 5));
-    expect(ok, isFalse);
+    // connect() currently returns whether a request was processed, not
+    // whether the connection succeeded; state is the data-plane outcome.
+    await controller.connect().timeout(const Duration(seconds: 5));
+    expect(controller.connectionState, VpnConnectionState.error);
     expect(controller.isConnected, isFalse);
     expect(service.attempts, hasLength(8));
   });

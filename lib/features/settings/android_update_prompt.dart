@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/distribution.dart';
 import 'package:pulse_vpn/core/services/android_update.dart';
@@ -36,22 +38,39 @@ Future<File?> _downloadApk(Uri url) async {
     request.headers.set(HttpHeaders.userAgentHeader, brand.appName);
     final response = await request.close().timeout(const Duration(minutes: 5));
     if (response.statusCode != 200) return null;
-    var finalUri = url;
-    for (final hop in response.redirects) {
-      finalUri = finalUri.resolveUri(hop.location);
-    }
-    if (!isTrustedAndroidApkBinaryUrl(finalUri)) {
+    if (!isTrustedAndroidApkRedirectChain(
+      url,
+      response.redirects.map((hop) => hop.location),
+    )) {
+      debugPrint('Android update: rejected untrusted redirect chain');
       return null;
     }
     final sink = file.openWrite();
     await response.pipe(sink);
-    await sink.close();
     if (!await file.exists() || await file.length() < 1024 * 100) {
       if (await file.exists()) await file.delete();
       return null;
     }
+    // A 200 OK HTML error page must never reach the package installer.
+    final handle = await file.open(mode: FileMode.read);
+    try {
+      final magic = await handle.read(4);
+      if (magic.length != 4 ||
+          magic[0] != 0x50 ||
+          magic[1] != 0x4b ||
+          magic[2] != 0x03 ||
+          magic[3] != 0x04) {
+        await file.delete();
+        debugPrint('Android update: downloaded file is not an APK archive');
+        return null;
+      }
+    } finally {
+      await handle.close();
+    }
     return file;
-  } catch (_) {
+  } catch (error) {
+    // No subscription URLs, tokens, cookies or response bodies in diagnostics.
+    debugPrint('Android update download failed: ${error.runtimeType}');
     return null;
   } finally {
     client.close(force: true);
@@ -135,7 +154,16 @@ Future<void> checkForAndroidUpdate(
           if (!context.mounted) return;
           if (file == null) {
             messenger?.showSnackBar(
-              SnackBar(content: Text(s.updateApplyFailed)),
+              SnackBar(
+                content: Text(s.updateApplyFailed),
+                duration: const Duration(seconds: 12),
+                action: SnackBarAction(
+                  label: s.updateOpenInBrowser,
+                  onPressed: () => unawaited(
+                    launchUrl(release.url, mode: LaunchMode.externalApplication),
+                  ),
+                ),
+              ),
             );
             break;
           }

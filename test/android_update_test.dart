@@ -34,6 +34,66 @@ void main() {
     );
   });
 
+  test('GitHub asset CDN is allowed only after trusted brand-specific release', () {
+    const githubApk =
+        'https://github.com/uvarov89/k-pax/releases/download/v1.0.65/K-Pax-1.0.65.apk';
+    const cdn =
+        'https://release-assets.githubusercontent.com/github-production-release-asset/1234/abcd?sp=r';
+
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse(githubApk),
+        [Uri.parse(cdn)],
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse('https://k-pax.space/download/android'),
+        [Uri.parse(githubApk), Uri.parse(cdn)],
+      ),
+      isTrue,
+    );
+    // CDN must not be accepted as a free-standing update URL.
+    expect(isTrustedAndroidApkUrl(Uri.parse(cdn)), isFalse);
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse('https://k-pax.space/download/android'),
+        [Uri.parse('https://evil.example/kpax.apk')],
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse(githubApk),
+        [Uri.parse('http://release-assets.githubusercontent.com/github-production-release-asset/1/2')],
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse(githubApk),
+        [Uri.parse('https://evil.example/github-production-release-asset/1/2')],
+      ),
+      isFalse,
+    );
+  });
+
+  test('X-Plm also accepts its genuine GitHub release redirect', () async {
+    // AppBrand.current is initialized by application code and is tested
+    // separately; the redirect matcher uses it to keep brands isolated.
+    const cdn =
+        'https://release-assets.githubusercontent.com/github-production-release-asset/7890/efgh';
+    // A K-Pax client must refuse an X-Plm release.
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse('https://github.com/uvarov89/k-pax/releases/download/v1.0.65-xplm/X-Plm-1.0.65.apk'),
+        [Uri.parse(cdn)],
+      ),
+      isFalse,
+    );
+  });
+
   test('brand host allows only the download redirect path', () {
     expect(
       isTrustedAndroidApkUrl(Uri.parse('https://k-pax.space/download/android')),

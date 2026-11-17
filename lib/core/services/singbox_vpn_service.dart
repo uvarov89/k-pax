@@ -32,6 +32,7 @@ class SingboxVpnService
 
   final FlutterSingbox _singbox;
   final TunnelSpeedTracker _speedTracker = TunnelSpeedTracker();
+  String? _clashSecret;
 
   static String _newClashSecret() {
     final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
@@ -67,15 +68,17 @@ class SingboxVpnService
   }) async {
     _speedTracker.reset();
     // Clash API enables Libbox traffic counters used by StatusClient.
+    _clashSecret = _newClashSecret();
     final config = buildTunnelConfig(
       node,
       settings,
       appSettings: appSettings,
       enableStats: true,
-      clashSecret: _newClashSecret(),
+      clashSecret: _clashSecret,
     );
     final saved = await _singbox.saveConfig(config);
     if (!saved) {
+      _clashSecret = null;
       throw StateError('Не удалось сохранить конфигурацию туннеля');
     }
 
@@ -85,12 +88,14 @@ class SingboxVpnService
 
     final started = await _singbox.startVPN();
     if (!started) {
+      _clashSecret = null;
       throw StateError('Разрешение VPN не выдано');
     }
     await _waitUntilStarted();
     // VpnService routes/DNS settle after Started — probing too early marks
     // Connected while Telegram still hangs (clearnet probe / empty TUN).
-    await Future<void>.delayed(const Duration(milliseconds: 700));
+    // verifyTunnelConnectivity adds another 2s.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
   }
 
   Future<void> _applySplitTunnel(AppSettings appSettings) async {
@@ -125,7 +130,16 @@ class SingboxVpnService
   }
 
   @override
-  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+  Future<void> verifyConnectivity() async {
+    await verifyTunnelConnectivity();
+    final secret = _clashSecret;
+    if (secret == null || secret.isEmpty) {
+      throw StateError(
+        'Туннель поднят, но Clash secret отсутствует — proxy не проверен',
+      );
+    }
+    await assertClashSawProxyTraffic(secret);
+  }
 
   @override
   Future<void> applyAppSettings(AppSettings settings) async {
@@ -137,6 +151,7 @@ class SingboxVpnService
     try {
       await _singbox.stopVPN();
     } catch (_) {}
+    _clashSecret = null;
     // Wipe last tunnel JSON so a forgotten subscription cannot reconnect.
     await _singbox.saveConfig('{}');
   }
@@ -144,6 +159,7 @@ class SingboxVpnService
   @override
   Future<void> disconnect() async {
     final stopped = await _singbox.stopVPN();
+    _clashSecret = null;
     if (!stopped) {
       throw StateError('Не удалось остановить VPN');
     }

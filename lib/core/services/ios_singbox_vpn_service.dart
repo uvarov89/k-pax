@@ -124,7 +124,8 @@ class IosSingboxVpnService
     }
     await _waitUntilConnected();
     // PacketTunnel routes settle after "connected" — same race as Android/Windows.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
+    // verifyTunnelConnectivity adds another 2s.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
   }
 
   Future<void> _waitUntilConnected() async {
@@ -189,7 +190,29 @@ class IosSingboxVpnService
   }
 
   @override
-  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+  Future<void> verifyConnectivity() async {
+    await verifyTunnelConnectivity();
+    // Runner localhost cannot reach extension Clash. With includeAllNetworks,
+    // the HTTPS probe must move Libbox StatusClient totals — else clearnet lie.
+    await _assertStatusClientSawTraffic();
+  }
+
+  /// Wait for StatusClient session totals after the HTTPS probe.
+  Future<void> _assertStatusClientSawTraffic() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 4));
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final stats = await _singBox.getConnectionStats();
+        if (stats.bytesSent > 0 || stats.bytesReceived > 0) return;
+      } catch (_) {
+        // Keep polling until deadline.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    throw StateError(
+      'Туннель поднят, но трафик через proxy не зафиксирован (проверьте узел)',
+    );
+  }
 
   @override
   Future<void> disconnect() async {

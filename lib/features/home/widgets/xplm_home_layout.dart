@@ -256,18 +256,15 @@ class XplmHomeLayout extends StatelessWidget {
                               if (connected) ...[
                                 const SizedBox(height: 10),
                                 Text(
-                                  '${controller.sessionLabel}   ↓ ${_fmt(controller.downloadBytesPerSec)}   ↑ ${_fmt(controller.uploadBytesPerSec)}',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: XplmColors.ink3,
-                                    fontFeatures: [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  '↓ ${_fmtBytes(controller.downloadBytesTotal)}   ↑ ${_fmtBytes(controller.uploadBytesTotal)}',
+                                  () {
+                                    final rate =
+                                        '${controller.sessionLabel}   ↓ ${_fmt(controller.downloadBytesPerSec)}   ↑ ${_fmt(controller.uploadBytesPerSec)}';
+                                    final hasTotals =
+                                        controller.downloadBytesTotal > 0 ||
+                                        controller.uploadBytesTotal > 0;
+                                    if (!hasTotals) return rate;
+                                    return '$rate · ↓ ${_fmtBytes(controller.downloadBytesTotal)} ↑ ${_fmtBytes(controller.uploadBytesTotal)}';
+                                  }(),
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     fontSize: 11,

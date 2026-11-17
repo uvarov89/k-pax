@@ -428,23 +428,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            '↓ ${_formatRate(controller.downloadBytesPerSec)}   ↑ ${_formatRate(controller.uploadBytesPerSec)}',
+                                            () {
+                                              final rate =
+                                                  '↓ ${_formatRate(controller.downloadBytesPerSec)}   ↑ ${_formatRate(controller.uploadBytesPerSec)}';
+                                              final hasTotals =
+                                                  controller.downloadBytesTotal >
+                                                      0 ||
+                                                  controller.uploadBytesTotal >
+                                                      0;
+                                              if (!hasTotals) return rate;
+                                              return '$rate · ↓ ${_formatBytes(controller.downloadBytesTotal)} ↑ ${_formatBytes(controller.uploadBytesTotal)}';
+                                            }(),
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
                                               fontSize: 13,
                                               color: muted,
-                                              fontFeatures: const [
-                                                FontFeature.tabularFigures(),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            '↓ ${_formatBytes(controller.downloadBytesTotal)}   ↑ ${_formatBytes(controller.uploadBytesTotal)}',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: muted.withValues(alpha: 0.85),
                                               fontFeatures: const [
                                                 FontFeature.tabularFigures(),
                                               ],

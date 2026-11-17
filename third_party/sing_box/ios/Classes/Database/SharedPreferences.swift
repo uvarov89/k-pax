@@ -9,7 +9,9 @@ public enum SharedPreferences {
     public static let ignoreMemoryLimit = Preference<Bool>("ignore_memory_limit", defaultValue: false)
     
     #if !os(tvOS)
-        public static let includeAllNetworks = Preference<Bool>("include_all_networks", defaultValue: false)
+        // true: Runner HTTPS probe and apps share the PacketTunnel path
+        // (false let Connected succeed on clearnet while Telegram hung).
+        public static let includeAllNetworks = Preference<Bool>("include_all_networks", defaultValue: true)
         public static let excludeAPNs = Preference<Bool>("exclude_apns", defaultValue: true)
         public static let excludeLocalNetworks = Preference<Bool>("exclude_local_networks", defaultValue: true)
         public static let excludeCellularServices = Preference<Bool>("exclude_cellular_services", defaultValue: true)

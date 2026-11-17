@@ -153,6 +153,10 @@ void _activateFixture(VpnController c) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Widget tests must never invoke real netsh: fake-async timers remain pending
+  // and shell firewall state could change on CI / developer machines.
+  setUpAll(() => WindowsFirewall.disableForTests = true);
+  tearDownAll(() => WindowsFirewall.disableForTests = false);
   setUp(() => SharedPreferences.setMockInitialValues({}));
   setUpAll(() async {
     await (FontLoader('XplmArial')

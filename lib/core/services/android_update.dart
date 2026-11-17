@@ -50,6 +50,45 @@ bool isTrustedAndroidApkBinaryUrl(Uri uri) {
   return _isTrustedGithubAndroidApk(uri, brand);
 }
 
+/// GitHub sends valid release APK downloads through its signed asset CDN.
+/// Reject the CDN as an *initial* update URL, but permit it after a
+/// brand-specific, trusted GitHub release URL in the redirect chain.
+bool isTrustedAndroidApkRedirectChain(
+  Uri requested,
+  Iterable<Uri> locations,
+) {
+  if (!isTrustedAndroidApkUrl(requested)) return false;
+  final brand = AppBrand.current;
+  var previous = requested;
+  var githubReleaseSeen = _isTrustedGithubAndroidApk(requested, brand);
+
+  for (final location in locations) {
+    final uri = previous.resolveUri(location);
+    if (uri.scheme != 'https' ||
+        uri.userInfo.isNotEmpty ||
+        uri.pathSegments.contains('..')) {
+      return false;
+    }
+    if (_isTrustedGithubAndroidApk(uri, brand)) {
+      githubReleaseSeen = true;
+    } else if (uri.host == brand.host &&
+        uri.path == '/download/android' &&
+        !githubReleaseSeen) {
+      // Brand's canonical download redirect (no arbitrary same-host paths).
+    } else if (githubReleaseSeen &&
+        ((uri.host == 'release-assets.githubusercontent.com' &&
+                uri.path.startsWith('/github-production-release-asset/')) ||
+            (uri.host == 'objects.githubusercontent.com' &&
+                uri.path.startsWith('/github-production-release-asset')))) {
+      // GitHub release asset CDN; the original URL already passed brand checks.
+    } else {
+      return false;
+    }
+    previous = uri;
+  }
+  return true;
+}
+
 enum AndroidUpdateStatus { newer, current, unavailable }
 
 class AndroidUpdateLookup {

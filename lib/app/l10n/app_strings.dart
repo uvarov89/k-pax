@@ -387,8 +387,14 @@ class AppStrings {
       ? 'Не удалось проверить обновление. Проверьте интернет и повторите.'
       : 'Could not check for an update. Check the internet and try again.';
   String get updateApplyFailed => isRu
-      ? 'Не удалось обновить $appName. Проверьте интернет и повторите.'
-      : 'Could not update $appName. Check the internet and try again.';
+      ? 'Не удалось установить обновление $appName. Попробуйте установить APK вручную.'
+      : 'Could not install the $appName update. Try installing the APK manually.';
+  String get updateDownloadFailed => isRu
+      ? 'Не удалось загрузить APK. Можно скачать его в браузере.'
+      : 'Could not download the APK. You can download it in a browser.';
+  String get updateOpenInBrowser => isRu
+      ? 'Скачать в браузере'
+      : 'Download in browser';
   String get updateInstallPermission => isRu
       ? 'Разрешите установку из $appName в настройках Android и повторите обновление.'
       : 'Allow installs from $appName in Android settings, then try the update again.';

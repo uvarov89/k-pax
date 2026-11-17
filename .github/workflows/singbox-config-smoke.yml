@@ -6,6 +6,7 @@ on:
       - 'lib/core/services/tunnel_config.dart'
       - 'lib/core/models/**'
       - 'test/tunnel_config_native_smoke_test.dart'
+      - 'test/qa_protocol_matrix_native_test.dart'
       - 'scripts/singbox-version-pins.env'
       - 'scripts/check-singbox-version-pins.ps1'
       - 'scripts/provision-windows-native.ps1'
@@ -36,7 +37,7 @@ jobs:
       - name: Generate sample TUN configurations from Dart
         run: |
           mkdir -p "$RUNNER_TEMP/singbox-config"
-          NATIVE_CONFIG_OUT="$RUNNER_TEMP/singbox-config" flutter test test/tunnel_config_native_smoke_test.dart
+          NATIVE_CONFIG_OUT="$RUNNER_TEMP/singbox-config" flutter test test/tunnel_config_native_smoke_test.dart test/qa_protocol_matrix_native_test.dart
       - name: Obtain pinned official sing-box 1.13.21
         shell: bash
         run: |

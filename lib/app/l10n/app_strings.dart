@@ -374,8 +374,8 @@ class AppStrings {
       ? 'Доступна версия $version'
       : 'Version $version is available';
   String get updateBody => isRu
-      ? '$appName обновится сам и откроется снова. Подключение на это время прервётся, ссылка подписки останется той же.'
-      : '$appName will update itself and open again. The connection pauses for that, and the subscription link stays the same.';
+      ? 'После загрузки Android предложит установить обновление $appName. Подтвердите установку; подписка и настройки сохранятся.'
+      : 'After the download, Android will ask you to install the $appName update. Confirm installation; your subscription and settings remain.';
   String get updateNow => isRu ? 'Обновить' : 'Update';
   String get updateLater => isRu ? 'Позже' : 'Later';
   String get checkUpdates => isRu ? 'Проверить обновления' : 'Check for updates';

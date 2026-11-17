@@ -22,7 +22,7 @@ try {
 
     $manifest = Get-Content 'pubspec.yaml' -Raw
     if ($manifest -notmatch '(?m)^version:\s*1\.0\.66\+91\s*$') {
-        throw 'Expected pubspec.yaml version 1.0.66+90. Update source before release.'
+        throw 'Expected pubspec.yaml version 1.0.66+91. Update source before release.'
     }
     & flutter pub get
     if ($LASTEXITCODE -ne 0) { throw 'Flutter dependency resolution failed.' }

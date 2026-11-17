@@ -155,7 +155,7 @@ Future<void> checkForAndroidUpdate(
           if (file == null) {
             messenger?.showSnackBar(
               SnackBar(
-                content: Text(s.updateApplyFailed),
+                content: Text(s.updateDownloadFailed),
                 duration: const Duration(seconds: 12),
                 action: SnackBarAction(
                   label: s.updateOpenInBrowser,

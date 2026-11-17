@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/services/android_update.dart';
 
 void main() {
@@ -79,15 +80,23 @@ void main() {
     );
   });
 
-  test('X-Plm also accepts its genuine GitHub release redirect', () async {
-    // AppBrand.current is initialized by application code and is tested
-    // separately; the redirect matcher uses it to keep brands isolated.
+  test('X-Plm accepts its CDN release and rejects K-Pax payloads', () {
+    AppBrand.debugReset(AppBrand.xplm);
+    addTearDown(() => AppBrand.debugReset(AppBrand.kpax));
     const cdn =
         'https://release-assets.githubusercontent.com/github-production-release-asset/7890/efgh';
-    // A K-Pax client must refuse an X-Plm release.
+    const xplmApk =
+        'https://github.com/uvarov89/k-pax/releases/download/v1.0.65-xplm/X-Plm-1.0.65.apk';
     expect(
       isTrustedAndroidApkRedirectChain(
-        Uri.parse('https://github.com/uvarov89/k-pax/releases/download/v1.0.65-xplm/X-Plm-1.0.65.apk'),
+        Uri.parse('https://x-plm.online/download/android'),
+        [Uri.parse(xplmApk), Uri.parse(cdn)],
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedAndroidApkRedirectChain(
+        Uri.parse('https://github.com/uvarov89/k-pax/releases/download/v1.0.65/K-Pax-1.0.65.apk'),
         [Uri.parse(cdn)],
       ),
       isFalse,

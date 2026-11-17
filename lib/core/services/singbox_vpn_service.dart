@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_singbox_vpn/flutter_singbox.dart';
@@ -29,6 +31,12 @@ class SingboxVpnService
     : _singbox = singbox ?? FlutterSingbox();
 
   final FlutterSingbox _singbox;
+  final TunnelSpeedTracker _speedTracker = TunnelSpeedTracker();
+
+  static String _newClashSecret() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
 
   @override
   Stream<String> get statusStream =>
@@ -42,9 +50,11 @@ class SingboxVpnService
           return int.tryParse('$value') ?? 0;
         }
 
-        return TunnelSpeed(
-          upBytesPerSec: asInt(event['uplinkSpeed']),
-          downBytesPerSec: asInt(event['downlinkSpeed']),
+        return _speedTracker.ingest(
+          upRate: asInt(event['uplinkSpeed']),
+          downRate: asInt(event['downlinkSpeed']),
+          upTotal: asInt(event['uplinkTotal'] ?? event['sessionUplink']),
+          downTotal: asInt(event['downlinkTotal'] ?? event['sessionDownlink']),
         );
       });
 
@@ -55,7 +65,15 @@ class SingboxVpnService
     required AppSettings appSettings,
     required TunnelNode node,
   }) async {
-    final config = buildTunnelConfig(node, settings, appSettings: appSettings);
+    _speedTracker.reset();
+    // Clash API enables Libbox traffic counters used by StatusClient.
+    final config = buildTunnelConfig(
+      node,
+      settings,
+      appSettings: appSettings,
+      enableStats: true,
+      clashSecret: _newClashSecret(),
+    );
     final saved = await _singbox.saveConfig(config);
     if (!saved) {
       throw StateError('Не удалось сохранить конфигурацию туннеля');

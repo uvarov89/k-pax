@@ -266,6 +266,17 @@ class XplmHomeLayout extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+                                Text(
+                                  '↓ ${_fmtBytes(controller.downloadBytesTotal)}   ↑ ${_fmtBytes(controller.uploadBytesTotal)}',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: XplmColors.ink3,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
                               ],
                             ],
                           ),
@@ -602,6 +613,17 @@ String _fmt(int bytesPerSec) {
     return '${(bytesPerSec / 1024).toStringAsFixed(0)} КБ/с';
   }
   return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} МБ/с';
+}
+
+String _fmtBytes(int bytes) {
+  if (bytes < 1024) return '$bytes Б';
+  if (bytes < 1024 * 1024) {
+    return '${(bytes / 1024).toStringAsFixed(0)} КБ';
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} МБ';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} ГБ';
 }
 
 String _fmtDate(DateTime d) =>

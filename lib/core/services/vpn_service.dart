@@ -18,10 +18,61 @@ class TunnelSpeed {
   const TunnelSpeed({
     required this.upBytesPerSec,
     required this.downBytesPerSec,
+    this.upBytesTotal = 0,
+    this.downBytesTotal = 0,
   });
 
   final int upBytesPerSec;
   final int downBytesPerSec;
+  final int upBytesTotal;
+  final int downBytesTotal;
+}
+
+/// Libbox often reports zero instant rates while totals still move.
+/// Derive B/s from cumulative counters when platform speeds stay at 0.
+class TunnelSpeedTracker {
+  int _lastUpTotal = 0;
+  int _lastDownTotal = 0;
+  DateTime? _lastAt;
+
+  TunnelSpeed ingest({
+    required int upRate,
+    required int downRate,
+    int upTotal = 0,
+    int downTotal = 0,
+  }) {
+    var up = upRate < 0 ? 0 : upRate;
+    var down = downRate < 0 ? 0 : downRate;
+    final now = DateTime.now();
+    final prevAt = _lastAt;
+    if (up == 0 &&
+        down == 0 &&
+        prevAt != null &&
+        (upTotal > _lastUpTotal || downTotal > _lastDownTotal)) {
+      final dtMs = now.difference(prevAt).inMilliseconds;
+      if (dtMs > 0) {
+        final dUp = upTotal - _lastUpTotal;
+        final dDown = downTotal - _lastDownTotal;
+        if (dUp > 0) up = ((dUp * 1000) / dtMs).round();
+        if (dDown > 0) down = ((dDown * 1000) / dtMs).round();
+      }
+    }
+    if (upTotal >= _lastUpTotal) _lastUpTotal = upTotal;
+    if (downTotal >= _lastDownTotal) _lastDownTotal = downTotal;
+    _lastAt = now;
+    return TunnelSpeed(
+      upBytesPerSec: up,
+      downBytesPerSec: down,
+      upBytesTotal: upTotal,
+      downBytesTotal: downTotal,
+    );
+  }
+
+  void reset() {
+    _lastUpTotal = 0;
+    _lastDownTotal = 0;
+    _lastAt = null;
+  }
 }
 
 /// Contract for the future native tunnel (sing-box / VpnService / NE).

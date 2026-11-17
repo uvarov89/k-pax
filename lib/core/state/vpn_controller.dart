@@ -105,6 +105,8 @@ class VpnController extends ChangeNotifier {
   StreamSubscription<TunnelSpeed>? _trafficSub;
   int uploadBytesPerSec = 0;
   int downloadBytesPerSec = 0;
+  int uploadBytesTotal = 0;
+  int downloadBytesTotal = 0;
   int _reconnectBudget = 0;
   bool _wantConnected = false;
   /// Set by [disconnect]; cleared on user-initiated [connect]. Blocks
@@ -362,6 +364,14 @@ class VpnController extends ChangeNotifier {
       if (!isConnected) return;
       uploadBytesPerSec = speed.upBytesPerSec;
       downloadBytesPerSec = speed.downBytesPerSec;
+      if (speed.upBytesTotal > 0 || speed.downBytesTotal > 0) {
+        uploadBytesTotal = speed.upBytesTotal;
+        downloadBytesTotal = speed.downBytesTotal;
+      } else if (speed.upBytesPerSec > 0 || speed.downBytesPerSec > 0) {
+        // Approximate session totals when platform only reports rates.
+        uploadBytesTotal += speed.upBytesPerSec;
+        downloadBytesTotal += speed.downBytesPerSec;
+      }
       notifyListeners();
     });
   }
@@ -381,6 +391,8 @@ class VpnController extends ChangeNotifier {
     sessionDuration = Duration.zero;
     uploadBytesPerSec = 0;
     downloadBytesPerSec = 0;
+    uploadBytesTotal = 0;
+    downloadBytesTotal = 0;
 
     // Kill switch only strengthens TUN routing while up (strict_route). There is
     // no fail-closed outbound block after a drop — never claim traffic is held.
@@ -422,6 +434,10 @@ class VpnController extends ChangeNotifier {
           connectedNode = node;
           connectionState = VpnConnectionState.connected;
           errorMessage = null;
+          uploadBytesPerSec = 0;
+          downloadBytesPerSec = 0;
+          uploadBytesTotal = 0;
+          downloadBytesTotal = 0;
           _connectedAt = DateTime.now();
           sessionDuration = Duration.zero;
           _sessionTimer?.cancel();
@@ -1630,6 +1646,10 @@ class VpnController extends ChangeNotifier {
       await WindowsFirewall.clear();
       connectedNode = node;
       connectionState = VpnConnectionState.connected;
+      uploadBytesPerSec = 0;
+      downloadBytesPerSec = 0;
+      uploadBytesTotal = 0;
+      downloadBytesTotal = 0;
       _connectedAt = DateTime.now();
       sessionDuration = Duration.zero;
       _sessionTimer?.cancel();
@@ -1688,6 +1708,8 @@ class VpnController extends ChangeNotifier {
     connectedNode = null;
     uploadBytesPerSec = 0;
     downloadBytesPerSec = 0;
+    uploadBytesTotal = 0;
+    downloadBytesTotal = 0;
     errorMessage = null;
     connectionState = VpnConnectionState.disconnected;
     notifyListeners();

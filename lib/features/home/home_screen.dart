@@ -438,6 +438,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                               ],
                                             ),
                                           ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '↓ ${_formatBytes(controller.downloadBytesTotal)}   ↑ ${_formatBytes(controller.uploadBytesTotal)}',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: muted.withValues(alpha: 0.85),
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
+                                          ),
                                         ],
                                       ],
                                     ),
@@ -721,4 +733,15 @@ String _formatRate(int bytesPerSec) {
     return '${(bytesPerSec / 1024).toStringAsFixed(0)} КБ/с';
   }
   return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} МБ/с';
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes Б';
+  if (bytes < 1024 * 1024) {
+    return '${(bytes / 1024).toStringAsFixed(0)} КБ';
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} МБ';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} ГБ';
 }

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
@@ -18,7 +20,13 @@ class IosSingboxVpnService
 
   final SingBox _singBox;
   static const _channel = MethodChannel('sing_box');
+  final TunnelSpeedTracker _speedTracker = TunnelSpeedTracker();
   bool _ready = false;
+
+  static String _newClashSecret() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
 
   Future<void> _ensureReady() async {
     if (_ready) return;
@@ -68,9 +76,11 @@ class IosSingboxVpnService
   @override
   Stream<TunnelSpeed> get trafficStream =>
       _singBox.watchSingBoxConnectionStats().map(
-        (stats) => TunnelSpeed(
-          upBytesPerSec: stats.uploadSpeed,
-          downBytesPerSec: stats.downloadSpeed,
+        (stats) => _speedTracker.ingest(
+          upRate: stats.uploadSpeed,
+          downRate: stats.downloadSpeed,
+          upTotal: stats.bytesSent,
+          downTotal: stats.bytesReceived,
         ),
       );
 
@@ -83,8 +93,16 @@ class IosSingboxVpnService
   }) async {
     await _ensureReady();
     await applyAppSettings(appSettings);
+    _speedTracker.reset();
     // Per-app split tunnel is not available on iOS; config is full-tunnel.
-    final config = buildTunnelConfig(node, settings, appSettings: appSettings);
+    // Clash API unlocks Libbox trafficAvailable / totals for the status stream.
+    final config = buildTunnelConfig(
+      node,
+      settings,
+      appSettings: appSettings,
+      enableStats: true,
+      clashSecret: _newClashSecret(),
+    );
     final bool started;
     try {
       // startVPNTunnel should return quickly; long hangs = system/extension issue.

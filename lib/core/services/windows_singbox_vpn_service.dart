@@ -226,42 +226,65 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
 
   Future<void> _pumpTraffic() async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (_process == null) return;
-    final secret = _clashSecret;
-    if (secret == null || secret.isEmpty) return;
-    final client = HttpClient();
-    _trafficClient = client;
-    try {
-      final request = await client.getUrl(
-        Uri.parse('http://127.0.0.1:$kClashPort/traffic'),
-      );
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $secret');
-      final response = await request.close();
-      var buffer = '';
-      await for (final chunk in response.transform(utf8.decoder)) {
-        if (_process == null) break;
-        buffer += chunk;
-        while (true) {
-          final end = buffer.indexOf('}');
-          if (end < 0) break;
-          final piece = buffer.substring(0, end + 1);
-          buffer = buffer.substring(end + 1);
-          try {
-            final decoded = jsonDecode(piece);
-            if (decoded is! Map || _traffic.isClosed) continue;
-            _traffic.add(
-              TunnelSpeed(
-                upBytesPerSec: (decoded['up'] as num?)?.toInt() ?? 0,
-                downBytesPerSec: (decoded['down'] as num?)?.toInt() ?? 0,
-              ),
-            );
-          } catch (_) {}
+    final tracker = TunnelSpeedTracker();
+    var sessionUp = 0;
+    var sessionDown = 0;
+    // Retry while the tunnel lives — a single failed /traffic open used to
+    // leave the UI at 0 B/s for the whole session.
+    while (_process != null) {
+      final secret = _clashSecret;
+      if (secret == null || secret.isEmpty) return;
+      final client = HttpClient();
+      _trafficClient = client;
+      try {
+        final request = await client.getUrl(
+          Uri.parse('http://127.0.0.1:$kClashPort/traffic'),
+        );
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $secret');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          await response.drain<void>().catchError((_) {});
+          throw StateError('clash traffic ${response.statusCode}');
         }
+        var buffer = '';
+        await for (final chunk in response.transform(utf8.decoder)) {
+          if (_process == null) break;
+          buffer += chunk;
+          while (true) {
+            final nl = buffer.indexOf('\n');
+            final end = nl >= 0 ? nl : buffer.indexOf('}');
+            if (end < 0) break;
+            final piece = nl >= 0
+                ? buffer.substring(0, nl).trim()
+                : buffer.substring(0, end + 1).trim();
+            buffer = buffer.substring(end + 1);
+            if (piece.isEmpty) continue;
+            try {
+              final decoded = jsonDecode(piece);
+              if (decoded is! Map || _traffic.isClosed) continue;
+              final up = (decoded['up'] as num?)?.toInt() ?? 0;
+              final down = (decoded['down'] as num?)?.toInt() ?? 0;
+              sessionUp += up < 0 ? 0 : up;
+              sessionDown += down < 0 ? 0 : down;
+              _traffic.add(
+                tracker.ingest(
+                  upRate: up,
+                  downRate: down,
+                  upTotal: sessionUp,
+                  downTotal: sessionDown,
+                ),
+              );
+            } catch (_) {}
+          }
+        }
+      } catch (_) {
+        // Fall through to brief backoff + reconnect.
+      } finally {
+        client.close(force: true);
+        if (identical(_trafficClient, client)) _trafficClient = null;
       }
-    } catch (_) {
-    } finally {
-      client.close(force: true);
-      if (identical(_trafficClient, client)) _trafficClient = null;
+      if (_process == null) return;
+      await Future<void>.delayed(const Duration(milliseconds: 800));
     }
   }
 

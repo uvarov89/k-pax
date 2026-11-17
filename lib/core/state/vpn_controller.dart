@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -1479,8 +1480,12 @@ class VpnController extends ChangeNotifier {
     return nodes.first;
   }
 
+  // Host:port alone is not an endpoint identity: providers can expose a
+  // healthy alternative profile with another UUID/SNI/transport on that pair.
+  // Use full outbound identity only in this in-memory retry set; never log it.
   String _endpointKey(TunnelNode node) =>
-      '${node.countryId}|${node.kind.name}|${node.host}|${node.port}';
+      '${node.countryId}|${node.kind.name}|${node.host}|${node.port}|' +
+      jsonEncode(node.outbound);
 
   /// Same-country fallbacks: self-steal / other ports, then other hosts (RU front),
   /// then next protocol kinds. [tried] prevents 443↔2053 loops.

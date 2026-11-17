@@ -68,7 +68,7 @@ try {
         Write-Host 'SkipPublish set: APKs staged under build/release/.'
         foreach ($item in $brands) {
             $file = (Resolve-Path (Join-Path 'build/release' $item.File)).Path
-            Write-Host ("gh release create {0} `"{1}`" --repo uvarov89/k-pax --target main --title `"{2}`" --notes `"{3}`" --latest=false" -f $item.Tag, $file, $item.Name, $notes)
+            Write-Host ("gh release create {0} `"{1}`" --repo uvarov89/k-pax --target release/android-1.0.66 --title `"{2}`" --notes `"{3}`" --latest=false" -f $item.Tag, $file, $item.Name, $notes)
         }
         return
     }
@@ -90,7 +90,7 @@ try {
         if ($viewExit -eq 0) {
             & gh release upload $item.Tag $file --repo uvarov89/k-pax --clobber
         } else {
-            & gh release create $item.Tag $file --repo uvarov89/k-pax --target main --title $item.Name --notes $notes --latest=false
+            & gh release create $item.Tag $file --repo uvarov89/k-pax --target release/android-1.0.66 --title $item.Name --notes $notes --latest=false
         }
         if ($LASTEXITCODE -ne 0) { throw "GitHub Android release failed for $($item.Key)" }
         Write-Host "Published $($item.Name)"

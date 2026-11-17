@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,6 +12,9 @@ import 'package:pulse_vpn/core/models/split_tunnel.dart';
 import 'package:pulse_vpn/core/models/subscription.dart';
 
 class SettingsRepository {
+  /// Widget tests on Windows: Keystore/DPAPI plugin calls can hang the isolate.
+  static bool preferPlaintextForTests = false;
+
   static const _kLanguage = 'language';
   static const _kTheme = 'theme';
   static const _kNotifications = 'notifications';
@@ -68,7 +72,30 @@ class SettingsRepository {
     wOptions: WindowsOptions(),
   );
 
+  static const _secureTimeout = Duration(seconds: 2);
+
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
+
+  Future<String?> _secureRead(String key) async {
+    if (preferPlaintextForTests) return null;
+    try {
+      return await _secure.read(key: key).timeout(_secureTimeout);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _secureWrite(String key, String value) async {
+    if (preferPlaintextForTests) {
+      throw StateError('plaintext-only test host');
+    }
+    await _secure.write(key: key, value: value).timeout(_secureTimeout);
+  }
+
+  Future<void> _secureDelete(String key) async {
+    if (preferPlaintextForTests) return;
+    await _secure.delete(key: key).timeout(_secureTimeout);
+  }
 
   T _enumAt<T extends Enum>(List<T> values, int? index, T fallback) {
     if (index == null || index < 0 || index >= values.length) {
@@ -216,16 +243,14 @@ class SettingsRepository {
   }
 
   Future<String?> loadSubscriptionUrl() async {
-    try {
-      final secure = await _secure.read(key: _secureUrl);
-      if (secure != null && secure.isNotEmpty) {
-        final p = await _prefs;
-        if (p.containsKey(_kSubscriptionUrl) || p.containsKey(_kSubscriptions)) {
-          await _wipePlaintextSubscriptions(p);
-        }
-        return secure;
+    final secure = await _secureRead(_secureUrl);
+    if (secure != null && secure.isNotEmpty) {
+      final p = await _prefs;
+      if (p.containsKey(_kSubscriptionUrl) || p.containsKey(_kSubscriptions)) {
+        await _wipePlaintextSubscriptions(p);
       }
-    } catch (_) {}
+      return secure;
+    }
 
     final p = await _prefs;
     final legacy = p.getString(_kSubscriptionUrl);
@@ -237,9 +262,9 @@ class SettingsRepository {
   Future<void> saveSubscriptionUrl(String url) async {
     try {
       if (url.isEmpty) {
-        await _secure.delete(key: _secureUrl);
+        await _secureDelete(_secureUrl);
       } else {
-        await _secure.write(key: _secureUrl, value: url);
+        await _secureWrite(_secureUrl, url);
       }
     } catch (_) {
       // Fall through to prefs only if secure storage is unavailable (tests).
@@ -254,10 +279,7 @@ class SettingsRepository {
   /// Saved links; the single link of older versions becomes the first entry.
   Future<List<SavedSubscription>> loadSubscriptions() async {
     final list = <SavedSubscription>[];
-    String? raw;
-    try {
-      raw = await _secure.read(key: _secureList);
-    } catch (_) {}
+    var raw = await _secureRead(_secureList);
 
     final p = await _prefs;
     if (raw == null || raw.isEmpty) {
@@ -295,9 +317,9 @@ class SettingsRepository {
     final encoded = jsonEncode([for (final item in list) item.toJson()]);
     try {
       if (list.isEmpty) {
-        await _secure.delete(key: _secureList);
+        await _secureDelete(_secureList);
       } else {
-        await _secure.write(key: _secureList, value: encoded);
+        await _secureWrite(_secureList, encoded);
       }
       final p = await _prefs;
       await p.remove(_kSubscriptions);
@@ -346,8 +368,8 @@ class SettingsRepository {
         int startedMs,
       })?> loadPendingLogin() async {
     try {
-      final session = await _secure.read(key: _secureLoginSession) ?? '';
-      final metaRaw = await _secure.read(key: _secureLoginMeta) ?? '';
+      final session = await _secureRead(_secureLoginSession) ?? '';
+      final metaRaw = await _secureRead(_secureLoginMeta) ?? '';
       if (session.isNotEmpty && metaRaw.isNotEmpty) {
         final meta = jsonDecode(metaRaw);
         if (meta is Map) {
@@ -407,8 +429,8 @@ class SettingsRepository {
       'startedMs': startedMs,
     });
     try {
-      await _secure.write(key: _secureLoginSession, value: session);
-      await _secure.write(key: _secureLoginMeta, value: meta);
+      await _secureWrite(_secureLoginSession, session);
+      await _secureWrite(_secureLoginMeta, meta);
       final p = await _prefs;
       await _wipePlaintextLogin(p);
     } catch (_) {
@@ -424,8 +446,8 @@ class SettingsRepository {
 
   Future<void> clearPendingLogin() async {
     try {
-      await _secure.delete(key: _secureLoginSession);
-      await _secure.delete(key: _secureLoginMeta);
+      await _secureDelete(_secureLoginSession);
+      await _secureDelete(_secureLoginMeta);
     } catch (_) {}
     final p = await _prefs;
     await p.remove(_kLoginSession);

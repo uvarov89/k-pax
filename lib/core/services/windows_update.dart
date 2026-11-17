@@ -32,14 +32,7 @@ int compareNumericVersions(String left, String right) {
   return 0;
 }
 
-bool isTrustedWindowsSetupUrl(Uri uri) {
-  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
-  final brand = AppBrand.current;
-  // Brand-hosted redirect (no github.com/.../k-pax in the public JSON URL).
-  if (uri.host == brand.host &&
-      (uri.path == '/download/windows' || uri.path.toLowerCase().endsWith('.exe'))) {
-    return true;
-  }
+bool _isTrustedGithubWindowsSetup(Uri uri, AppBrand brand) {
   if (uri.host != 'github.com') return false;
   if (!uri.path.startsWith('/uvarov89/k-pax/releases/download/')) return false;
   if (!uri.path.toLowerCase().endsWith('.exe')) return false;
@@ -50,6 +43,27 @@ bool isTrustedWindowsSetupUrl(Uri uri) {
     return name.startsWith('x-plm-') || name.startsWith('xplm-');
   }
   return name.startsWith('k-pax-');
+}
+
+/// Manifest / JSON `url` — brand redirect endpoint or a direct GitHub setup.
+bool isTrustedWindowsSetupUrl(Uri uri) {
+  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
+  final brand = AppBrand.current;
+  // Exact redirect path only — never "any *.exe on brand host".
+  if (uri.host == brand.host) {
+    return uri.path == '/download/windows';
+  }
+  return _isTrustedGithubWindowsSetup(uri, brand);
+}
+
+/// Final binary after redirects — brand redirect target or GitHub setup only.
+bool isTrustedWindowsSetupBinaryUrl(Uri uri) {
+  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
+  final brand = AppBrand.current;
+  if (uri.host == brand.host) {
+    return uri.path == '/download/windows';
+  }
+  return _isTrustedGithubWindowsSetup(uri, brand);
 }
 
 enum WindowsUpdateStatus { newer, current, unavailable }

@@ -1,4 +1,5 @@
 # Build the native executable and Flutter UI with the same X-Plm brand.
+# Requires APP_BRAND=xplm AND --dart-define=BRAND=xplm together.
 [CmdletBinding()]
 param([switch]$Installer)
 $ErrorActionPreference = 'Stop'
@@ -6,6 +7,9 @@ $previousBrand = $env:APP_BRAND
 Push-Location (Split-Path $PSScriptRoot -Parent)
 try {
   $env:APP_BRAND = 'xplm'
+  if ($env:APP_BRAND -ne 'xplm') {
+    throw 'APP_BRAND must be xplm for this script (native BINARY_NAME / icons).'
+  }
   flutter build windows --release --dart-define=BRAND=xplm
   if ($LASTEXITCODE -ne 0) { throw 'X-Plm Windows build failed' }
   if (!(Test-Path -LiteralPath 'build/windows/x64/runner/Release/XPlm.exe')) {

@@ -176,36 +176,54 @@ String normalizeContactInput(String raw) {
   return text;
 }
 
-SubscriptionProfile parseSubscription(String body, {String? userinfo}) {
-  final text = _decodeBody(body);
-  if (text.contains('Подписка недействительна')) {
-    throw const SubscriptionRejected();
-  }
-  final configured = _parseConfigFile(text);
-  if (configured != null) {
-    if (configured.isEmpty) {
-      throw const FormatException('В подписке нет серверов, которые поддерживает приложение');
+SubscriptionProfile parseSubscription(
+  String body, {
+  String? userinfo,
+  /// Owned-brand remote profiles must not honor share-link insecure flags.
+  bool trustInsecureFlags = true,
+}) {
+  final previous = _trustInsecureFlags;
+  _trustInsecureFlags = trustInsecureFlags;
+  try {
+    final text = _decodeBody(body);
+    if (text.contains('Подписка недействительна')) {
+      throw const SubscriptionRejected();
     }
-    return SubscriptionProfile(nodes: configured, expiresAt: _expire(userinfo));
-  }
-  final nodes = <TunnelNode>[];
-  var skipped = 0;
-  for (final line in text.split(RegExp(r'\r?\n'))) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
-    final node = _parseLine(trimmed);
-    if (node == null) {
-      if (trimmed.contains('://')) skipped++;
-      continue;
+    final configured = _parseConfigFile(text);
+    if (configured != null) {
+      if (configured.isEmpty) {
+        throw const FormatException(
+          'В подписке нет серверов, которые поддерживает приложение',
+        );
+      }
+      return SubscriptionProfile(
+        nodes: configured,
+        expiresAt: _expire(userinfo),
+      );
     }
-    nodes.add(node);
+    final nodes = <TunnelNode>[];
+    var skipped = 0;
+    for (final line in text.split(RegExp(r'\r?\n'))) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+      final node = _parseLine(trimmed);
+      if (node == null) {
+        if (trimmed.contains('://')) skipped++;
+        continue;
+      }
+      nodes.add(node);
+    }
+    if (nodes.isEmpty) {
+      throw FormatException(
+        skipped > 0
+            ? 'В подписке нет серверов, которые поддерживает приложение'
+            : 'В подписке нет серверов',
+      );
+    }
+    return SubscriptionProfile(nodes: nodes, expiresAt: _expire(userinfo));
+  } finally {
+    _trustInsecureFlags = previous;
   }
-  if (nodes.isEmpty) {
-    throw FormatException(
-      skipped > 0 ? 'В подписке нет серверов, которые поддерживает приложение' : 'В подписке нет серверов',
-    );
-  }
-  return SubscriptionProfile(nodes: nodes, expiresAt: _expire(userinfo));
 }
 
 /// One broken or unsupported line must not hide the rest of the subscription.
@@ -317,11 +335,25 @@ Map<String, Object?>? _transport(String type, Map<String, String> q) {
   }
 }
 
+/// When false, ignore share-link insecure/allowInsecure (owned-brand profiles).
+bool _trustInsecureFlags = true;
+
 TunnelKind _kindFor(String transport, String security) {
-  if (transport == 'grpc' || transport == 'h2' || transport == 'http') return TunnelKind.grpc;
-  if (transport == 'ws' || transport == 'httpupgrade') return TunnelKind.message;
-  return TunnelKind.reality;
+  if (transport == 'grpc' || transport == 'h2' || transport == 'http') {
+    return TunnelKind.grpc;
+  }
+  if (transport == 'ws' || transport == 'httpupgrade') {
+    return TunnelKind.message;
+  }
+  if (security == 'reality') return TunnelKind.reality;
+  return TunnelKind.tls;
 }
+
+bool _explicitInsecure(Map<String, String> q) =>
+    _trustInsecureFlags &&
+    (_truthy(q['allowInsecure']) ||
+        _truthy(q['insecure']) ||
+        _truthy(q['allow_insecure']));
 
 Map<String, Object?> _tls(Map<String, String> q, String fallbackHost, {String? alpnDefault}) {
   final security = (q['security'] ?? 'tls').toLowerCase();
@@ -332,7 +364,7 @@ Map<String, Object?> _tls(Map<String, String> q, String fallbackHost, {String? a
     'enabled': true,
     'server_name': q['sni'] ?? q['peer'] ?? q['host'] ?? fallbackHost,
     'utls': {'enabled': true, 'fingerprint': fp},
-    if (_truthy(q['allowInsecure']) || _truthy(q['insecure'])) 'insecure': true,
+    if (_explicitInsecure(q)) 'insecure': true,
     if (alpn != null && alpn.isNotEmpty) 'alpn': alpn,
   };
   if (security == 'reality') {
@@ -403,8 +435,8 @@ TunnelNode _hy2(String line) {
       'tls': {
         'enabled': true,
         'server_name': query['sni'] ?? uri.host,
-        // sing-box cannot pin a certificate hash; a pinned self-signed server is accepted as insecure.
-        'insecure': _truthy(query['insecure']) || (query['pinSHA256'] ?? '').isNotEmpty,
+        // Never treat pinSHA256 alone as insecure (MITM). Explicit flag only.
+        if (_explicitInsecure(query)) 'insecure': true,
         'alpn': ['h3'],
       },
     },
@@ -439,7 +471,7 @@ TunnelNode _tuic(String line) {
       'tls': {
         'enabled': true,
         'server_name': query['sni'] ?? uri.host,
-        if (_truthy(query['allow_insecure']) || _truthy(query['insecure'])) 'insecure': true,
+        if (_explicitInsecure(query)) 'insecure': true,
         'alpn': (alpn == null || alpn.isEmpty) ? ['h3'] : alpn,
       },
     },
@@ -468,7 +500,9 @@ TunnelNode _vmess(String line) {
     'alpn': field('alpn'),
     'fp': field('fp'),
     'security': tlsOn ? 'tls' : 'none',
-    if (_truthy(field('allowInsecure')) || _truthy(field('insecure'))) 'insecure': '1',
+    if (_trustInsecureFlags &&
+        (_truthy(field('allowInsecure')) || _truthy(field('insecure'))))
+      'insecure': '1',
   };
   final outbound = <String, Object?>{
     'type': 'vmess',
@@ -584,7 +618,7 @@ TunnelNode _shadowsocks(String line) {
     countryId: country.$1,
     countryCode: country.$2,
     countryName: country.$3,
-    kind: TunnelKind.reality,
+    kind: TunnelKind.shadowsocks,
     host: host,
     port: port,
     outbound: outbound,

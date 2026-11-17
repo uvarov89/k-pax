@@ -75,6 +75,8 @@ def embed_copy(
 class EmbedLibboxScriptTest(unittest.TestCase):
     def test_setup_rb_embeds_into_runner_not_appex(self) -> None:
         text = SETUP.read_text(encoding="utf-8")
+        self.assertIn('Unknown BRAND=', text)
+        self.assertNotIn("BRAND_IDS[BRAND] || BRAND_IDS['kpax']", text)
         self.assertIn("Embed Libbox into Runner", text)
         self.assertIn("Strip Frameworks from PacketTunnel", text)
         self.assertIn("ASC 90206", text)

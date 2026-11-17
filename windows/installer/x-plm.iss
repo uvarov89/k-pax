@@ -4,7 +4,7 @@
 
 #define MyAppName "X-Plm"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.59"
+#define MyAppVersion "1.0.62"
 #endif
 #define MyAppPublisher "X-Plm"
 #define MyAppURL "https://x-plm.online"
@@ -70,18 +70,66 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent shellexec
 
 [Code]
+function VersionPart(const S: String; Index: Integer): Integer;
+var
+  Work, Piece: String;
+  Dot, I: Integer;
+begin
+  Work := S + '.';
+  Piece := '0';
+  for I := 0 to Index do
+  begin
+    Dot := Pos('.', Work);
+    if Dot = 0 then
+    begin
+      Result := 0;
+      Exit;
+    end;
+    Piece := Copy(Work, 1, Dot - 1);
+    Delete(Work, 1, Dot);
+  end;
+  Result := StrToIntDef(Piece, 0);
+end;
+
+function CompareAppVersions(const Left, Right: String): Integer;
+var
+  I, A, B: Integer;
+  L, R: String;
+begin
+  L := Left;
+  R := Right;
+  if Pos('+', L) > 0 then L := Copy(L, 1, Pos('+', L) - 1);
+  if Pos('+', R) > 0 then R := Copy(R, 1, Pos('+', R) - 1);
+  Result := 0;
+  for I := 0 to 3 do
+  begin
+    A := VersionPart(L, I);
+    B := VersionPart(R, I);
+    if A > B then begin Result := 1; Exit; end;
+    if A < B then begin Result := -1; Exit; end;
+  end;
+end;
+
 function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
-  Location: String;
+  Location, InstalledVersion: String;
 begin
   Result := True;
+  // Silent re-exec for upgrades — never silent-downgrade a newer install.
   if WizardSilent then
     Exit;
   if not RegQueryStringValue(HKLM64,
        'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E2D4A1-9C38-4F6B-8A1E-2D5C7F90B4E6}_is1',
        'InstallLocation', Location) then
     Exit;
+  if RegQueryStringValue(HKLM64,
+       'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E2D4A1-9C38-4F6B-8A1E-2D5C7F90B4E6}_is1',
+       'DisplayVersion', InstalledVersion) then
+  begin
+    if CompareAppVersions(ExpandConstant('{#MyAppVersion}'), InstalledVersion) < 0 then
+      Exit;
+  end;
   if Exec(ExpandConstant('{srcexe}'),
        '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /FORCECLOSEAPPLICATIONS',
        '', SW_HIDE, ewNoWait, ResultCode) then

@@ -36,6 +36,7 @@ class NetworkAutoConnect {
         results.contains(ConnectivityResult.mobile);
     if (!wifiOk && !mobileOk) return;
     if (!_controller.hasAccess) return;
+    if (!_controller.allowsNetworkAutoConnect) return;
     if (_controller.isConnected || _controller.isBusy) return;
     _busy = true;
     try {

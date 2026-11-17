@@ -31,6 +31,19 @@ try {
 
     $vcvars = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat'
     if (!(Test-Path $vcvars)) { throw "vcvars64.bat not found at $vcvars" }
+    # Empty CMAKE_RC_COMPILER breaks jni C ABI probe (get_filename_component args).
+    $rcCandidates = @(
+        (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin\10.0.22621.0\x64\rc.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin\10.0.26100.0\x64\rc.exe')
+    )
+    $rcExe = $rcCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (!$rcExe) {
+        $rcExe = Get-ChildItem -LiteralPath (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin') -Recurse -Filter 'rc.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\rc\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
+    if (!$rcExe) { throw 'Windows SDK rc.exe not found.' }
 
     $notes = @'
 1.0.60: Hiddify-aligned TUN/DNS: TCP remote DNS, UDP direct DNS, /28 MTU 9000, Windows strict_route forced off. sing-box 1.13.21.
@@ -62,11 +75,35 @@ try {
     New-Item -ItemType Directory -Path 'build\release' -Force | Out-Null
     $built = @()
 
+    function Clear-WindowsBuildTree {
+        param([string]$Path = 'build\windows')
+        if (!(Test-Path -LiteralPath $Path)) { return }
+        # BINARY_NAME switches need a clean tree; tolerate locked CMakeConfigureLog.yaml.
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $Path) {
+                $parkName = "windows.old.$((Get-Date).ToString('yyyyMMddHHmmss'))"
+                Rename-Item -LiteralPath $Path -NewName $parkName -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $Path) {
+                    Write-Warning "Could not fully clear $Path (locked files remain); continuing with flutter build."
+                } else {
+                    Write-Host "Parked locked windows build tree as build\$parkName"
+                }
+            }
+        } finally {
+            $ErrorActionPreference = $prevEap
+        }
+    }
+
     foreach ($item in $brands) {
         # Full windows cmake wipe required when switching BINARY_NAME (KPax <-> XPlm).
-        if (Test-Path 'build\windows') {
-            Remove-Item -LiteralPath 'build\windows' -Recurse -Force
-        }
+        Clear-WindowsBuildTree
 
         $brandLine = if ($item.BrandEnv) { "set APP_BRAND=$($item.BrandEnv)" } else { 'set APP_BRAND=' }
         $cmd = @"
@@ -74,7 +111,10 @@ try {
 call "$vcvars" >nul
 cd /d "%CD%"
 $brandLine
-flutter build windows --release --dart-define=BRAND=$($item.DartBrand)
+set "RC=$rcExe"
+set "CMAKE_RC_COMPILER=$rcExe"
+rem flutter.bat must be CALL'ed or the parent .cmd exits after the first flutter invocation.
+call flutter build windows --release --dart-define=BRAND=$($item.DartBrand)
 exit /b %ERRORLEVEL%
 "@
         $tmp = Join-Path $env:TEMP ("kpax-win-build-" + $item.Key + ".cmd")
@@ -107,8 +147,13 @@ exit /b %ERRORLEVEL%
 
     foreach ($entry in $built) {
         $item = $entry.Item
-        & gh release view $item.Tag --repo uvarov89/k-pax 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        # gh writes "release not found" to stderr; Stop would abort before create.
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & gh release view $item.Tag --repo uvarov89/k-pax 1>$null 2>$null
+        $viewExit = $LASTEXITCODE
+        $ErrorActionPreference = $prevEap
+        if ($viewExit -eq 0) {
             & gh release upload $item.Tag $entry.Path --repo uvarov89/k-pax --clobber
         } else {
             & gh release create $item.Tag $entry.Path --repo uvarov89/k-pax --target main --title $item.Name --notes $notes --latest=false

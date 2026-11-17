@@ -13,15 +13,8 @@ class AndroidRelease {
   final Uri url;
 }
 
-bool isTrustedAndroidApkUrl(Uri uri) {
-  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
-  final brand = AppBrand.current;
+bool _isTrustedGithubAndroidApk(Uri uri, AppBrand brand) {
   final lower = uri.path.toLowerCase();
-  // Brand-hosted redirect (no github.com/.../k-pax in the public JSON URL).
-  if (uri.host == brand.host) {
-    if (uri.path == '/download/android' || lower.endsWith('.apk')) return true;
-    return false;
-  }
   if (!lower.endsWith('.apk')) return false;
   if (uri.host != 'github.com') return false;
   if (!uri.path.startsWith('/uvarov89/k-pax/releases/download/')) {
@@ -34,6 +27,27 @@ bool isTrustedAndroidApkUrl(Uri uri) {
     return name.startsWith('x-plm-') || name.startsWith('xplm-');
   }
   return name.startsWith('k-pax-');
+}
+
+/// Manifest / JSON `url` — brand redirect endpoint or a direct GitHub APK.
+bool isTrustedAndroidApkUrl(Uri uri) {
+  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
+  final brand = AppBrand.current;
+  // Exact redirect path only — never "any *.apk on brand host".
+  if (uri.host == brand.host) {
+    return uri.path == '/download/android';
+  }
+  return _isTrustedGithubAndroidApk(uri, brand);
+}
+
+/// Final binary after redirects — brand redirect target or GitHub APK only.
+bool isTrustedAndroidApkBinaryUrl(Uri uri) {
+  if (uri.scheme != 'https' || uri.path.contains('..')) return false;
+  final brand = AppBrand.current;
+  if (uri.host == brand.host) {
+    return uri.path == '/download/android';
+  }
+  return _isTrustedGithubAndroidApk(uri, brand);
 }
 
 enum AndroidUpdateStatus { newer, current, unavailable }

@@ -60,11 +60,17 @@ android {
         create("direct") {
             dimension = "channel"
             isDefault = true
+            buildConfigField("boolean", "PLAY_STORE_CHANNEL", "false")
         }
         // Google Play AAB: no REQUEST_INSTALL_PACKAGES; updates via Play.
         create("play") {
             dimension = "channel"
+            buildConfigField("boolean", "PLAY_STORE_CHANNEL", "true")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     packaging {
@@ -97,7 +103,15 @@ android {
             }
         }
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Unsigned release must not pretend to use an empty "release" config.
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "android/key.properties missing — release build will be UNSIGNED. " +
+                        "Add keystore props before shipping.",
+                )
+            }
             // Store/device APKs stay arm64-only.
             ndk {
                 abiFilters.clear()

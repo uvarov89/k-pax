@@ -44,7 +44,10 @@ class DeepLinkService {
 
     final subParam = uri.queryParameters['url'] ?? uri.queryParameters['sub'];
     if (subParam != null && subParam.isNotEmpty) {
-      await _controller.submitSubscriptionLink(subParam);
+      // Only owned subscription URLs or share links — not arbitrary http hosts.
+      if (brandSubscriptionUri(subParam) != null || looksLikeShare(subParam)) {
+        await _controller.submitSubscriptionLink(subParam);
+      }
       return;
     }
 
@@ -65,6 +68,13 @@ class DeepLinkService {
 
     final contact = uri.queryParameters['contact'];
     if (contact != null && contact.isNotEmpty) {
+      // Contact is email/@nick for login — reject raw URLs here.
+      final asUri = Uri.tryParse(contact.trim());
+      if (asUri != null &&
+          (asUri.scheme == 'http' || asUri.scheme == 'https') &&
+          asUri.host.isNotEmpty) {
+        return;
+      }
       await _controller.submitSubscriptionLink(contact);
     }
   }

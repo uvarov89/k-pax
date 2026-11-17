@@ -33,4 +33,27 @@ void main() {
       AndroidUpdateStatus.unavailable,
     );
   });
+
+  test('brand host allows only the download redirect path', () {
+    expect(
+      isTrustedAndroidApkUrl(Uri.parse('https://k-pax.space/download/android')),
+      isTrue,
+    );
+    expect(
+      isTrustedAndroidApkUrl(Uri.parse('https://k-pax.space/evil.apk')),
+      isFalse,
+    );
+    expect(
+      isTrustedAndroidApkBinaryUrl(
+        Uri.parse(
+          'https://github.com/uvarov89/k-pax/releases/download/v1.0.22/K-Pax-1.0.22.apk',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedAndroidApkBinaryUrl(Uri.parse('https://evil.example/K-Pax.apk')),
+      isFalse,
+    );
+  });
 }

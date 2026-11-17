@@ -2,11 +2,17 @@
 
 #include <shellapi.h>
 #include <commdlg.h>
+#include <softpub.h>
+#include <wincrypt.h>
+#include <wintrust.h>
 
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
+
+#pragma comment(lib, "wintrust.lib")
+#pragma comment(lib, "crypt32.lib")
 
 namespace {
 
@@ -16,6 +22,29 @@ constexpr UINT kTrayShow = 1;
 constexpr UINT kTrayExit = 2;
 constexpr UINT kTrayToggle = 3;
 constexpr UINT kTrayToggleMessage = WM_APP + 3;
+
+bool IsAuthenticodeValid(const std::wstring& path) {
+  WINTRUST_FILE_INFO file_info{};
+  file_info.cbStruct = sizeof(file_info);
+  file_info.pcwszFilePath = path.c_str();
+  file_info.hFile = nullptr;
+  file_info.pgKnownSubject = nullptr;
+
+  GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+  WINTRUST_DATA data{};
+  data.cbStruct = sizeof(data);
+  data.dwUIChoice = WTD_UI_NONE;
+  data.fdwRevocationChecks = WTD_REVOKE_NONE;
+  data.dwUnionChoice = WTD_CHOICE_FILE;
+  data.pFile = &file_info;
+  data.dwStateAction = WTD_STATEACTION_VERIFY;
+  data.dwProvFlags = WTD_SAFER_FLAG;
+
+  const LONG status = WinVerifyTrust(nullptr, &action, &data);
+  data.dwStateAction = WTD_STATEACTION_CLOSE;
+  WinVerifyTrust(nullptr, &action, &data);
+  return status == ERROR_SUCCESS;
+}
 
 }  // namespace
 
@@ -90,6 +119,11 @@ bool FlutterWindow::OnCreate() {
           MultiByteToWideChar(CP_UTF8, 0, path->c_str(), -1, exe.data(),
                               wide_size);
           exe.assign(exe.c_str());
+          if (!IsAuthenticodeValid(exe)) {
+            result->Error("bad_signature",
+                          "installer Authenticode signature is missing or invalid");
+            return;
+          }
           std::wstring command =
               L"\"" + exe +
               L"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /FORCECLOSEAPPLICATIONS";

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pulse_vpn/app/brand/app_brand.dart';
@@ -86,10 +87,7 @@ class _ScriptedVpnService implements VpnService {
 }
 
 VpnController _readyController(_ScriptedVpnService service) {
-  final c = VpnController(
-    service: service,
-    tcpProbe: (_, __) async => null,
-  );
+  final c = VpnController(service: service);
   c.subscriptionUrl = 'https://sub.example/s/test';
   c.linkState = SubscriptionLinkState.ready;
   c.profile = const SubscriptionProfile(
@@ -109,6 +107,13 @@ void main() {
   testWidgets('Auto is the first server row and selecting it keeps Auto mode', (
     tester,
   ) async {
+    PackageInfo.setMockInitialValues(
+      appName: 'K-Pax',
+      packageName: 'space.kpax.app',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
     await AppBrand.init();
     final controller = VpnController(service: MockVpnService());
     addTearDown(controller.dispose);

@@ -23,8 +23,10 @@ VpnService defaultVpnService() {
   return MockVpnService();
 }
 
-class SingboxVpnService implements VpnService, TunnelConnectivityVerifier {
-  SingboxVpnService({FlutterSingbox? singbox}) : _singbox = singbox ?? FlutterSingbox();
+class SingboxVpnService
+    implements VpnService, TunnelConnectivityVerifier, VpnSettingsService {
+  SingboxVpnService({FlutterSingbox? singbox})
+    : _singbox = singbox ?? FlutterSingbox();
 
   final FlutterSingbox _singbox;
 
@@ -68,8 +70,6 @@ class SingboxVpnService implements VpnService, TunnelConnectivityVerifier {
       throw StateError('Разрешение VPN не выдано');
     }
     await _waitUntilStarted();
-    // Let Android VpnService routes/DNS settle before the HTTPS probe.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
   }
 
   Future<void> _applySplitTunnel(AppSettings appSettings) async {
@@ -98,13 +98,27 @@ class SingboxVpnService implements VpnService, TunnelConnectivityVerifier {
       if (sawStarting && status == VPNStatus.STOPPED) {
         throw StateError('Туннель остановился при запуске');
       }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     throw StateError('Туннель не поднялся за отведённое время');
   }
 
   @override
   Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+
+  @override
+  Future<void> applyAppSettings(AppSettings settings) async {
+    await _applySplitTunnel(settings);
+  }
+
+  @override
+  Future<void> clearSavedAccess() async {
+    try {
+      await _singbox.stopVPN();
+    } catch (_) {}
+    // Wipe last tunnel JSON so a forgotten subscription cannot reconnect.
+    await _singbox.saveConfig('{}');
+  }
 
   @override
   Future<void> disconnect() async {

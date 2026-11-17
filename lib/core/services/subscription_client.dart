@@ -202,44 +202,27 @@ class SubscriptionClient {
   }
 
   Future<List<ConnectedDeviceInfo>> fetchDevices(String token) async {
-    final client = HttpClient();
-    try {
-      final uri = AppBrand.current.appDevices().replace(
-        queryParameters: {'token': token},
-      );
-      final request = await client
-          .getUrl(uri)
-          .timeout(const Duration(seconds: 15));
-      request.headers.set(HttpHeaders.userAgentHeader, _ua);
-      final response = await request.close().timeout(
-        const Duration(seconds: 20),
-      );
-      final body = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 20));
-      if (response.statusCode != 200) {
-        throw const HttpException('devices');
-      }
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) throw const HttpException('devices');
-      final raw = decoded['devices'];
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map>()
-          .map(
-            (item) => ConnectedDeviceInfo(
-              id: '${item['id'] ?? ''}',
-              label: '${item['label'] ?? ''}',
-              detail: '${item['detail'] ?? ''}',
-              online: item['online'] == true,
-            ),
-          )
-          .where((item) => item.id.isNotEmpty)
-          .toList();
-    } finally {
-      client.close(force: true);
+    final result = await _postJson(AppBrand.current.appDevices(), {
+      'token': token,
+    });
+    if ((result['status'] as int) != 200) {
+      throw const HttpException('devices');
     }
+    final decoded = result['body'] as Map<String, dynamic>;
+    final raw = decoded['devices'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => ConnectedDeviceInfo(
+            id: '${item['id'] ?? ''}',
+            label: '${item['label'] ?? ''}',
+            detail: '${item['detail'] ?? ''}',
+            online: item['online'] == true,
+          ),
+        )
+        .where((item) => item.id.isNotEmpty)
+        .toList();
   }
 
   Future<bool> kickDevice(String token, String deviceId) async {
@@ -253,37 +236,20 @@ class SubscriptionClient {
   }
 
   Future<AppLoginStatus> pollLoginStatus(String session) async {
-    final client = HttpClient();
-    try {
-      final uri = AppBrand.current.appLoginStatus().replace(
-        queryParameters: {'session': session},
-      );
-      final request = await client
-          .getUrl(uri)
-          .timeout(const Duration(seconds: 15));
-      request.headers.set(HttpHeaders.userAgentHeader, _ua);
-      final response = await request.close().timeout(
-        const Duration(seconds: 20),
-      );
-      final body = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 20));
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) throw const HttpException('login-status');
-      final rawUrl = decoded['url']?.toString() ?? '';
-      return AppLoginStatus(
-        status: decoded['status']?.toString() ?? 'expired',
-        url: rawUrl.isEmpty ? null : brandSubscriptionUri(rawUrl),
-        publicId: decoded['public_id']?.toString(),
-        expiresAt: int.tryParse('${decoded['expires_at']}'),
-        active: decoded['active'] != false,
-        error: decoded['error']?.toString(),
-        needsEmailLink: decoded['needs_email_link'] == true,
-      );
-    } finally {
-      client.close(force: true);
-    }
+    final result = await _postJson(AppBrand.current.appLoginStatus(), {
+      'session': session,
+    });
+    final decoded = result['body'] as Map<String, dynamic>;
+    final rawUrl = decoded['url']?.toString() ?? '';
+    return AppLoginStatus(
+      status: decoded['status']?.toString() ?? 'expired',
+      url: rawUrl.isEmpty ? null : brandSubscriptionUri(rawUrl),
+      publicId: decoded['public_id']?.toString(),
+      expiresAt: int.tryParse('${decoded['expires_at']}'),
+      active: decoded['active'] != false,
+      error: decoded['error']?.toString(),
+      needsEmailLink: decoded['needs_email_link'] == true,
+    );
   }
 }
 

@@ -2,7 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/pulse_app.dart';
+import 'package:pulse_vpn/core/models/subscription.dart';
+import 'package:pulse_vpn/core/services/settings_repository.dart';
+import 'package:pulse_vpn/core/services/subscription_link.dart';
+import 'package:pulse_vpn/core/services/vpn_service.dart';
+import 'package:pulse_vpn/core/services/windows_platform.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,15 +17,29 @@ const _germany =
 const _finland =
     'vless://11111111-1111-1111-1111-111111111111@203.0.113.20:443?security=reality&sni=www.microsoft.com&pbk=pk&sid=ab&type=tcp#Finland';
 
-Future<VpnController> _start(WidgetTester tester, Map<String, Object> prefs) async {
-  SharedPreferences.setMockInitialValues(prefs);
-  final controller = VpnController();
-  // hydrate runs real processes (netsh on Windows) that never finish under the fake test clock.
-  await tester.runAsync(controller.hydrate);
+Future<VpnController> _start(
+  WidgetTester tester, {
+  Map<String, Object> prefs = const {},
+  void Function(VpnController c)? prepare,
+}) async {
+  SharedPreferences.setMockInitialValues({
+    'onboarding_seen_v1': true,
+    ...prefs,
+  });
+  final controller = VpnController(service: MockVpnService());
+  if (prepare != null) {
+    prepare(controller);
+    controller.isHydrated = true;
+  } else {
+    // hydrate runs real processes (netsh on Windows) that never finish under the fake test clock.
+    await tester.runAsync(controller.hydrate);
+  }
   await tester.pumpWidget(PulseApp(controller: controller));
   await tester.pump(const Duration(milliseconds: 500));
   await tester.runAsync(() async {
-    for (var i = 0; i < 60 && controller.linkState == SubscriptionLinkState.loading; i++) {
+    for (var i = 0;
+        i < 60 && controller.linkState == SubscriptionLinkState.loading;
+        i++) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
   });
@@ -35,17 +55,26 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    AppBrand.debugReset();
+    WindowsFirewall.disableForTests = true;
+    SettingsRepository.preferPlaintextForTests = true;
+  });
+  tearDown(() {
+    WindowsFirewall.disableForTests = false;
+    SettingsRepository.preferPlaintextForTests = false;
+  });
 
   testWidgets('K-Pax home shows connect, profile and settings', (tester) async {
-    await _start(tester, {});
+    await _start(tester);
 
     expect(find.text('K-Pax'), findsWidgets);
-    expect(find.text('Подключить'), findsOneWidget);
+    expect(find.text('В эфир'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.person_outline));
     await _settle(tester);
-    expect(find.textContaining('Почта'), findsWidgets);
+    expect(find.textContaining('почт'), findsWidgets);
     expect(find.text('Продолжить'), findsOneWidget);
     expect(find.text('Мои подписки'), findsNothing);
     await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
@@ -57,14 +86,23 @@ void main() {
     expect(find.text('Подписка'), findsWidgets);
   });
 
-  testWidgets('other providers: list, switch and no K-Pax payment', (tester) async {
-    final controller = await _start(tester, {
-      'subscription_url': _germany,
-      'subscriptions': jsonEncode([
-        {'url': _germany, 'name': 'My VPN'},
-        {'url': _finland, 'name': 'Second VPN'},
-      ]),
-    });
+  testWidgets('other providers: list, switch and no K-Pax payment', (
+    tester,
+  ) async {
+    // Avoid Windows hydrate / secure-storage hangs: seed controller in-memory.
+    final controller = await _start(
+      tester,
+      prepare: (c) {
+        c.subscriptionUrl = _germany;
+        c.subscriptions = [
+          const SavedSubscription(url: _germany, name: 'My VPN'),
+          const SavedSubscription(url: _finland, name: 'Second VPN'),
+        ];
+        c.profile = parseSubscription(_germany);
+        c.linkState = SubscriptionLinkState.ready;
+        c.account = UserAccount.freshTrial();
+      },
+    );
     expect(controller.isKPaxSubscription, isFalse);
     expect(controller.hasAccess, isTrue);
     expect(controller.locations.map((item) => item.countryCode), contains('DE'));
@@ -82,7 +120,10 @@ void main() {
     await _settle(tester);
     expect(controller.subscriptionUrl, _finland);
     expect(controller.locations.map((item) => item.countryCode), contains('FI'));
-    expect(controller.locations.map((item) => item.countryCode), isNot(contains('DE')));
+    expect(
+      controller.locations.map((item) => item.countryCode),
+      isNot(contains('DE')),
+    );
 
     await tester.runAsync(() => controller.removeSubscription(_germany));
     await _settle(tester);

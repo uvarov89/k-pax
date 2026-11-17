@@ -1,4 +1,4 @@
-enum TunnelKind { reality, grpc, hy2, tuic, message }
+enum TunnelKind { reality, grpc, hy2, tuic, message, shadowsocks, tls }
 
 class TunnelNode {
   const TunnelNode({

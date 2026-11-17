@@ -26,17 +26,13 @@ class VpnController extends ChangeNotifier {
     VpnService? service,
     SettingsRepository? repository,
     SubscriptionClient? subscriptions,
-    Future<int?> Function(String host, int port)? tcpProbe,
   }) : _service = service ?? defaultVpnService(),
        _repository = repository ?? SettingsRepository(),
-       _subscriptions = subscriptions ?? SubscriptionClient(),
-       _tcpProbe = tcpProbe;
+       _subscriptions = subscriptions ?? SubscriptionClient();
 
   final VpnService _service;
   final SettingsRepository _repository;
   final SubscriptionClient _subscriptions;
-  /// Optional TCP RTT probe override (tests). Null → [measureTcp].
-  final Future<int?> Function(String host, int port)? _tcpProbe;
   int _loginEpoch = 0;
   bool _disposed = false;
   (int, String)? _pollingLogin;
@@ -50,6 +46,13 @@ class VpnController extends ChangeNotifier {
     final next = _accountWrites.catchError((_) {}).then((_) async {
       await _repository.saveSubscriptions(saved);
       await _repository.saveSubscriptionUrl(url);
+      // Skip wiping a real account with empty() while a URL is still active
+      // (activate / reload race). Logout clears URL first, so empty saves there.
+      if (user.userId.isEmpty &&
+          user.referralCode.isEmpty &&
+          url.isNotEmpty) {
+        return;
+      }
       await _repository.saveAccount(user);
     });
     _accountWrites = next;
@@ -104,6 +107,9 @@ class VpnController extends ChangeNotifier {
   int downloadBytesPerSec = 0;
   int _reconnectBudget = 0;
   bool _wantConnected = false;
+  /// Set by [disconnect]; cleared on user-initiated [connect]. Blocks
+  /// [NetworkAutoConnect] from immediately undoing an intentional stop.
+  bool _userStopped = false;
   bool _reconnectInFlight = false;
   /// Bumped to invalidate an in-flight [connect] / failover when user cancels.
   int _connectEpoch = 0;
@@ -124,6 +130,9 @@ class VpnController extends ChangeNotifier {
       connectionState == VpnConnectionState.disconnecting;
 
   bool get isConnected => connectionState == VpnConnectionState.connected;
+
+  /// Network/Wi‑Fi auto-connect may run only when the user has not stopped.
+  bool get allowsNetworkAutoConnect => !_userStopped;
 
   bool get hasAccess =>
       linkState == SubscriptionLinkState.ready && account.hasAccess;
@@ -256,6 +265,7 @@ class VpnController extends ChangeNotifier {
   Future<void> hydrate() async {
     appSettings = await _repository.loadAppSettings();
     proSettings = await _repository.loadProSettings();
+    account = await _repository.loadAccount() ?? UserAccount.empty();
     _dismissedHomeNoticeId = await _repository.loadDismissedHomeNoticeId();
     final session = await _repository.loadSessionPrefs();
     userMode = session.mode;
@@ -372,72 +382,69 @@ class VpnController extends ChangeNotifier {
     uploadBytesPerSec = 0;
     downloadBytesPerSec = 0;
 
-    final block = proSettings.killSwitch;
+    // Kill switch only strengthens TUN routing while up (strict_route). There is
+    // no fail-closed outbound block after a drop — never claim traffic is held.
     final shouldRetry = _wantConnected && _reconnectBudget > 0;
     if (!shouldRetry) {
       connectedNode = null;
       connectionState = VpnConnectionState.disconnected;
-      errorMessage = block && (!kIsWeb && Platform.isWindows)
-            ? strings.reconnectFailed
-            : (block ? strings.killSwitchHeld : null);
+      errorMessage = _wantConnected ? strings.reconnectFailed : null;
       notifyListeners();
-      if (block) await WindowsFirewall.blockOutboundExceptApp();
       return;
     }
 
-    if (block) await WindowsFirewall.blockOutboundExceptApp();
     await _attemptReconnect(lastNode);
   }
 
   Future<void> _attemptReconnect(TunnelNode? lastNode) async {
     if (!_wantConnected || _reconnectBudget <= 0 || _reconnectInFlight) return;
-    final block = proSettings.killSwitch;
-    _reconnectBudget -= 1;
     _reconnectInFlight = true;
-    connectionState = VpnConnectionState.connecting;
-    errorMessage = strings.reconnectingStatus;
-    notifyListeners();
-
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (!_wantConnected) {
-      _reconnectInFlight = false;
-      connectionState = VpnConnectionState.disconnected;
-      errorMessage = null;
-      connectedNode = null;
-      notifyListeners();
-      return;
-    }
-
     try {
-      final seed = lastNode ?? await _selectNode();
-      final node = await _startWithFailover(seed);
-      await WindowsFirewall.clear();
-      connectedNode = node;
-      connectionState = VpnConnectionState.connected;
-      errorMessage = null;
-      _connectedAt = DateTime.now();
-      sessionDuration = Duration.zero;
-      _sessionTimer?.cancel();
-      _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (_connectedAt == null) return;
-        sessionDuration = DateTime.now().difference(_connectedAt!);
-        notifyListeners();
-      });
-    } catch (_) {
-      connectedNode = null;
-      if (_wantConnected && _reconnectBudget > 0) {
-        connectionState = VpnConnectionState.disconnected;
+      while (_wantConnected && _reconnectBudget > 0) {
+        _reconnectBudget -= 1;
+        connectionState = VpnConnectionState.connecting;
         errorMessage = strings.reconnectingStatus;
         notifyListeners();
-        _reconnectInFlight = false;
-        unawaited(_attemptReconnect(lastNode));
-        return;
+
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!_wantConnected) {
+          connectionState = VpnConnectionState.disconnected;
+          errorMessage = null;
+          connectedNode = null;
+          notifyListeners();
+          return;
+        }
+
+        try {
+          final seed = lastNode ?? await _selectNode();
+          final node = await _startWithFailover(seed);
+          await WindowsFirewall.clear();
+          connectedNode = node;
+          connectionState = VpnConnectionState.connected;
+          errorMessage = null;
+          _connectedAt = DateTime.now();
+          sessionDuration = Duration.zero;
+          _sessionTimer?.cancel();
+          _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+            if (_connectedAt == null) return;
+            sessionDuration = DateTime.now().difference(_connectedAt!);
+            notifyListeners();
+          });
+          return;
+        } catch (_) {
+          connectedNode = null;
+          if (_wantConnected && _reconnectBudget > 0) {
+            connectionState = VpnConnectionState.disconnected;
+            errorMessage = strings.reconnectingStatus;
+            notifyListeners();
+            continue;
+          }
+          connectionState = VpnConnectionState.error;
+          errorMessage = strings.reconnectFailed;
+          notifyListeners();
+          return;
+        }
       }
-      connectionState = VpnConnectionState.error;
-      errorMessage = block && (kIsWeb || !Platform.isWindows)
-          ? strings.killSwitchHeld
-          : strings.reconnectFailed;
-      notifyListeners();
     } finally {
       _reconnectInFlight = false;
     }
@@ -801,7 +808,7 @@ class VpnController extends ChangeNotifier {
     final kept = profile;
     try {
       if (looksLikeShare(url)) {
-        profile = parseSubscription(url);
+        profile = parseSubscription(url, trustInsecureFlags: true);
       } else {
         final fetched = await _subscriptions.fetch(Uri.parse(url));
         if (_disposed ||
@@ -809,7 +816,12 @@ class VpnController extends ChangeNotifier {
             url != subscriptionUrl) {
           return;
         }
-        profile = parseSubscription(fetched.body, userinfo: fetched.userinfo);
+        // Owned HTTPS subscription bodies must not honor share insecure flags.
+        profile = parseSubscription(
+          fetched.body,
+          userinfo: fetched.userinfo,
+          trustInsecureFlags: brandSubscriptionUri(url) == null,
+        );
         providerWebPage = fetched.webPage;
         if (fetched.title != null) await _rename(url, fetched.title!);
         if (_disposed ||
@@ -901,14 +913,24 @@ class VpnController extends ChangeNotifier {
       return;
     }
     linkState = SubscriptionLinkState.ready;
-    // K-Pax must send expire via subscription-userinfo; without it use a short
-    // grace so a blocked refresh cannot keep forever-access from local prefs.
-    final fallbackExpiry = isKPaxSubscription
-        ? DateTime.now().add(const Duration(hours: 36))
-        : DateTime.now().add(const Duration(days: 3650));
+    // Owned brand must send expire via subscription-userinfo. Without it keep
+    // any still-valid local expiry; only grant a one-shot grace when none exists.
+    // Never roll a fresh +36h window on every successful refresh.
+    final fromProfile = current.expiresAt;
+    final DateTime expiry;
+    if (fromProfile != null) {
+      expiry = fromProfile;
+    } else if (account.accessExpiresAt.isAfter(DateTime.now()) &&
+        account.userId.isNotEmpty) {
+      expiry = account.accessExpiresAt;
+    } else if (isKPaxSubscription) {
+      expiry = DateTime.now().add(const Duration(hours: 36));
+    } else {
+      expiry = DateTime.now().add(const Duration(days: 3650));
+    }
     account = account.copyWith(
       plan: SubscriptionPlan.trial,
-      accessExpiresAt: current.expiresAt ?? fallbackExpiry,
+      accessExpiresAt: expiry,
       displayName: subscriptionName,
     );
   }
@@ -917,7 +939,8 @@ class VpnController extends ChangeNotifier {
     if (!appSettings.autoConnectOnLaunch) return;
     if (!hasAccess) return;
     if (isConnected || isBusy) return;
-    await connect();
+    // Launch auto-connect is an intentional start for this session.
+    await connect(userInitiated: true);
   }
 
   Future<void> _appSettingsWrites = Future<void>.value();
@@ -1153,40 +1176,57 @@ class VpnController extends ChangeNotifier {
   }
 
   Future<void> _start(TunnelNode node) async {
-    connectedNode = node;
+    // Engine start alone is not enough — probe data-plane before claiming this
+    // node. Failures throw so [_startWithFailover] can try spares. Probes use
+    // short timeouts (see tunnel_connectivity.dart); attempt/deadline caps
+    // prevent multi-minute loops.
     await _service.connect(
       location: effectiveLocation,
       settings: proSettings,
       appSettings: appSettings,
       node: node,
     );
-    if (_service is TunnelConnectivityVerifier) {
+    final TunnelConnectivityVerifier? verifier =
+        _service is TunnelConnectivityVerifier
+        ? _service as TunnelConnectivityVerifier
+        : null;
+    if (verifier != null) {
       try {
-        // Running sing-box is not proof that the data path is healthy.
-        await (_service as TunnelConnectivityVerifier).verifyConnectivity();
+        await verifier.verifyConnectivity();
       } catch (_) {
         try {
           await _service.disconnect();
         } catch (_) {}
-        rethrow; // Let existing node/protocol failover pick another endpoint.
+        rethrow;
       }
     }
+    connectedNode = node;
   }
 
   List<TunnelKind> _kindOrder() {
-    // Reality (primary dest + self-steal) → gRPC/XHTTP → brand WS/CDN → UDP.
-    const tcp = [TunnelKind.reality, TunnelKind.grpc, TunnelKind.message];
+    // Reality → gRPC → WS/CDN → plain TLS → SS → UDP.
+    const tcp = [
+      TunnelKind.reality,
+      TunnelKind.grpc,
+      TunnelKind.message,
+      TunnelKind.tls,
+      TunnelKind.shadowsocks,
+    ];
     const udpFirst = [
       TunnelKind.hy2,
       TunnelKind.tuic,
       TunnelKind.reality,
       TunnelKind.grpc,
       TunnelKind.message,
+      TunnelKind.tls,
+      TunnelKind.shadowsocks,
     ];
     const standard = [
       TunnelKind.reality,
       TunnelKind.grpc,
       TunnelKind.message,
+      TunnelKind.tls,
+      TunnelKind.shadowsocks,
       TunnelKind.hy2,
       TunnelKind.tuic,
     ];
@@ -1243,14 +1283,14 @@ class VpnController extends ChangeNotifier {
     final tried = <String>{};
     final triedCountries = <String>{first.countryId};
     Object? lastError;
-    // iOS Packet Tunnel start is slow to fail; cap attempts/deadline so NE
-    // failover cannot feel like an unbounded freeze (Android allows more).
+    // Cap attempts/deadline so dead endpoints + HTTPS probes cannot burn minutes.
+    // iOS NE start is slow to fail; Android/Windows get a slightly larger budget.
     final ios = !kIsWeb && Platform.isIOS;
     final deadline = DateTime.now().add(
-      Duration(seconds: ios ? 55 : 180),
+      Duration(seconds: ios ? 55 : 75),
     );
     var attempts = 0;
-    final maxAttempts = ios ? 4 : 12;
+    final maxAttempts = ios ? 4 : 8;
 
     Future<TunnelNode?> tryStart(TunnelNode node, {bool disconnectFirst = false}) async {
       if (!_wantConnected) return null;
@@ -1363,10 +1403,9 @@ class VpnController extends ChangeNotifier {
     return [...primary, ...secondary];
   }
 
-  /// UDP lines (Hy2, TUIC) cannot be timed over TCP; they keep subscription order.
-  ///
-  /// TCP races: pick randomly among nodes within a small RTT slack of the best
-  /// (not pure least-ping), so Автовыбор spreads load across DE/FI/BG.
+  /// Instant pick for connect. Do not TCP-probe here: waiting on host RTT (even
+  /// in parallel) blocks TUN start for seconds. UI latency stays on
+  /// [ServerLatencyMonitor]; failover still covers a dead endpoint after start.
   Future<TunnelNode> _pickNearBest(
     List<TunnelNode> nodes, {
     bool spreadLoad = true,
@@ -1376,34 +1415,15 @@ class VpnController extends ChangeNotifier {
         nodes.first.kind == TunnelKind.tuic) {
       return nodes.first;
     }
-    // For Reality keep primary endpoints first; only race within the best group.
     final ranked = _preferPrimaryEndpoints(nodes);
     final preferredPort = ranked.first.port == 0 ? 443 : ranked.first.port;
-    final group = ranked
+    var pool = ranked
         .where((node) => (node.port == 0 ? 443 : node.port) == preferredPort)
         .toList();
-    final race = group.isEmpty ? ranked : group;
-    final seen = <String>{};
-    final timed = <({TunnelNode node, int ms})>[];
-    for (final node in race) {
-      final port = node.port == 0 ? 443 : node.port;
-      if (!seen.add('${node.host}:$port')) continue;
-      final ms = await (_tcpProbe ?? measureTcp)(node.host, port);
-      if (ms != null) timed.add((node: node, ms: ms));
-    }
-    if (timed.isEmpty) return race.first;
-
-    timed.sort((a, b) => a.ms.compareTo(b.ms));
-    final bestMs = timed.first.ms;
-    // Slack: at least +50 ms, or +30% of best — still "near best", not random junk.
-    final slack = math.max(50, (bestMs * 0.3).round());
-    var pool = timed
-        .where((item) => item.ms <= bestMs + slack)
-        .map((item) => item.node)
-        .toList();
+    if (pool.isEmpty) pool = ranked;
 
     if (spreadLoad && pool.length > 1) {
-      // Soft-avoid FI (VPSPay girl_round throttle) when another near-best exists.
+      // Soft-avoid FI (VPSPay girl_round throttle) when another primary exists.
       final withoutHot = pool
           .where((node) => node.countryId.toLowerCase() != 'fi')
           .toList();
@@ -1411,8 +1431,7 @@ class VpnController extends ChangeNotifier {
     }
 
     if (pool.length == 1) return pool.first;
-    // Sticky among near-best: same account keeps the same country across reconnects,
-    // while different accounts spread across DE/FI/BG.
+    // Sticky: same account keeps the same country; accounts spread DE/FI/BG.
     return pool[_stickyIndex(pool.length)];
   }
 
@@ -1508,9 +1527,29 @@ class VpnController extends ChangeNotifier {
     final raw = error is StateError
         ? error.message
         : error.toString().replaceFirst(RegExp(r'^Exception:?\s*'), '');
-    final detail = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    var detail = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (detail.isEmpty || detail == 'no node') return strings.connectFailed;
-    // Keep platform codes like [CONNECTION_FAILED] for TestFlight diagnosis.
+    // Scrub hostnames, IPs, and local paths from sing-box / stderr noise.
+    detail = detail
+        .replaceAll(
+          RegExp(
+            r'(?:(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?',
+          ),
+          '[addr]',
+        )
+        .replaceAll(
+          RegExp(
+            r'(?:[A-Za-z]:\\|/)(?:[^\s\\/]+[\\/])+[^\s]+',
+          ),
+          '[path]',
+        )
+        .replaceAll(
+          RegExp(
+            r'\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|space|online|ru|dev)(?::\d+)?\b',
+            caseSensitive: false,
+          ),
+          '[host]',
+        );
     final short = detail.length > 240 ? '${detail.substring(0, 240)}…' : detail;
     return '${strings.connectFailed}\n$short';
   }
@@ -1538,10 +1577,20 @@ class VpnController extends ChangeNotifier {
     }
 
     if (userInitiated) {
+      _userStopped = false;
       _wantConnected = true;
       // Always keep a small budget for unexpected drops (Android/iOS); aggressive = more tries.
       _reconnectBudget =
           proSettings.reconnectPolicy == ReconnectPolicy.aggressive ? 5 : 2;
+    } else {
+      // Network / launch auto-connect: arm reconnect the same as a manual start,
+      // but never override an intentional user disconnect.
+      if (_userStopped) return true;
+      _wantConnected = true;
+      if (_reconnectBudget <= 0) {
+        _reconnectBudget =
+            proSettings.reconnectPolicy == ReconnectPolicy.aggressive ? 5 : 2;
+      }
     }
     final epoch = ++_connectEpoch;
     connectionState = VpnConnectionState.connecting;
@@ -1610,6 +1659,7 @@ class VpnController extends ChangeNotifier {
       _forceDisconnectedUi();
       return;
     }
+    _userStopped = true;
     _wantConnected = false;
     _reconnectBudget = 0;
     _reconnectInFlight = false;
@@ -1676,6 +1726,8 @@ class VpnController extends ChangeNotifier {
     TunnelKind.hy2 => 2,
     TunnelKind.tuic => 3,
     TunnelKind.message => 4,
+    TunnelKind.tls => 5,
+    TunnelKind.shadowsocks => 6,
   };
 
   static bool _looksLikeEmail(String raw) {

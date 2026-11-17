@@ -112,16 +112,19 @@ vless://11111111-1111-1111-1111-111111111111@j.example.net:443?security=tls&type
     expect(us.kind, TunnelKind.grpc);
     expect(us.outbound['transport'], {'type': 'grpc', 'service_name': 'tr'});
     expect(byTitle['1.2.3.4']!.countryCode, 'JP');
+    expect(byTitle['1.2.3.4']!.kind, TunnelKind.shadowsocks);
     expect(byTitle['1.2.3.4']!.outbound['method'], '2022-blake3-aes-128-gcm');
     final by = byTitle['5.6.7.8']!;
     expect(by.countryCode, 'BY');
+    expect(by.kind, TunnelKind.shadowsocks);
     expect(by.outbound['plugin'], 'obfs-local');
     expect(by.outbound['plugin_opts'], 'obfs=http;obfs-host=example.com');
     final fi = byTitle['9.9.9.9']!;
     expect(fi.countryCode, 'FI');
     expect(fi.kind, TunnelKind.hy2);
     expect(fi.outbound['obfs'], {'type': 'salamander', 'password': 'x'});
-    expect((fi.outbound['tls'] as Map)['insecure'], isTrue);
+    // pinSHA256 alone must not force insecure (MITM).
+    expect((fi.outbound['tls'] as Map).containsKey('insecure'), isFalse);
     final vm = byTitle['10.0.0.1']!;
     expect(vm.countryCode, 'DE');
     expect(vm.outbound['transport'], {'type': 'grpc', 'service_name': 'svc'});

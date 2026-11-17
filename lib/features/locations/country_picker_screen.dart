@@ -152,8 +152,11 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
     final countryRows = source
         .where((l) => !l.isAuto && (!xplm || _matches(l)) && matchesSearch(l))
         .toList();
-    // X-Plm: Auto is a pinned first row (not a region chip). K-Pax keeps Auto in the list.
-    final showPinnedAuto = xplm && _chip == _RegionChip.all && q.isEmpty;
+    // X-Plm: Auto is a pinned first row only when real countries exist. Otherwise
+    // the empty-state CTA ("Добавить подписку") must remain reachable.
+    final hasCountries = source.any((l) => !l.isAuto);
+    final showPinnedAuto =
+        xplm && hasCountries && _chip == _RegionChip.all && q.isEmpty;
     final locations = xplm
         ? [
             if (showPinnedAuto) ServerLocation.auto,

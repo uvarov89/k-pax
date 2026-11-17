@@ -145,19 +145,20 @@ void main() {
         });
       }
     }
+    // Busy CTA stays tappable: cancel while connecting / force-reset while disconnecting.
     await tester.tap(find.byType(CircularProgressIndicator));
-    expect(taps, 1);
+    expect(taps, 2);
     controller.connectionState = VpnConnectionState.connected;
     await show(const Size(390, 844));
     expect(find.text('Ваш интернет защищён'), findsOneWidget);
     await tester.tap(find.text(controller.strings.disconnect));
-    expect(taps, 2);
+    expect(taps, 3);
     controller.connectionState = VpnConnectionState.disconnecting;
     await show(const Size(390, 844));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text(controller.strings.disconnecting), findsOneWidget);
     await tester.tap(find.byType(CircularProgressIndicator));
-    expect(taps, 2);
+    expect(taps, 4);
     controller.connectionState = VpnConnectionState.connected;
     await show(const Size(390, 844));
     await tester.pumpAndSettle();

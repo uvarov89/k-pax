@@ -25,7 +25,8 @@ BRAND_IDS = {
     group: 'group.online.xplm.app',
   },
 }.freeze
-ids = BRAND_IDS[BRAND] || BRAND_IDS['kpax']
+ids = BRAND_IDS[BRAND]
+abort "Unknown BRAND=#{BRAND.inspect} (expected: #{BRAND_IDS.keys.join(', ')})" unless ids
 
 BUNDLE_APP = ENV['BUNDLE_ID'] || ENV['BUNDLE_ID_APP'] || ids[:app]
 BUNDLE_EXT = ENV['BUNDLE_ID_EXT'] || ids[:ext]

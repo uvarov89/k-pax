@@ -63,6 +63,24 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
     } catch (_) {}
   }
 
+  /// Restrict tunnel JSON to the current user (removes inherited Everyone read).
+  Future<void> _restrictConfigAcl(File file) async {
+    final user = Platform.environment['USERNAME'] ??
+        Platform.environment['USER'] ??
+        '';
+    if (user.isEmpty) return;
+    try {
+      await Process.run('icacls', [
+        file.path,
+        '/inheritance:r',
+        '/grant:r',
+        '$user:(R,W)',
+      ]).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Best-effort: missing icacls / sandbox must not block connect.
+    }
+  }
+
   @override
   Future<void> connect({
     required ServerLocation location,
@@ -82,7 +100,11 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
     // Prefer wiping leftover plaintext configs from older builds.
     await _wipeConfigFile(File('${dir.path}\\config.json'));
     _clashSecret = _newClashSecret();
-    final config = File('${dir.path}\\config-${_clashSecret!.substring(0, 8)}.json');
+    final configId = List<int>.generate(
+      8,
+      (_) => Random.secure().nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final config = File('${dir.path}\\config-$configId.json');
     _activeConfig = config;
     await config.writeAsString(
       buildTunnelConfig(
@@ -93,6 +115,7 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
         clashSecret: _clashSecret,
       ),
     );
+    await _restrictConfigAcl(config);
     _set('Starting');
     final process = await Process.start(
       _exe.path,
@@ -142,9 +165,6 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
       _set('Stopped');
       rethrow;
     }
-    if (!identical(_process, process)) return;
-    // Clash ready ≠ routes fully installed; brief settle before probe/UI.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
     if (!identical(_process, process)) return;
     _set('Started');
     unawaited(_pumpTraffic());

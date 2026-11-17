@@ -53,13 +53,6 @@ class AppStrings {
   String get connectFailed => _brand.isXplm
       ? (isRu ? 'Подключение не удалось' : 'Connection failed')
       : (isRu ? 'Не удалось выйти в эфир' : 'Could not enter orbit');
-  String get killSwitchHeld => _brand.isXplm
-      ? (isRu
-          ? 'Связь оборвалась. Трафик закрыт, пока снова не подключитесь.'
-          : 'The link dropped. Traffic stays blocked until you connect again.')
-      : (isRu
-          ? 'Связь оборвалась. Трафик закрыт, пока снова не выйдете в эфир.'
-          : 'The link dropped. Traffic stays blocked until you enter orbit again.');
   String get loginConfirmedFlash => isRu
       ? 'Вход подтверждён — доступ обновлён'
       : 'Sign-in confirmed — access refreshed';
@@ -172,8 +165,8 @@ class AppStrings {
       isRu ? '$mode · $n прил.' : '$mode · $n apps';
   String get killSwitch => 'Kill switch';
   String get killSwitchHint => isRu
-      ? 'Блокировать трафик при обрыве'
-      : 'Block traffic if the tunnel drops';
+      ? 'Жёсткая маршрутизация в туннеле (strict_route). Полная блокировка интернета при обрыве пока недоступна.'
+      : 'Strict routing inside the tunnel. Full fail-closed block after a drop is not available yet.';
   String get killSwitchWindowsUnavailable => isRu
       ? 'В Windows временно недоступен: защита от утечек при обрыве ещё не реализована.'
       : 'Temporarily unavailable on Windows: fail-closed leak protection is not implemented yet.';

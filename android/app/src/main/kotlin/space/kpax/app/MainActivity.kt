@@ -52,6 +52,7 @@ class MainActivity : FlutterActivity() {
                             result.error("store_failed", e.message, null)
                         }
                     }
+                    "isPlayStore" -> result.success(BuildConfig.PLAY_STORE_CHANNEL)
                     else -> result.notImplemented()
                 }
             }
@@ -106,6 +107,12 @@ class MainActivity : FlutterActivity() {
         val staged = File(cacheDir, updateName)
         if (source.absolutePath != staged.absolutePath) {
             source.copyTo(staged, overwrite = true)
+        }
+        // Refuse foreign packages — PackageInstaller must only see our applicationId.
+        val archive = packageManager.getPackageArchiveInfo(staged.absolutePath, 0)
+        if (archive?.packageName != packageName) {
+            staged.delete()
+            throw IllegalArgumentException("APK package mismatch")
         }
         return staged
     }

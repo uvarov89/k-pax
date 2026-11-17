@@ -117,4 +117,9 @@ final class AppBrand {
       _current = kpax;
     }
   }
+
+  /// Test-only: reset brand between suites that share an isolate.
+  static void debugReset([AppBrand brand = kpax]) {
+    _current = brand;
+  }
 }

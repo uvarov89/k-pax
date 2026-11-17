@@ -36,6 +36,13 @@ Future<File?> _downloadApk(Uri url) async {
     request.headers.set(HttpHeaders.userAgentHeader, brand.appName);
     final response = await request.close().timeout(const Duration(minutes: 5));
     if (response.statusCode != 200) return null;
+    var finalUri = url;
+    for (final hop in response.redirects) {
+      finalUri = finalUri.resolveUri(hop.location);
+    }
+    if (!isTrustedAndroidApkBinaryUrl(finalUri)) {
+      return null;
+    }
     final sink = file.openWrite();
     await response.pipe(sink);
     await sink.close();

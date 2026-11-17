@@ -1,4 +1,4 @@
-# Local one-command release for signed Android APKs, using existing original
+﻿# Local one-command release for signed Android APKs, using existing original
 # keystore already configured on the user's Windows development machine.
 # Never commit android/key.properties or *.jks to a public repository.
 [CmdletBinding()]
@@ -81,10 +81,21 @@ try {
 
     foreach ($item in $brands) {
         $file = Join-Path 'build/release' $item.File
-        & gh release create $item.Tag $file --repo uvarov89/k-pax --target main --title $item.Name --notes $notes --latest=false
+        # gh writes "release not found" to stderr; Stop would abort before create.
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & gh release view $item.Tag --repo uvarov89/k-pax 1>$null 2>$null
+        $viewExit = $LASTEXITCODE
+        $ErrorActionPreference = $prevEap
+        if ($viewExit -eq 0) {
+            & gh release upload $item.Tag $file --repo uvarov89/k-pax --clobber
+        } else {
+            & gh release create $item.Tag $file --repo uvarov89/k-pax --target main --title $item.Name --notes $notes --latest=false
+        }
         if ($LASTEXITCODE -ne 0) { throw "GitHub Android release failed for $($item.Key)" }
         Write-Host "Published $($item.Name)"
     }
 } finally {
     Pop-Location
 }
+

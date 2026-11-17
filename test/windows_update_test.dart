@@ -33,4 +33,29 @@ void main() {
       WindowsUpdateStatus.unavailable,
     );
   });
+
+  test('brand host allows only the download redirect path', () {
+    expect(
+      isTrustedWindowsSetupUrl(Uri.parse('https://k-pax.space/download/windows')),
+      isTrue,
+    );
+    expect(
+      isTrustedWindowsSetupUrl(Uri.parse('https://k-pax.space/evil.exe')),
+      isFalse,
+    );
+    expect(
+      isTrustedWindowsSetupBinaryUrl(
+        Uri.parse(
+          'https://github.com/uvarov89/k-pax/releases/download/v1.0.9-windows/K-Pax-Setup-1.0.9.exe',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedWindowsSetupBinaryUrl(
+        Uri.parse('https://evil.example/K-Pax-Setup.exe'),
+      ),
+      isFalse,
+    );
+  });
 }

@@ -41,6 +41,8 @@ class ServerLatencyMonitor extends ChangeNotifier {
     TunnelKind.hy2 => 2,
     TunnelKind.tuic => 3,
     TunnelKind.message => 4,
+    TunnelKind.tls => 5,
+    TunnelKind.shadowsocks => 6,
   };
   static String _key(TunnelNode node) =>
       '${node.countryId}|${node.kind}|${node.host}|${node.port}';

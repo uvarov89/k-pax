@@ -6,8 +6,11 @@ import 'package:pulse_vpn/app/brand/app_brand.dart';
 /// Removes legacy Windows Firewall rules left by older K-Pax/X-Plm builds.
 /// This implementation does not provide a persistent fail-closed kill switch.
 class WindowsFirewall {
+  /// Widget tests on Windows: netsh can block on UAC / policy.
+  static bool disableForTests = false;
+
   static Future<void> clear() async {
-    if (kIsWeb || !Platform.isWindows) return;
+    if (kIsWeb || !Platform.isWindows || disableForTests) return;
     // Drop both brand rule names so white-label leftovers do not stick around.
     for (final name in [
       'K-Pax-KillSwitch',
@@ -15,13 +18,17 @@ class WindowsFirewall {
       'X-Plm-KillSwitch',
       'X-Plm-KillSwitch-App',
     ]) {
-      await Process.run('netsh', [
-        'advfirewall',
-        'firewall',
-        'delete',
-        'rule',
-        'name=$name',
-      ]);
+      try {
+        await Process.run('netsh', [
+          'advfirewall',
+          'firewall',
+          'delete',
+          'rule',
+          'name=$name',
+        ]).timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Missing elevation / sandbox / test host — never block hydrate/connect.
+      }
     }
   }
 

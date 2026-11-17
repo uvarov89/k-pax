@@ -28,7 +28,7 @@ function Trace([string]$Url, [string]$Family) {
                 if ($line -match '^([a-zA-Z0-9_]+)=(.*)$') { $fields[$Matches[1]] = $Matches[2] }
             }
         }
-        return @{ reachable=($exit -eq 0 -and !!$fields['ip']); ip=$fields['ip']; loc=$fields['loc']; code=$exit }
+        return @{ reachable=($exit -eq 0 -and [bool]$fields['ip']); ip=$fields['ip']; loc=$fields['loc']; code=$exit }
     } catch {
         return @{ reachable=$false; ip=$null; loc=$null; code=-1 }
     }
@@ -51,7 +51,7 @@ try { $results.singBoxProcesses=@(Get-Process -Name 'sing-box' -ErrorAction Sile
 $file=Join-Path $OutputDir "$Brand-$Phase.json"
 $results | ConvertTo-Json -Depth 5 | Set-Content -Path $file -Encoding utf8
 Write-Host "Saved (local only): $file"
-Write-Host "$Brand / $Phase: IPv4 $($results.ipv4.ip), HTTPS=$($results.ipv4.reachable), DNS=$($results.dnsOk), Wintun=$($results.tunAdapterPresent)"
+Write-Host "$Brand / ${Phase}: IPv4 $($results.ipv4.ip), HTTPS=$($results.ipv4.reachable), DNS=$($results.dnsOk), Wintun=$($results.tunAdapterPresent)"
 
 $baselinePath=Join-Path $OutputDir "$Brand-baseline.json"
 $referencePath=Join-Path $OutputDir "$Brand-thirdparty.json"

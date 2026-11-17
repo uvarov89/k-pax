@@ -108,11 +108,15 @@ Future<void> checkForAndroidUpdate(
   try {
     final controller = context.read<VpnController>();
     final s = controller.strings;
-    // Never check/download through a live tunnel — a dead VPN blocks updates.
-    await ensureClearnetForUpdate(controller);
+    // Update hosts are direct-routed; stay connected first. Disconnect only
+    // retries a failed fetch (Always-on "block without VPN" blackholes clearnet).
     if (!context.mounted) return;
     final info = await PackageInfo.fromPlatform();
-    final lookup = await const AndroidUpdateCheck().lookup(info.version);
+    final lookup = await withUpdateNetworkRetry(
+      controller,
+      () => const AndroidUpdateCheck().lookup(info.version),
+      failed: (v) => v.status == AndroidUpdateStatus.unavailable,
+    );
     if (!context.mounted) return;
     switch (lookup.status) {
       case AndroidUpdateStatus.unavailable:
@@ -147,10 +151,12 @@ Future<void> checkForAndroidUpdate(
         );
         if (install == true) {
           if (!context.mounted) return;
-          await ensureClearnetForUpdate(context.read<VpnController>());
-          if (!context.mounted) return;
           messenger?.showSnackBar(SnackBar(content: Text(s.updateDownloading)));
-          final file = await _downloadApk(release.url);
+          final file = await withUpdateNetworkRetry(
+            context.read<VpnController>(),
+            () => _downloadApk(release.url),
+            failed: (f) => f == null,
+          );
           if (!context.mounted) return;
           if (file == null) {
             messenger?.showSnackBar(

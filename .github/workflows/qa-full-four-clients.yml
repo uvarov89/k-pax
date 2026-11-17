@@ -1,0 +1,142 @@
+name: QA full four-client regression
+
+on:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'android/**'
+      - 'windows/**'
+      - '.github/workflows/qa-full-four-clients.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-full-four-clients
+  cancel-in-progress: true
+
+jobs:
+  linux-all-flutter-tests:
+    name: All Flutter tests — Linux (including Android-independent code)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Audit Dart formatting (report drift, not blocker)
+        continue-on-error: true
+        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Static analysis (errors fatal, existing lints informational)
+        run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
+      - name: K-Pax and cross-brand regression tests on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find test -maxdepth 1 -type f -name '*_test.dart' ! -name 'xplm*_test.dart' | sort)
+          printf 'K-Pax/common: %s files\n' "${#tests[@]}"
+          timeout 1200s flutter test --reporter expanded --timeout=90s --concurrency=2 "${tests[@]}"
+      - name: X-Plm branded tests on Linux (BRAND=xplm)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find test -maxdepth 1 -type f -name 'xplm*_test.dart' | sort)
+          printf 'X-Plm: %s files\n' "${#tests[@]}"
+          timeout 900s flutter test --dart-define=BRAND=xplm --reporter expanded --timeout=90s --concurrency=2 "${tests[@]}"
+      - name: Confirm test source coverage
+        shell: bash
+        run: |
+          echo "Files discovered:"
+          find test -maxdepth 1 -type f -name '*_test.dart' -print | sort
+
+  windows-all-flutter-tests:
+    name: All Flutter tests — Windows native platform
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Check QA diagnostic PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($file in @('scripts/qa-windows-exit-parity.ps1', 'scripts/qa-android-native-diagnostics.ps1')) {
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_ }
+              throw "Invalid PowerShell script: $file"
+            }
+          }
+      - name: K-Pax/common Flutter tests on native Windows
+        shell: pwsh
+        run: |
+          $tests = @(Get-ChildItem -Path test -Filter '*_test.dart' -File | Where-Object { $_.Name -notlike 'xplm*_test.dart' } | Sort-Object Name | ForEach-Object { $_.FullName })
+          Write-Host "K-Pax/common tests: $($tests.Count) files"
+          flutter test --reporter expanded --timeout=90s --concurrency=2 @tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: X-Plm branded Flutter tests on native Windows
+        shell: pwsh
+        run: |
+          $tests = @(Get-ChildItem -Path test -Filter 'xplm*_test.dart' -File | Sort-Object Name | ForEach-Object { $_.FullName })
+          Write-Host "X-Plm tests: $($tests.Count) files"
+          flutter test --dart-define=BRAND=xplm --reporter expanded --timeout=90s --concurrency=2 @tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  android-play-variants:
+    name: Android Play flavor smoke and manifest checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Compile both Google Play Android flavors
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --flavor kpaxPlay --dart-define=BRAND=kpax --dart-define=PLAY_STORE=true
+          flutter build apk --debug --flavor xplmPlay --dart-define=BRAND=xplm --dart-define=PLAY_STORE=true
+      - name: Verify Play APK identities and no self-install permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          test -x "$aapt"
+          for entry in "kpaxplay:space.kpax.app" "xplmplay:online.xplm.app"; do
+            flavor=${entry%%:*}
+            package=${entry#*:}
+            apk="build/app/outputs/flutter-apk/app-${flavor}-debug.apk"
+            test -s "$apk"
+            info=$("$aapt" dump badging "$apk")
+            echo "$info" | grep -F "name='$package'"
+            if "$aapt" dump permissions "$apk" | grep -q 'android.permission.REQUEST_INSTALL_PACKAGES'; then
+              echo "::error::Play variant $flavor illegally requests APK installer permission"
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qa-play-debug-apks-not-signed-for-release
+          path: build/app/outputs/flutter-apk/*play-debug.apk
+          if-no-files-found: error
+          retention-days: 7

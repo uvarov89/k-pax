@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: qa-full-four-clients
+  cancel-in-progress: true
+
 jobs:
   linux-all-flutter-tests:
     name: All Flutter tests — Linux (including Android-independent code)
@@ -63,6 +67,18 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Check QA diagnostic PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($file in @('scripts/qa-windows-exit-parity.ps1', 'scripts/qa-android-native-diagnostics.ps1')) {
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file).Path, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_ }
+              throw "Invalid PowerShell script: $file"
+            }
+          }
       - name: K-Pax/common Flutter tests on native Windows
         shell: pwsh
         run: |

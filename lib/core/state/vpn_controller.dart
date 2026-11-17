@@ -1335,8 +1335,13 @@ class VpnController extends ChangeNotifier {
     Future<TunnelNode?> trySpares(TunnelNode from) async {
       if (!proSettings.protocolFallback) return null;
       var spare = _spareFor(from, tried);
-      while (spare != null) {
-        // tryStart enforces iOS maxAttempts + deadline; no separate iOS skip.
+      while (spare != null &&
+          _wantConnected &&
+          attempts < maxAttempts &&
+          DateTime.now().isBefore(deadline)) {
+        // Bound this loop as well: tryStart returns null without marking the
+        // endpoint tried after budget exhaustion, otherwise spare selection
+        // can repeat forever and the UI stays on Connecting.
         final ok = await tryStart(spare, disconnectFirst: true);
         if (ok != null) return ok;
         spare = _spareFor(spare, tried);

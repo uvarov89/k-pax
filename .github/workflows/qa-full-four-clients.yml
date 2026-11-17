@@ -1,9 +1,6 @@
 name: QA full four-client regression
 
 on:
-  push:
-    branches:
-      - qa/four-clients-connectivity-audit-20261117
   pull_request:
     paths:
       - 'lib/**'
@@ -15,10 +12,6 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: qa-four-clients-ci
-  cancel-in-progress: true
 
 jobs:
   linux-all-flutter-tests:

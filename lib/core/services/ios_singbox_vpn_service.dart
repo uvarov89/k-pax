@@ -123,6 +123,8 @@ class IosSingboxVpnService
       );
     }
     await _waitUntilConnected();
+    // PacketTunnel routes settle after "connected" — same race as Android/Windows.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
   }
 
   Future<void> _waitUntilConnected() async {

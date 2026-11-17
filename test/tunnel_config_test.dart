@@ -40,7 +40,7 @@ void main() {
     final inbound = (built['inbounds'] as List).first as Map;
     expect(inbound.containsKey('sniff'), isFalse);
     final rules = (built['route'] as Map)['rules'] as List;
-    expect(rules.first, {'action': 'sniff'});
+    expect(rules.first, {'action': 'sniff', 'timeout': '300ms'});
   });
 
   test('kill switch and dns follow the settings', () {

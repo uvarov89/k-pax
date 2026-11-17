@@ -88,6 +88,9 @@ class SingboxVpnService
       throw StateError('Разрешение VPN не выдано');
     }
     await _waitUntilStarted();
+    // VpnService routes/DNS settle after Started — probing too early marks
+    // Connected while Telegram still hangs (clearnet probe / empty TUN).
+    await Future<void>.delayed(const Duration(milliseconds: 700));
   }
 
   Future<void> _applySplitTunnel(AppSettings appSettings) async {

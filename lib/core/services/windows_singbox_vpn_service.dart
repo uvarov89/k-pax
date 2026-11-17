@@ -166,6 +166,9 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
       rethrow;
     }
     if (!identical(_process, process)) return;
+    // Clash ready ≠ Wintun routes fully installed; brief settle before probe/UI.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!identical(_process, process)) return;
     _set('Started');
     unawaited(_pumpTraffic());
   }
@@ -289,7 +292,45 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
   }
 
   @override
-  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+  Future<void> verifyConnectivity() async {
+    await verifyTunnelConnectivity();
+    // HTTPS alone can succeed on clearnet before Wintun routes exist. Require
+    // Clash to have observed traffic after the probe (same secret as /traffic).
+    final secret = _clashSecret;
+    if (secret == null || secret.isEmpty || _process == null) return;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 2)
+      ..idleTimeout = const Duration(seconds: 2);
+    try {
+      final request = await client
+          .getUrl(Uri.parse('http://127.0.0.1:$kClashPort/connections'))
+          .timeout(const Duration(seconds: 2));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $secret');
+      final response = await request.close().timeout(const Duration(seconds: 2));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode != HttpStatus.ok) return;
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return;
+      final downloadTotal = (decoded['downloadTotal'] as num?)?.toInt() ?? 0;
+      final uploadTotal = (decoded['uploadTotal'] as num?)?.toInt() ?? 0;
+      final connections = decoded['connections'];
+      final hasConn = connections is List && connections.isNotEmpty;
+      if (downloadTotal <= 0 && uploadTotal <= 0 && !hasConn) {
+        throw StateError(
+          'Туннель поднят, но трафик через proxy не зафиксирован (проверьте узел)',
+        );
+      }
+    } on StateError {
+      rethrow;
+    } catch (_) {
+      // Older sing-box / busy API — HTTPS probe already passed; do not block.
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   @override
   Future<void> disconnect() async {

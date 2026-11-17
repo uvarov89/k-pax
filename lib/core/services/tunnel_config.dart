@@ -175,7 +175,9 @@ List<Map<String, Object?>> _routeRules(
   required bool allowIpv6Traffic,
 }) {
   final rules = <Map<String, Object?>>[
-    {'action': 'sniff'},
+    // Short sniff timeout — unbounded sniff can stall Telegram MTProto / raw TCP
+    // while Hiddify moves on quickly.
+    {'action': 'sniff', 'timeout': '300ms'},
     {'protocol': 'dns', 'action': 'hijack-dns'},
     // Hiddify also steers plain port 53 into the DNS outbound; without this,
     // hard-coded resolvers that skip sniff can leak or stall as raw UDP.

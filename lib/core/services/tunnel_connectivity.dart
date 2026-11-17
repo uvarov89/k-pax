@@ -8,7 +8,9 @@ typedef TunnelProbe = Future<bool> Function(Uri endpoint);
 /// the requested VPN exit IP (that needs device-level leak testing).
 Future<void> verifyTunnelConnectivity({
   TunnelProbe? probe,
-  Duration settle = const Duration(milliseconds: 500),
+  // TUN/Wintun routes lag Clash/VPN "Started". Short settles caused false
+  // Connected while Telegram/DNS still blackholed (Hiddify waits longer).
+  Duration settle = const Duration(milliseconds: 900),
   int attemptsPerEndpoint = 2,
 }) async {
   final test = probe ?? _probeHttps;
@@ -26,14 +28,14 @@ Future<void> verifyTunnelConnectivity({
       try {
         if (await test(endpoint)) return;
         if (attempt + 1 < attemptsPerEndpoint) {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
+          await Future<void>.delayed(const Duration(milliseconds: 400));
           continue;
         }
         failures.add('${endpoint.host}: unexpected response');
       } catch (error) {
         // Keep tokens, keys, link contents and credentials out of diagnostics.
         if (attempt + 1 < attemptsPerEndpoint) {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
+          await Future<void>.delayed(const Duration(milliseconds: 400));
           continue;
         }
         failures.add('${endpoint.host}: ${error.runtimeType}');
@@ -47,28 +49,27 @@ Future<void> verifyTunnelConnectivity({
 }
 
 Future<bool> _probeHttps(Uri endpoint) async {
-  // Fail fast: slow probes × failover attempts felt like multi-minute connects.
   final client = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 2)
-    ..idleTimeout = const Duration(seconds: 3);
+    ..connectionTimeout = const Duration(seconds: 5)
+    ..idleTimeout = const Duration(seconds: 5);
   try {
     final request = await client.getUrl(endpoint).timeout(
-      const Duration(seconds: 3),
+      const Duration(seconds: 6),
     );
     request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
     final response = await request.close().timeout(
-      const Duration(seconds: 3),
+      const Duration(seconds: 6),
     );
     if (endpoint.host == 'www.gstatic.com') {
-      await response.drain<void>().timeout(const Duration(seconds: 2));
+      await response.drain<void>().timeout(const Duration(seconds: 5));
       return response.statusCode == HttpStatus.noContent;
     }
     if (response.statusCode != HttpStatus.ok) {
-      await response.drain<void>().timeout(const Duration(seconds: 2));
+      await response.drain<void>().timeout(const Duration(seconds: 5));
       return false;
     }
     final body = await response.transform(utf8.decoder).join().timeout(
-      const Duration(seconds: 2),
+      const Duration(seconds: 5),
     );
     return body.contains('ip=') && body.contains('loc=');
   } finally {

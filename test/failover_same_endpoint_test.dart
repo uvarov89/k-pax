@@ -11,6 +11,9 @@ import 'package:pulse_vpn/core/state/vpn_controller.dart';
 /// Failing to try the second profile makes the proprietary app fail even if
 /// the provider's second profile works in Happ/Hiddify.
 class _FailFirstVpn implements VpnService {
+  _FailFirstVpn({this.failAlways = false});
+
+  final bool failAlways;
   final List<TunnelNode> attempts = [];
 
   @override
@@ -27,7 +30,7 @@ class _FailFirstVpn implements VpnService {
     required TunnelNode node,
   }) async {
     attempts.add(node);
-    if (attempts.length == 1) {
+    if (failAlways || attempts.length == 1) {
       throw StateError('simulated handshake failure');
     }
   }
@@ -95,4 +98,44 @@ void main() {
     expect(service.attempts, hasLength(2));
     expect(service.attempts[0].outbound, isNot(service.attempts[1].outbound));
   });
+  test('failover respects attempt budget and cannot spin on untried spares', () async {
+    final nodes = List<TunnelNode>.generate(
+      12,
+      (i) => TunnelNode(
+        countryId: 'de',
+        countryCode: 'DE',
+        countryName: 'Germany',
+        kind: TunnelKind.reality,
+        host: '203.0.113.${i + 1}',
+        port: 443,
+        outbound: {
+          'type': 'vless',
+          'tag': 'proxy',
+          'server': '203.0.113.${i + 1}',
+          'server_port': 443,
+          'uuid': '11111111-1111-1111-1111-111111111111',
+        },
+      ),
+    );
+    final service = _FailFirstVpn(failAlways: true);
+    final controller = VpnController(service: service)
+      ..subscriptionUrl = 'https://sub.example/s/fake-test'
+      ..linkState = SubscriptionLinkState.ready
+      ..profile = SubscriptionProfile(nodes: nodes)
+      ..account = UserAccount.freshTrial()
+      ..locationMode = LocationMode.country
+      ..selectedLocation = const ServerLocation(
+        id: 'de',
+        countryCode: 'DE',
+        nameRu: 'Германия',
+      )
+      ..proSettings = const ProSettings(protocolFallback: true);
+    addTearDown(controller.dispose);
+
+    final ok = await controller.connect().timeout(const Duration(seconds: 5));
+    expect(ok, isFalse);
+    expect(controller.isConnected, isFalse);
+    expect(service.attempts, hasLength(8));
+  });
+
 }

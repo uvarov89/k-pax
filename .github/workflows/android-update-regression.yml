@@ -1,0 +1,26 @@
+name: Android APK updater regression
+on:
+  pull_request:
+    paths:
+      - 'lib/core/services/android_update.dart'
+      - 'lib/features/settings/android_update_prompt.dart'
+      - 'lib/app/l10n/app_strings.dart'
+      - 'test/android_update_test.dart'
+      - '.github/workflows/android-update-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  updater:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.41.9'
+          cache: true
+      - run: flutter pub get
+      - name: Test both brands, CDN redirect and hostile redirect rejection
+        run: flutter test --reporter=expanded test/android_update_test.dart

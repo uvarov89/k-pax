@@ -16,7 +16,7 @@ try {
     }
 
     $manifest = Get-Content 'pubspec.yaml' -Raw
-    if ($manifest -notmatch '(?m)^version:\s*1\.0\.72\+97\s*$') {
+    if ($manifest -notmatch '(?m)^version:\s*1\.0\.73\+98\s*$') {
         throw 'Expected pubspec.yaml version 1.0.73+98. Update source before release.'
     }
 

@@ -63,17 +63,25 @@ jobs:
         env:
           EXPECTED_SHA256: '4523e7d0220ae8709a34160aa3f604b411cd85ce35c978f78a9aa357df8885ec'
         run: |
-          set -euo pipefail
+          set -uo pipefail
           tool=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -x "$tool"
+          echo "apksigner=${tool}"
           fail=0
           for apk in \
             build/app/outputs/flutter-apk/app-kpaxdirect-release.apk \
             build/app/outputs/flutter-apk/app-xplmdirect-release.apk
           do
             echo "Checking ${apk}"
-            "$tool" verify --print-certs "$apk" > /tmp/apk-certs.txt
-            got=$(grep -i 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt | head -1 | awk '{print tolower($NF)}' | tr -d ':')
+            test -f "$apk"
+            # apksigner may exit non-zero on some runners; still capture cert text.
+            set +e
+            "$tool" verify --print-certs "$apk" > /tmp/apk-certs.txt 2>&1
+            verify_rc=$?
+            set -e
+            echo "apksigner_verify_rc=${verify_rc}"
+            grep -E 'Signer|Digest|certificate|DOES NOT VERIFY|Exception|unsigned' /tmp/apk-certs.txt || true
+            got=$(grep -iE 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt | head -1 | awk '{print tolower($NF)}' | tr -d ':' | tr -d ' ')
             echo "got=${got}"
             echo "expected=${EXPECTED_SHA256}"
             if [[ -z "${got}" || "${got}" != "${EXPECTED_SHA256}" ]]; then

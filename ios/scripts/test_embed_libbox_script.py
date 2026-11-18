@@ -113,7 +113,11 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("install_name_tool -change", resign_body)
         self.assertIn("install_name_tool -id", resign_body)
         self.assertIn("otool -L", resign_body)
-        self.assertIn("ln -s", resign_body)
+        # Short name must be hardlink/copy — codesign rejects symlink executables.
+        self.assertIn('/bin/ln "$BINARY"', resign_body)
+        self.assertNotIn("/bin/ln -s", resign_body)
+        self.assertIn("Hardlink", resign)
+        self.assertIn("no symlinks", resign)
         self.assertIn("CFBundleExecutable", resign)
         self.assertIn("codesign_identifier", resign)
         self.assertIn("--timestamp", resign_body)
@@ -188,7 +192,7 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertIn("assert_macho_arm64", text)
         self.assertIn("ASC 90085", text)
         self.assertIn("missing Mach-O named", text)
-        self.assertIn("Libbox → long-name symlink", text)
+        self.assertIn("Libbox → long-name", text)
         self.assertIn("CFBundleExecutable", text)
 
     def test_device_slice_copied_into_runner_frameworks(self) -> None:

@@ -132,7 +132,7 @@ def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | No
     """Prefer a real Mach-O over a short-name symlink stub.
 
     Post-export resign renames Mach-O to CFBundleIdentifier (typically
-    io.nekohasekai.libbox); a Libbox → long-name symlink may remain for
+    io.nekohasekai.libbox); a Libbox → long-name hardlink/copy may remain for
     LC_LOAD_DYLIB compatibility and must not be mistaken for the binary.
     """
     names: list[str] = []
@@ -201,7 +201,7 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         assert bundle_id, "Libbox CFBundleIdentifier missing"
         assert exec_name, "Libbox CFBundleExecutable missing"
         # installd / ASC: CFBundleExecutable must equal CFBundleIdentifier; Mach-O
-        # file must use that name. Short "Libbox" symlink → long name is OK.
+        # file must use that name. Short "Libbox" hardlink/copy → long name is OK.
         assert exec_name == bundle_id, (
             f"Libbox CFBundleExecutable={exec_name!r} must equal "
             f"CFBundleIdentifier={bundle_id!r}"

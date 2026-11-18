@@ -13,8 +13,8 @@
 # 3) Symlink Libbox → long name so LC_LOAD_DYLIB=@rpath/Libbox.framework/Libbox
 #    still resolves WITHOUT lengthening host load commands (safer than -change)
 # 4) install_name_tool -id to the long path on the *unsigned* Libbox binary
-#    (best-effort; symlink covers loads if header has no room to grow)
-# 5) Best-effort -change on unsigned host Mach-Os; symlink is the fallback
+#    (best-effort; short-name hardlink covers loads if header has no room to grow)
+# 5) Best-effort -change on unsigned host Mach-Os; hardlink/copy is the fallback
 # 6) Re-sign Libbox → framework → appex → app with Apple Distribution,
 #    --identifier matching each bundle id, secure --timestamp (not none)
 #
@@ -159,7 +159,7 @@ try_change_load() {
   if /usr/bin/install_name_tool -change "$OLD_LOAD" "$new_load" "$macho" 2>/dev/null; then
     echo "OK install_name_tool -change on $label"
   else
-    echo "warn: install_name_tool -change failed on $label (no headerpad?) — Libbox symlink covers $OLD_LOAD"
+    echo "warn: install_name_tool -change failed on $label (no headerpad?) — short-name hardlink covers $OLD_LOAD"
   fi
 }
 
@@ -337,17 +337,36 @@ else
 fi
 assert_macho_arm64 "$BINARY" "Libbox.framework/$LONG_EXEC (pre-sign)"
 
-# Always (re)create short-name symlink so hosts keep loading OLD_LOAD.
+# Short name as hard link (or copy) — NOT a symlink. Modern codesign rejects
+# "the main executable or Info.plist must be a regular file (no symlinks)" when
+# CFBundleExecutable / sibling load stubs are symlinks (Codemagic Xcode latest).
 if [[ -e "$LIBBOX/$SHORT_EXEC" || -L "$LIBBOX/$SHORT_EXEC" ]]; then
   /bin/rm -f "$LIBBOX/$SHORT_EXEC"
 fi
-/bin/ln -s "$LONG_EXEC" "$LIBBOX/$SHORT_EXEC"
-echo "Symlink $SHORT_EXEC → $LONG_EXEC (covers $OLD_LOAD without host -change)"
+if /bin/ln "$BINARY" "$LIBBOX/$SHORT_EXEC" 2>/dev/null; then
+  echo "Hardlink $SHORT_EXEC → $LONG_EXEC (codesign-safe; covers $OLD_LOAD)"
+else
+  /bin/cp -f "$BINARY" "$LIBBOX/$SHORT_EXEC"
+  echo "Copied $SHORT_EXEC from $LONG_EXEC (hardlink unavailable; covers $OLD_LOAD)"
+fi
+
+# Info.plist must be a regular file too (Versions layouts sometimes symlink it).
+if [[ -L "$LIBBOX/Info.plist" ]]; then
+  plist_real="$(resolve_real_file "$LIBBOX/Info.plist")"
+  /bin/rm -f "$LIBBOX/Info.plist"
+  /bin/cp -f "$plist_real" "$LIBBOX/Info.plist"
+  echo "Materialized Libbox Info.plist (was symlink → $plist_real)"
+fi
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $LONG_EXEC" "$LIBBOX/Info.plist"
 EXEC_NOW="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$LIBBOX/Info.plist")"
 if [[ "$EXEC_NOW" != "$LONG_EXEC" || "$EXEC_NOW" != "$LIBBOX_ID" ]]; then
   echo "error: CFBundleExecutable='$EXEC_NOW' must equal CFBundleIdentifier='$LIBBOX_ID'" >&2
+  exit 1
+fi
+if [[ -L "$BINARY" || -L "$LIBBOX/Info.plist" ]]; then
+  echo "error: CFBundleExecutable or Info.plist is still a symlink — codesign will fail" >&2
+  ls -la "$LIBBOX" >&2 || true
   exit 1
 fi
 
@@ -359,7 +378,7 @@ assert_macho_arm64 "$BINARY" "Libbox.framework/$LONG_EXEC (pre-sign)"
 if /usr/bin/install_name_tool -id "$NEW_ID" "$BINARY" 2>/dev/null; then
   echo "OK install_name_tool -id $NEW_ID"
 else
-  echo "warn: install_name_tool -id could not lengthen to $NEW_ID — keeping prior id; symlink covers loads"
+  echo "warn: install_name_tool -id could not lengthen to $NEW_ID — keeping prior id; short-name hardlink covers loads"
 fi
 
 if [[ -n "$APP_BINARY" ]]; then
@@ -369,7 +388,7 @@ if [[ -n "$APPEX_BINARY" ]]; then
   try_change_load "$APPEX_BINARY" "PacketTunnel/$APPEX_EXEC_NAME" "$NEW_LOAD"
 fi
 # Any other Mach-O under the app that still loads the short path.
-# Prefer symlink fallback over aggressive -change; scan PlugIns + Frameworks only.
+# Prefer short-name hardlink fallback over aggressive -change; scan PlugIns + Frameworks.
 for candidate in \
   "$APP_BINARY" \
   "$APPEX_BINARY" \
@@ -389,8 +408,10 @@ done
 # ---------------------------------------------------------------------------
 echo "Stamping Libbox Identifier=$LIBBOX_ID (Mach-O basename=$LONG_EXEC)"
 /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$BINARY"
+# Prefer non-deep framework seal; --deep used to retry and still fail on symlinks.
 if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp --generate-entitlement-der "$LIBBOX"; then
-  /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
+  echo "warn: framework codesign without --deep failed; retry once"
+  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
 fi
 
 for path in "$BINARY" "$LIBBOX"; do
@@ -451,4 +472,4 @@ OUT="$TMP/repacked.ipa"
 )
 # Replace in place (preserve caller path).
 ditto "$OUT" "$IPA"
-echo "OK Libbox re-signed in IPA (id=$LIBBOX_ID, exec=$LONG_EXEC, symlink $SHORT_EXEC→$LONG_EXEC)"
+echo "OK Libbox re-signed in IPA (id=$LIBBOX_ID, exec=$LONG_EXEC, short=$SHORT_EXEC hardlink/copy)"

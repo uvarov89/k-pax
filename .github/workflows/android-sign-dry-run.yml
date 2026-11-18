@@ -1,0 +1,96 @@
+# Dry-run: build signed K-Pax + X-Plm release APKs and verify cert fingerprint.
+# Does NOT create GitHub Releases and does NOT deploy to panel/nodes.
+name: Android sign dry-run (no publish)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-sign-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+
+      - name: Prepare release signing from production env secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KEYSTORE_BASE64}" || -z "${STORE_PASSWORD}" || -z "${KEY_ALIAS}" || -z "${KEY_PASSWORD}" ]]; then
+            echo "::error::Missing Android signing secrets in Environment production."
+            exit 1
+          fi
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > android/app/upload-keystore.jks
+          chmod 600 android/app/upload-keystore.jks
+          {
+            printf 'storeFile=upload-keystore.jks\n'
+            printf 'storePassword=%s\n' "${STORE_PASSWORD}"
+            printf 'keyAlias=%s\n' "${KEY_ALIAS}"
+            printf 'keyPassword=%s\n' "${KEY_PASSWORD}"
+          } > android/key.properties
+          chmod 600 android/key.properties
+
+      - name: Build signed K-Pax and X-Plm Android APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter build apk --release --flavor kpaxDirect --dart-define=BRAND=kpax
+          flutter build apk --release --flavor xplmDirect --dart-define=BRAND=xplm
+
+      - name: Verify public cert SHA-256 matches published 1.0.73
+        shell: bash
+        env:
+          EXPECTED_SHA256: '4523e7d0220ae8709a34160aa3f604b411cd85ce35c978f78a9aa357df8885ec'
+        run: |
+          set -euo pipefail
+          tool=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$tool"
+          fail=0
+          for apk in \
+            build/app/outputs/flutter-apk/app-kpaxdirect-release.apk \
+            build/app/outputs/flutter-apk/app-xplmdirect-release.apk
+          do
+            echo "Checking ${apk}"
+            "$tool" verify --print-certs "$apk" > /tmp/apk-certs.txt
+            got=$(grep -i 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt | head -1 | awk '{print tolower($NF)}' | tr -d ':')
+            echo "got=${got}"
+            echo "expected=${EXPECTED_SHA256}"
+            if [[ -z "${got}" || "${got}" != "${EXPECTED_SHA256}" ]]; then
+              echo "::error::Certificate SHA-256 mismatch for ${apk}"
+              fail=1
+            else
+              echo "OK fingerprint match for ${apk}"
+            fi
+          done
+          exit "${fail}"
+
+      - name: Upload dry-run APK artifacts (optional; no release)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-sign-dry-run-apks
+          path: |
+            build/app/outputs/flutter-apk/app-kpaxdirect-release.apk
+            build/app/outputs/flutter-apk/app-xplmdirect-release.apk
+          retention-days: 7

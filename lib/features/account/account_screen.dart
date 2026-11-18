@@ -335,6 +335,11 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildXplmProfile(VpnController controller) {
+    void account() => Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const AccountScreen(),
+      ),
+    );
     void settings() => Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
@@ -343,7 +348,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final notifications = controller.appSettings.notificationsEnabled;
     return XplmHtmlPage(
       title: s.settings,
-      showBack: true,
+      showBack: !widget.embeddedInShell,
       action: XplmHtmlIconButton(
         key: const ValueKey('profile-settings'),
         icon: Icons.settings_outlined,
@@ -479,6 +484,24 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
             ),
           ],
+          const SizedBox(height: AppLayout.stack),
+          TextButton(
+            key: const ValueKey('profile-account'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(
+                fontFamily: 'XplmArial',
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            onPressed: account,
+            child: Text(
+              s.isRu ? 'Аккаунт и подписки' : 'Account and subscriptions',
+            ),
+          ),
         ],
       ),
     );
@@ -508,8 +531,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final showId =
         kpax && account.userId.isNotEmpty && !account.userId.startsWith('u_');
 
-    // X-Plm tab / profile icon → account + subscription (screenshot).
-    // moreHub is the old "Ещё" settings list, opened from the gear only.
+    // X-Plm: bottom «Ещё» = moreHub; top-right person pushes Account details.
     if (xplm && widget.moreHub) return _buildXplmProfile(controller);
     if (xplm) {
       return XplmAccountDetails(
@@ -518,6 +540,7 @@ class _AccountScreenState extends State<AccountScreen> {
         submitting: _submitting,
         showBack: true,
         onOpenSettings: () {
+          if (XplmTabNavigation.go(context, 3)) return;
           Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => const AccountScreen(moreHub: true),

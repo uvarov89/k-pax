@@ -42,7 +42,8 @@ class _XplmShellState extends State<XplmShell> {
       HomeScreen(embeddedInShell: true),
       CountryPickerScreen(embeddedInShell: true),
       PaywallScreen(embeddedInShell: true),
-      AccountScreen(embeddedInShell: true),
+      // Tab 3 = «Ещё» (settings hub). Account opens from the top-right profile icon.
+      AccountScreen(embeddedInShell: true, moreHub: true),
     ];
     final shell = PopScope(
       canPop: _index == 0 && !(current?.canPop() ?? false),
@@ -124,7 +125,7 @@ class XplmBottomNav extends StatelessWidget {
       (Icons.home_outlined, 'Главная'),
       (Icons.public_outlined, 'Серверы'),
       (Icons.workspace_premium_outlined, 'Подписка'),
-      (Icons.person_outline_rounded, 'Профиль'),
+      (Icons.more_horiz_rounded, 'Ещё'),
     ];
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -195,6 +196,7 @@ class _HtmlNavIcon extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final path = Path();
+    final isMore = index >= 3;
     switch (index) {
       case 0:
         path
@@ -232,16 +234,15 @@ class _HtmlNavIcon extends CustomPainter {
           ..moveTo(5, 17)
           ..lineTo(19, 17);
       default:
-        // profile — head + shoulders
+        // more_horiz — three dots
         path
-          ..addOval(const Rect.fromLTWH(8, 3.5, 8, 8))
-          ..moveTo(4.5, 20.5)
-          ..cubicTo(4.5, 15.5, 8, 13, 12, 13)
-          ..cubicTo(16, 13, 19.5, 15.5, 19.5, 20.5);
+          ..addOval(const Rect.fromLTWH(3.5, 10, 4, 4))
+          ..addOval(const Rect.fromLTWH(10, 10, 4, 4))
+          ..addOval(const Rect.fromLTWH(16.5, 10, 4, 4));
     }
     final color = active ? XplmColors.cyan : XplmColors.navMuted;
     final paint = Paint()
-      ..style = PaintingStyle.stroke
+      ..style = isMore ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round

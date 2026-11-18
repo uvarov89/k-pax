@@ -1,4 +1,3 @@
-import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -75,10 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openProfile() {
-    // X-Plm: profile icon → Account tab (subscription / devices), not settings.
-    if (AppBrand.current.isXplm && XplmTabNavigation.go(context, 3)) {
-      return Future<void>.value();
-    }
+    // X-Plm: top-right person → Account (subscription). Bottom tab 3 is «Ещё».
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => const AccountScreen(),

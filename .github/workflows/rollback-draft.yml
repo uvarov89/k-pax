@@ -1,0 +1,47 @@
+# DRAFT — rollback procedure stub. No live changes to panel/nodes.
+name: Rollback (draft — no live changes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'What to roll back'
+        required: true
+        default: 'client-release-pointer'
+        type: choice
+        options:
+          - client-release-pointer
+          - panel-binary
+          - node-config
+      previous_version:
+        description: 'Previous known-good version (e.g. 1.0.73)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback-stub:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Document rollback steps only
+        run: |
+          set -euo pipefail
+          echo "DRAFT rollback — nothing applied to production."
+          echo "component=${{ inputs.component }}"
+          echo "previous_version=${{ inputs.previous_version }}"
+          cat <<'EOF'
+          Planned (manual / future automation):
+          1) client-release-pointer: point panel ANDROID_*/WINDOWS_*/XPLM_* constants
+             back to previous GitHub Release asset URLs (edit panel.py or server constants),
+             then restart k-pax — requires deploy path + approval.
+          2) panel-binary: restore previous panel.py from backup / git tag; restart service.
+          3) node-config: restore from encrypted backup on exits — NEVER via this stub yet.
+          EOF
+          if false; then
+            echo "Live rollback disabled."
+            exit 1
+          fi
+          echo "::notice::Owner approval + KPAX_DEPLOY_SSH_KEY required before enabling live rollback."

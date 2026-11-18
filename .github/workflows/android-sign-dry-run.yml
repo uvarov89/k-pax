@@ -49,6 +49,14 @@ jobs:
             printf 'keyPassword=%s\n' "${KEY_PASSWORD}"
           } > android/key.properties
           chmod 600 android/key.properties
+          # Confirm materials exist without echoing secrets/passwords.
+          test -s android/app/upload-keystore.jks
+          test -s android/key.properties
+          grep -q '^storeFile=upload-keystore.jks$' android/key.properties
+          grep -q '^keyAlias=.' android/key.properties
+          grep -q '^storePassword=.' android/key.properties
+          grep -q '^keyPassword=.' android/key.properties
+          echo "Release signing materials ready (keystore bytes=$(wc -c < android/app/upload-keystore.jks), alias present, passwords present)."
 
       - name: Build signed K-Pax and X-Plm Android APKs
         shell: bash
@@ -57,48 +65,140 @@ jobs:
           flutter pub get
           flutter build apk --release --flavor kpaxDirect --dart-define=BRAND=kpax
           flutter build apk --release --flavor xplmDirect --dart-define=BRAND=xplm
+          echo "== Built APKs =="
+          ls -la build/app/outputs/flutter-apk/
 
       - name: Verify public cert SHA-256 matches published 1.0.73
+        id: verify
         shell: bash
         env:
           EXPECTED_SHA256: '4523e7d0220ae8709a34160aa3f604b411cd85ce35c978f78a9aa357df8885ec'
         run: |
+          # Do not use set -e: apksigner may exit nonzero; we still need dumps + compare.
           set -uo pipefail
-          tool=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
-          test -x "$tool"
-          echo "apksigner=${tool}"
+
+          dump_dir="${GITHUB_WORKSPACE}/artifacts/apk-verify"
+          mkdir -p "${dump_dir}"
+
+          echo "== APK listing =="
+          ls -la build/app/outputs/flutter-apk/ || true
+          find build/app/outputs -name '*.apk' -type f -print -exec ls -la {} \; || true
+
+          # Resolve SDK / apksigner (Flutter runners vary).
+          : "${ANDROID_HOME:=${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "${ANDROID_HOME}" ]]; then
+            for cand in \
+              "${HOME}/Android/Sdk" \
+              /usr/local/lib/android/sdk \
+              /opt/android-sdk
+            do
+              if [[ -d "${cand}/build-tools" ]]; then
+                ANDROID_HOME="${cand}"
+                break
+              fi
+            done
+          fi
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+          echo "JAVA_HOME=${JAVA_HOME:-<unset>}"
+
+          tool=""
+          if [[ -n "${ANDROID_HOME}" && -d "${ANDROID_HOME}/build-tools" ]]; then
+            tool="$(find "${ANDROID_HOME}/build-tools" \( -name apksigner -o -name apksigner.bat \) \( -type f -o -type l \) 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [[ -z "${tool}" || ! -x "${tool}" ]]; then
+            tool="$(find \
+              ${ANDROID_HOME:+"${ANDROID_HOME}"} \
+              "${HOME}/Android" \
+              /usr/local/lib/android \
+              -name apksigner \( -type f -o -type l \) 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          echo "apksigner=${tool:-<missing>}"
+          if [[ -z "${tool}" || ! -x "${tool}" ]]; then
+            echo "::error::apksigner not found"
+            exit 1
+          fi
+
+          normalize_sha() {
+            # Lowercase hex, strip colons/spaces.
+            printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d ' :\r\n\t'
+          }
+
+          parse_sha256() {
+            local file="$1"
+            local line raw
+            line="$(grep -iE 'SHA-?256( digest)?:' "${file}" | head -1 || true)"
+            if [[ -z "${line}" ]]; then
+              printf ''
+              return 0
+            fi
+            raw="$(printf '%s' "${line}" | sed -E 's/.*SHA-?256( digest)?:[[:space:]]*//I')"
+            normalize_sha "${raw}"
+          }
+
           fail=0
           for apk in \
             build/app/outputs/flutter-apk/app-kpaxdirect-release.apk \
             build/app/outputs/flutter-apk/app-xplmdirect-release.apk
           do
-            echo "Checking ${apk}"
-            test -f "$apk"
-            # apksigner may exit non-zero on some runners; still capture cert text.
-            set +e
-            "$tool" verify --print-certs "$apk" > /tmp/apk-certs.txt 2>&1
-            verify_rc=$?
-            set -e
-            echo "apksigner_verify_rc=${verify_rc}"
-            grep -E 'Signer|Digest|certificate|DOES NOT VERIFY|Exception|unsigned' /tmp/apk-certs.txt || true
-            got=$(grep -iE 'Signer #1 certificate SHA-256 digest' /tmp/apk-certs.txt | head -1 | awk '{print tolower($NF)}' | tr -d ':' | tr -d ' ')
+            echo "======== Checking ${apk} ========"
+            base="$(basename "${apk}" .apk)"
+            out="${dump_dir}/${base}-certs.txt"
+
+            if [[ ! -f "${apk}" ]]; then
+              echo "::error::APK missing: ${apk}" | tee "${out}"
+              fail=1
+              continue
+            fi
+            ls -la "${apk}"
+
+            {
+              echo "# apksigner: ${tool}"
+              echo "# apk: ${apk}"
+              "${tool}" verify --print-certs -v "${apk}"
+              rc=$?
+              echo "# apksigner_exit=${rc}"
+              if [[ "${rc}" -ne 0 ]]; then
+                echo "# apksigner verify failed; trying keytool -printcert -jarfile"
+                keytool -printcert -jarfile "${apk}" || true
+              fi
+            } >"${out}" 2>&1
+
+            echo "----- cert dump (${out}) -----"
+            cat "${out}"
+            echo "----- end dump -----"
+
+            got="$(parse_sha256 "${out}")"
             echo "got=${got}"
             echo "expected=${EXPECTED_SHA256}"
-            if [[ -z "${got}" || "${got}" != "${EXPECTED_SHA256}" ]]; then
+
+            if grep -qiE 'CN=Android Debug|OU=Android|Android Debug' "${out}"; then
+              # Debug keystore DN is usually CN=Android Debug, O=Android, ...
+              if grep -qi 'CN=Android Debug' "${out}"; then
+                echo "::error::APK appears signed with the Android Debug certificate: ${apk}"
+                fail=1
+              fi
+            fi
+
+            if [[ -z "${got}" ]]; then
+              echo "::error::Could not parse Signer SHA-256 for ${apk}"
+              fail=1
+            elif [[ "${got}" != "${EXPECTED_SHA256}" ]]; then
               echo "::error::Certificate SHA-256 mismatch for ${apk}"
               fail=1
             else
               echo "OK fingerprint match for ${apk}"
             fi
           done
+
           exit "${fail}"
 
-      - name: Upload dry-run APK artifacts (optional; no release)
-        if: success()
+      - name: Upload dry-run APKs and cert dumps
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: android-sign-dry-run-apks
           path: |
-            build/app/outputs/flutter-apk/app-kpaxdirect-release.apk
-            build/app/outputs/flutter-apk/app-xplmdirect-release.apk
+            build/app/outputs/flutter-apk/*.apk
+            artifacts/apk-verify/*
+          if-no-files-found: warn
           retention-days: 7

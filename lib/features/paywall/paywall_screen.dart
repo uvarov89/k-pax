@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/brand/brand_logo.dart';
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
@@ -62,10 +63,13 @@ class PaywallScreen extends StatelessWidget {
       body: xplm
           ? _XplmPayBody(controller: controller)
           : ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppLayout.pagePad,
+                vertical: AppLayout.block,
+              ),
               children: [
                 const BrandLogo(size: 96),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppLayout.block),
                 Text(
                   title,
                   style: const TextStyle(
@@ -73,13 +77,13 @@ class PaywallScreen extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppLayout.stack),
                 Text(
                   s.paywallSubtitle,
                   style: TextStyle(color: secondary, height: 1.6),
                 ),
                 if (account.hasAccess) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppLayout.stack),
                   Text(
                     '${s.planName} · ${s.daysLeft(account.daysRemaining)}',
                     style: TextStyle(
@@ -88,12 +92,12 @@ class PaywallScreen extends StatelessWidget {
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
+                const SizedBox(height: AppLayout.section),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppLayout.cardPad),
                   decoration: BoxDecoration(
                     color: surface.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppLayout.radiusCard),
                     border: Border.all(color: accent, width: 1.5),
                   ),
                   child: Column(
@@ -106,7 +110,7 @@ class PaywallScreen extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppLayout.stack),
                       Text(
                         s.paywallSubtitle,
                         style: const TextStyle(height: 1.6),
@@ -114,13 +118,13 @@ class PaywallScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppLayout.block),
                 Text(
                   s.paymentNote,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: muted, height: 1.45, fontSize: 14),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: AppLayout.block),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
@@ -132,7 +136,7 @@ class PaywallScreen extends StatelessWidget {
                   ),
                 ),
                 if (controller.subscriptionUrl != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppLayout.stack),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
@@ -148,7 +152,7 @@ class PaywallScreen extends StatelessWidget {
                       child: Text(s.refreshAccess),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppLayout.tight),
                   Text(
                     s.refreshAccessHint,
                     textAlign: TextAlign.center,
@@ -181,7 +185,12 @@ class _XplmPayBody extends StatelessWidget {
       children: [
         const Positioned.fill(child: XplmHtmlEarth(screen: 'subscription')),
         ListView(
-          padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+          padding: const EdgeInsets.fromLTRB(
+            AppLayout.pagePad,
+            10,
+            AppLayout.pagePad,
+            AppLayout.section,
+          ),
           children: [
             SizedBox(
               height: 190,
@@ -198,9 +207,9 @@ class _XplmPayBody extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppLayout.stack),
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
+              padding: EdgeInsets.symmetric(horizontal: AppLayout.tight),
               child: Text(
                 'Попробуйте XPLM VPN\nбесплатно 14 дней!',
                 style: TextStyle(
@@ -211,35 +220,35 @@ class _XplmPayBody extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppLayout.stack),
             const Padding(
-              padding: EdgeInsets.only(left: 6),
+              padding: EdgeInsets.only(left: AppLayout.tight),
               child: Text(
                 'Без привязки карты\nи автосписаний',
                 style: TextStyle(
-                  color: Color(0xFFB2C2DC),
+                  color: XplmColors.ink2,
                   fontSize: 18,
                   height: 1.23,
                 ),
               ),
             ),
-            const SizedBox(height: 25),
+            const SizedBox(height: AppLayout.section),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 9),
+              padding: const EdgeInsets.symmetric(horizontal: AppLayout.tight),
               child: Column(
                 children: [
                   for (var i = 0; i < features.length; i++) ...[
                     Row(
                       children: [
                         Container(
-                          width: 19,
-                          height: 19,
+                          width: AppLayout.iconSm,
+                          height: AppLayout.iconSm,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Color(0xFF008CEB),
+                            color: XplmColors.cyan,
                             boxShadow: [
                               BoxShadow(
-                                color: Color(0xFF008AFF),
+                                color: XplmColors.cyan,
                                 blurRadius: 6,
                               ),
                             ],
@@ -250,7 +259,7 @@ class _XplmPayBody extends StatelessWidget {
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(width: 15),
+                        const SizedBox(width: AppLayout.block),
                         Expanded(
                           child: Text(
                             features[i],
@@ -262,14 +271,20 @@ class _XplmPayBody extends StatelessWidget {
                         ),
                       ],
                     ),
-                    if (i < features.length - 1) const SizedBox(height: 11),
+                    if (i < features.length - 1)
+                      const SizedBox(height: AppLayout.stack),
                   ],
                 ],
               ),
             ),
-            const SizedBox(height: 25),
+            const SizedBox(height: AppLayout.section),
             XplmHtmlGlass(
-              padding: const EdgeInsets.fromLTRB(9, 13, 9, 0),
+              padding: const EdgeInsets.fromLTRB(
+                AppLayout.stack,
+                AppLayout.stack,
+                AppLayout.stack,
+                0,
+              ),
               child: Column(
                 children: [
                   Stack(
@@ -300,12 +315,12 @@ class _XplmPayBody extends StatelessWidget {
                         child: Icon(
                           Icons.calendar_month_outlined,
                           size: 31,
-                          color: Color(0xFF078BDB),
+                          color: XplmColors.neonDim,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppLayout.tight),
                   XplmHtmlButton(
                     label: 'Оформить подписку ›',
                     onPressed: () => launchUrl(
@@ -316,20 +331,20 @@ class _XplmPayBody extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppLayout.block),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.verified_user_outlined,
-                  size: 20,
-                  color: Color(0xFF139CE3),
+                  size: AppLayout.iconSm,
+                  color: XplmColors.cyan,
                 ),
-                SizedBox(width: 9),
+                SizedBox(width: AppLayout.tight),
                 Text(
                   'Безопасная оплата\nчерез СБП',
                   style: TextStyle(
-                    color: Color(0xFF9BB4CE),
+                    color: XplmColors.ink3,
                     fontSize: 11,
                     height: 1.25,
                   ),
@@ -337,7 +352,7 @@ class _XplmPayBody extends StatelessWidget {
               ],
             ),
             if (controller.subscriptionUrl != null) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: AppLayout.block),
               OutlinedButton(
                 onPressed: controller.isRefreshingServers
                     ? null
@@ -351,7 +366,7 @@ class _XplmPayBody extends StatelessWidget {
                       },
                 child: Text(s.refreshAccess),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: AppLayout.tight),
               Text(
                 s.refreshAccessHint,
                 textAlign: TextAlign.center,

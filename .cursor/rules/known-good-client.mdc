@@ -1,0 +1,37 @@
+---
+description: Known-good client baseline and VPN regression constraints
+alwaysApply: true
+---
+
+# Known-good client (K-Pax / X-Plm)
+
+## Pre-stable rollback (operator-confirmed 2026-11-18)
+
+- **Current pre-stable sideload: `v1.0.70`** — operator confirmed “всё работает”.
+- GitHub tags (keep published; do not delete): `v1.0.70`, `v1.0.70-xplm`, `v1.0.70-windows`, `v1.0.70-xplm-windows` (published **2026-11-17**).
+- **Rollback target** if a later build regresses: reinstall these artifacts / retarget panel updater to `1.0.70` assets.
+- What this baseline includes (do not casually undo):
+  - Tunnel JSON restored to **1.0.50 semantics** (not the 1.0.51+ “stronger full-tunnel” stack).
+  - SoftProbe **and** Clash proxy-traffic gate (reject clearnet SoftProbe leaks / false Connected).
+  - App Reality sticky: **`:443` → RU fronts (`2443–2499`) → other** (not fronts-first).
+  - Proxy host forced **direct** in route rules.
+  - Panel `links_for`: **front_vless before** direct `:443` (Hiddify / external clients).
+
+## Historical known-good (tunnel JSON)
+
+- Earlier public sideload that was last adequately working before the 1.0.51+ drift: **`v1.0.50`** (tags `v1.0.50*`; published **2026-11-11**; field OK through **2026-11-13**).
+- Regression source of truth for **tunnel JSON**: `git show 36b8e5d:lib/core/services/tunnel_config.dart` (commit *Ship 1.0.50*).
+- **Do not** reintroduce 1.0.51+ speculative Hiddify-parity TUN-DNS-route stacks without a live device proof that Telegram + non-BG exits work.
+
+## Field symptoms to respect
+
+- Some users: **only Hiddify** works with the same K-Pax subscription → prefer client outbound/TUN parity with a working external client, not more UI/probe gates. Hiddify often picks RU front Reality (`:2443–2445`).
+- Some users: **only Bulgaria (`bg`)** works in our app → treat as **node/path specific** (SNI, port, front, Reality, firewall), not “VPN engine globally dead”.
+- **`1.0.69` fronts-first sticky** caused blackhole (status-bar VPN, zero traffic) for some users — do not bring fronts-first sticky back without Clash-gated SoftProbe proof on a live RU device.
+
+## When changing tunnel / subscription / exits
+
+1. Diff against **1.0.70** client behavior first; for raw tunnel shape also diff **1.0.50** `tunnel_config`.
+2. Compare DE/FI/BG node params and live ports before shipping another client hotfix.
+3. Prefer one measured fix over a version bump cascade.
+4. If unsure after a regression: **roll back users to `1.0.70`**, then diagnose — do not stack speculative hotfixes on a broken build.

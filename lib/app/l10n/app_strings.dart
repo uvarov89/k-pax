@@ -204,6 +204,11 @@ class AppStrings {
       isRu ? 'Как включить' : 'How to enable';
   String get rememberLastCountry =>
       isRu ? 'Запоминать последнюю страну' : 'Remember last country';
+  String get diagnosticsConnection =>
+      isRu ? 'Диагностика соединения' : 'Connection diagnostics';
+  String get diagnosticsConnectionHint => isRu
+      ? 'Автологирование подключений на сервер (без секретов) для разбора сбоев'
+      : 'Auto-logs connection events to the server (no secrets) to diagnose outages';
   String get connectionStatusNotif =>
       isRu ? 'Статус подключения' : 'Connection status';
   String get connectionStatusNotifHint => isRu

@@ -81,6 +81,15 @@ class XplmPreferencesScreen extends StatelessWidget {
                     settings.copyWith(rememberLastCountry: v),
                   ),
                 ),
+                XplmPreferenceSwitch(
+                  key: const ValueKey('preferences-diagnostics'),
+                  title: s.diagnosticsConnection,
+                  subtitle: s.diagnosticsConnectionHint,
+                  value: settings.diagnosticsEnabled,
+                  onChanged: (v) => c.updateAppSettings(
+                    settings.copyWith(diagnosticsEnabled: v),
+                  ),
+                ),
               ],
             ),
           ),

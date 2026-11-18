@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -24,17 +25,20 @@ class PulseApp extends StatefulWidget {
   State<PulseApp> createState() => _PulseAppState();
 }
 
-class _PulseAppState extends State<PulseApp> {
+class _PulseAppState extends State<PulseApp> with WidgetsBindingObserver {
   DeepLinkService? _deepLinks;
   NetworkAutoConnect? _networkAuto;
+  bool _sawBackground = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _bindTray();
     _deepLinks = DeepLinkService(widget.controller);
     _networkAuto = NetworkAutoConnect(widget.controller);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(widget.controller.maybeAutoRefreshSubscription());
       widget.controller.maybeAutoConnect();
       _deepLinks?.start();
       // Skip platform plugins under `flutter test` (no EventChannel impl).
@@ -42,6 +46,23 @@ class _PulseAppState extends State<PulseApp> {
         _networkAuto?.start();
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _sawBackground = true;
+      return;
+    }
+    if (state != AppLifecycleState.resumed || !_sawBackground) return;
+    _sawBackground = false;
+    unawaited(
+      widget.controller.maybeAutoRefreshSubscription(
+        trigger: SoftAutoRefreshTrigger.resume,
+      ),
+    );
   }
 
   void _bindTray() {
@@ -71,6 +92,7 @@ class _PulseAppState extends State<PulseApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_pushTrayState);
     _deepLinks?.dispose();
     _networkAuto?.dispose();

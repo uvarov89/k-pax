@@ -227,11 +227,35 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
 
   Future<void> _pumpTraffic() async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
+    // Prefer Clash /connections totals (same API SoftProbe already uses).
+    // /traffic instant rates are a bonus when the stream stays open.
+    unawaited(_pumpTrafficStream());
     final tracker = TunnelSpeedTracker();
-    var sessionUp = 0;
-    var sessionDown = 0;
-    // Retry while the tunnel lives — a single failed /traffic open used to
-    // leave the UI at 0 B/s for the whole session.
+    while (_process != null) {
+      final secret = _clashSecret;
+      if (secret == null || secret.isEmpty) return;
+      try {
+        final totals = await _fetchClashSessionTotals(secret);
+        if (_process == null || _traffic.isClosed) return;
+        if (totals != null) {
+          _traffic.add(
+            tracker.ingest(
+              upRate: 0,
+              downRate: 0,
+              upTotal: totals.$1,
+              downTotal: totals.$2,
+            ),
+          );
+        }
+      } catch (_) {}
+      if (_process == null) return;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+  }
+
+  /// Live Clash /traffic rates when available (may die; totals poll continues).
+  Future<void> _pumpTrafficStream() async {
+    final tracker = TunnelSpeedTracker();
     while (_process != null) {
       final secret = _clashSecret;
       if (secret == null || secret.isEmpty) return;
@@ -265,15 +289,9 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
               if (decoded is! Map || _traffic.isClosed) continue;
               final up = (decoded['up'] as num?)?.toInt() ?? 0;
               final down = (decoded['down'] as num?)?.toInt() ?? 0;
-              sessionUp += up < 0 ? 0 : up;
-              sessionDown += down < 0 ? 0 : down;
+              if (up <= 0 && down <= 0) continue;
               _traffic.add(
-                tracker.ingest(
-                  upRate: up,
-                  downRate: down,
-                  upTotal: sessionUp,
-                  downTotal: sessionDown,
-                ),
+                tracker.ingest(upRate: up, downRate: down),
               );
             } catch (_) {}
           }
@@ -289,8 +307,41 @@ class WindowsSingboxVpnService implements VpnService, TunnelConnectivityVerifier
     }
   }
 
+  Future<(int, int)?> _fetchClashSessionTotals(String secret) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 2)
+      ..idleTimeout = const Duration(seconds: 2);
+    try {
+      final request = await client
+          .getUrl(Uri.parse('http://127.0.0.1:$kClashPort/connections'))
+          .timeout(const Duration(seconds: 2));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $secret');
+      final response = await request.close().timeout(const Duration(seconds: 2));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode != HttpStatus.ok) return null;
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      final up = (decoded['uploadTotal'] as num?)?.toInt() ?? 0;
+      final down = (decoded['downloadTotal'] as num?)?.toInt() ?? 0;
+      return (up < 0 ? 0 : up, down < 0 ? 0 : down);
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   @override
-  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+  Future<void> verifyConnectivity() {
+    final secret = _clashSecret;
+    if (secret == null || secret.isEmpty) {
+      return verifyTunnelConnectivity();
+    }
+    return verifyTunnelConnectivityViaProxy(clashSecret: secret);
+  }
 
   @override
   Future<void> disconnect() async {

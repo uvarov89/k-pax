@@ -120,6 +120,7 @@ Future<void> checkForAndroidUpdate(
     if (!context.mounted) return;
     switch (lookup.status) {
       case AndroidUpdateStatus.unavailable:
+        controller.diagnostics.logUpdateFail(errorCode: 'update_check');
         if (manual) {
           messenger?.showSnackBar(SnackBar(content: Text(s.updateCheckFailed)));
         }
@@ -159,6 +160,7 @@ Future<void> checkForAndroidUpdate(
           );
           if (!context.mounted) return;
           if (file == null) {
+            controller.diagnostics.logUpdateFail(errorCode: 'update_download');
             messenger?.showSnackBar(
               SnackBar(
                 content: Text(s.updateDownloadFailed),
@@ -180,6 +182,10 @@ Future<void> checkForAndroidUpdate(
               SnackBar(content: Text(s.updateInstallPermission)),
             );
           } else if (outcome != 'started') {
+            controller.diagnostics.logUpdateFail(
+              errorCode: 'update_install',
+              error: outcome,
+            );
             messenger?.showSnackBar(
               SnackBar(content: Text(s.updateApplyFailed)),
             );

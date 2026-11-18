@@ -51,11 +51,13 @@ class SingboxVpnService
           return int.tryParse('$value') ?? 0;
         }
 
+        // Prefer session counters (reset on connect). Lifetime totals can sit
+        // still after a StatusClient reconnect and leave the UI at 0 B/s.
         return _speedTracker.ingest(
-          upRate: asInt(event['uplinkSpeed']),
-          downRate: asInt(event['downlinkSpeed']),
-          upTotal: asInt(event['uplinkTotal'] ?? event['sessionUplink']),
-          downTotal: asInt(event['downlinkTotal'] ?? event['sessionDownlink']),
+          upRate: asInt(event['uplinkSpeed'] ?? event['uplink']),
+          downRate: asInt(event['downlinkSpeed'] ?? event['downlink']),
+          upTotal: asInt(event['sessionUplink'] ?? event['uplinkTotal']),
+          downTotal: asInt(event['sessionDownlink'] ?? event['downlinkTotal']),
         );
       });
 
@@ -126,7 +128,13 @@ class SingboxVpnService
   }
 
   @override
-  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+  Future<void> verifyConnectivity() {
+    final secret = _clashSecret;
+    if (secret == null || secret.isEmpty) {
+      return verifyTunnelConnectivity();
+    }
+    return verifyTunnelConnectivityViaProxy(clashSecret: secret);
+  }
 
   @override
   Future<void> applyAppSettings(AppSettings settings) async {

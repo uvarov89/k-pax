@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import 'package:pulse_vpn/app/theme/app_layout.dart';
+import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'xplm_codex_widgets.dart';
 
 /// Keeps tab navigation independent of the screens' VPN/account logic.
@@ -54,22 +57,24 @@ class XplmHtmlPage extends StatelessWidget {
   final bool showBack;
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFF010D1E),
+    backgroundColor: XplmColors.paper,
     body: SafeArea(
       bottom: false,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
+          constraints: const BoxConstraints(maxWidth: AppLayout.maxContent),
           child: DefaultTextStyle.merge(
             style: const TextStyle(
               fontFamily: 'XplmArial',
               fontSize: 14,
-              color: Color(0xFFEEF6FF),
+              color: XplmColors.ink,
             ),
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppLayout.pagePad,
+                  ),
                   child: SizedBox(
                     height: 48,
                     child: Row(
@@ -81,7 +86,7 @@ class XplmHtmlPage extends StatelessWidget {
                             onPressed: () => XplmTabNavigation.back(context),
                           )
                         else
-                          const SizedBox(width: 28),
+                          const SizedBox(width: AppLayout.iconLg),
                         Expanded(
                           child: Text(
                             title,
@@ -92,7 +97,7 @@ class XplmHtmlPage extends StatelessWidget {
                             ),
                           ),
                         ),
-                        action ?? const SizedBox(width: 28),
+                        action ?? const SizedBox(width: AppLayout.iconLg),
                       ],
                     ),
                   ),
@@ -119,7 +124,7 @@ class XplmHtmlIconButton extends StatelessWidget {
   final String tooltip;
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 28,
+    width: AppLayout.iconLg,
     height: 40,
     child: IconButton(
       padding: EdgeInsets.zero,
@@ -132,10 +137,10 @@ class XplmHtmlIconButton extends StatelessWidget {
                 fontFamily: 'XplmArial',
                 fontSize: 32,
                 height: 1,
-                color: Color(0xFF96B3D1),
+                color: XplmColors.ink3,
               ),
             )
-          : Icon(icon, size: 22, color: const Color(0xFF96B3D1)),
+          : Icon(icon, size: AppLayout.iconMd, color: XplmColors.ink3),
     ),
   );
 }
@@ -177,7 +182,7 @@ class XplmHtmlButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(25),
+          borderRadius: BorderRadius.circular(AppLayout.radiusPill),
           onTap: busy ? null : onPressed,
           child: SizedBox(
             width: double.infinity,
@@ -244,7 +249,9 @@ class _HtmlSurfacePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final radius = Radius.circular(primary ? 25 : 17);
+    final radius = Radius.circular(
+      primary ? AppLayout.radiusPill : AppLayout.radiusCard,
+    );
     final shape = RRect.fromRectAndRadius(rect.deflate(.5), radius);
     canvas.drawRRect(
       shape,
@@ -293,7 +300,7 @@ class _HtmlSurfacePainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..color = primary ? const Color(0xFF008CFF) : const Color(0xFF1B466B),
+        ..color = primary ? XplmColors.cyan : XplmColors.line,
     );
   }
 

@@ -2,12 +2,12 @@ import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/state/vpn_controller.dart';
 import 'package:pulse_vpn/core/services/server_latency_monitor.dart';
 import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
-import 'package:pulse_vpn/features/settings/settings_screen.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_codex_widgets.dart';
 
 import 'xplm_home_scene.dart';
@@ -107,28 +107,14 @@ class XplmHomeLayout extends StatelessWidget {
           bottom: false,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
+              constraints: const BoxConstraints(maxWidth: AppLayout.maxContent),
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: _HomeHeader(
-                      onMenu: () {
-                        if (XplmTabNavigation.openInTab(
-                          context,
-                          3,
-                          const SettingsScreen(),
-                        )) {
-                          return;
-                        }
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        );
-                      },
-                      onBell: onOpenProfile,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppLayout.pagePad,
                     ),
+                    child: _HomeHeader(onAccount: onOpenProfile),
                   ),
                   Expanded(
                     child:
@@ -137,11 +123,16 @@ class XplmHomeLayout extends StatelessWidget {
                             controller.profile == null
                         ? const Center(child: CircularProgressIndicator())
                         : ListView(
-                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                            padding: const EdgeInsets.fromLTRB(
+                              AppLayout.pagePad,
+                              0,
+                              AppLayout.pagePad,
+                              AppLayout.section,
+                            ),
                             children: [
                               if (topBanner != null) ...[
                                 topBanner!,
-                                const SizedBox(height: 8),
+                                const SizedBox(height: AppLayout.tight),
                               ],
                               SizedBox(
                                 height:
@@ -150,7 +141,7 @@ class XplmHomeLayout extends StatelessWidget {
                                 child: OverflowBox(
                                   maxWidth: MediaQuery.sizeOf(
                                     context,
-                                  ).width.clamp(0.0, 440.0),
+                                  ).width.clamp(0.0, AppLayout.maxContent),
                                   child: XplmHomeScene(
                                     connected: connected,
                                     busy: busy,
@@ -173,7 +164,7 @@ class XplmHomeLayout extends StatelessWidget {
                                                 : 'Устанавливаем защищённое соединение')
                                           : 'Нажмите, чтобы подключиться'),
                               ),
-                              const SizedBox(height: 23),
+                              const SizedBox(height: AppLayout.block),
                               _ServerCard(
                                 countryCode: locationCode,
                                 title: locationLabel,
@@ -200,7 +191,7 @@ class XplmHomeLayout extends StatelessWidget {
                                   );
                                 },
                               ),
-                              const SizedBox(height: 21),
+                              const SizedBox(height: AppLayout.block),
                               _HomePrimaryButton(
                                 label: cta,
                                 height: 54,
@@ -209,13 +200,11 @@ class XplmHomeLayout extends StatelessWidget {
                                 icon: Icons.power_settings_new_rounded,
                                 onPressed: () => onConnectPressed(),
                               ),
-                              const SizedBox(height: 17),
+                              const SizedBox(height: AppLayout.stack),
                               _HomeGlass(
-                                padding: const EdgeInsets.fromLTRB(
-                                  18,
-                                  14,
-                                  18,
-                                  14,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppLayout.cardPad,
+                                  vertical: AppLayout.stack,
                                 ),
                                 child: Column(
                                   children: [
@@ -225,10 +214,10 @@ class XplmHomeLayout extends StatelessWidget {
                                         style: TextStyle(
                                           fontSize: 32,
                                           height: 0.8,
-                                          color: Color(0xFF03BDFF),
+                                          color: XplmColors.cyan,
                                           shadows: [
                                             Shadow(
-                                              color: Color(0xFF00A2FF),
+                                              color: XplmColors.neonDim,
                                               blurRadius: 7,
                                             ),
                                           ],
@@ -237,12 +226,12 @@ class XplmHomeLayout extends StatelessWidget {
                                       caption: 'Трафик',
                                       value: 'Безлимитный',
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: AppLayout.stack),
                                     _UsageRow(
                                       leading: const Icon(
                                         Icons.schedule_rounded,
-                                        color: Color(0xFF00A7EB),
-                                        size: 25,
+                                        color: XplmColors.cyan,
+                                        size: AppLayout.iconMd,
                                       ),
                                       caption: account.hasAccess
                                           ? 'Подписка активна'
@@ -254,17 +243,9 @@ class XplmHomeLayout extends StatelessWidget {
                                 ),
                               ),
                               if (connected) ...[
-                                const SizedBox(height: 10),
+                                const SizedBox(height: AppLayout.tight),
                                 Text(
-                                  () {
-                                    final rate =
-                                        '${controller.sessionLabel}   ↓ ${_fmt(controller.downloadBytesPerSec)}   ↑ ${_fmt(controller.uploadBytesPerSec)}';
-                                    final hasTotals =
-                                        controller.downloadBytesTotal > 0 ||
-                                        controller.uploadBytesTotal > 0;
-                                    if (!hasTotals) return rate;
-                                    return '$rate · ↓ ${_fmtBytes(controller.downloadBytesTotal)} ↑ ${_fmtBytes(controller.uploadBytesTotal)}';
-                                  }(),
+                                  '${controller.sessionLabel}   ${controller.trafficStatsLabel}',
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     fontSize: 11,
@@ -289,10 +270,9 @@ class XplmHomeLayout extends StatelessWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.onMenu, required this.onBell});
+  const _HomeHeader({required this.onAccount});
 
-  final VoidCallback onMenu;
-  final VoidCallback onBell;
+  final VoidCallback onAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -301,15 +281,10 @@ class _HomeHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Tooltip(
-              message: 'Настройки',
-              child: XplmRoundIconButton(
-                onTap: onMenu,
-                icon: Icons.menu_rounded,
-              ),
-            ),
+          // Balance the account button so the logo stays centered.
+          const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: SizedBox(width: AppLayout.iconLg, height: 30),
           ),
           Expanded(
             child: Padding(
@@ -327,7 +302,7 @@ class _HomeHeader extends StatelessWidget {
                         letterSpacing: -1,
                         fontStyle: FontStyle.italic,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFFCFEBFF),
+                        color: XplmColors.wordmark,
                         shadows: [
                           Shadow(
                             color: Color(0xFF5186A5),
@@ -337,7 +312,7 @@ class _HomeHeader extends StatelessWidget {
                         ],
                       ),
                     ),
-                    SizedBox(height: 3),
+                    SizedBox(height: AppLayout.hair),
                     Text(
                       'VPN',
                       style: TextStyle(
@@ -347,7 +322,7 @@ class _HomeHeader extends StatelessWidget {
                         letterSpacing: 1,
                         fontStyle: FontStyle.italic,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF008DD1),
+                        color: XplmColors.wordmarkVpn,
                       ),
                     ),
                   ],
@@ -358,10 +333,10 @@ class _HomeHeader extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Tooltip(
-              message: 'Профиль',
+              message: 'Аккаунт',
               child: XplmRoundIconButton(
-                onTap: onBell,
-                icon: Icons.notifications_none_rounded,
+                onTap: onAccount,
+                icon: Icons.person_outline_rounded,
               ),
             ),
           ),
@@ -388,7 +363,7 @@ class _ConnectionBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final checkColor = connected
         ? XplmColors.ok
-        : (busy ? XplmColors.cyan : const Color(0xFF657A8D));
+        : (busy ? XplmColors.cyan : XplmColors.ink3);
     final duration = Duration(
       milliseconds: MediaQuery.of(context).disableAnimations ? 0 : 220,
     );
@@ -422,7 +397,7 @@ class _ConnectionBlock extends StatelessWidget {
                 size: 16,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppLayout.tight),
             Flexible(
               child: AnimatedSwitcher(
                 duration: duration,
@@ -441,13 +416,13 @@ class _ConnectionBlock extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppLayout.hair),
         Text(
           description,
           style: const TextStyle(
             fontSize: 14,
             height: 16 / 14,
-            color: Color(0xFFB4C3D5),
+            color: XplmColors.ink2,
           ),
         ),
       ],
@@ -481,9 +456,12 @@ class _ServerCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(AppLayout.radiusCard),
         child: _HomeGlass(
-          padding: const EdgeInsets.fromLTRB(17, 12, 17, 12),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppLayout.cardPad,
+            vertical: AppLayout.stack,
+          ),
           child: Column(
             children: [
               SizedBox(
@@ -493,16 +471,16 @@ class _ServerCard extends StatelessWidget {
                     if (countryCode.toLowerCase() == 'auto')
                       const CircleAvatar(
                         radius: 15,
-                        backgroundColor: Color(0xFF06416A),
+                        backgroundColor: XplmColors.accentSoft,
                         child: Icon(
                           Icons.public_rounded,
-                          size: 21,
+                          size: AppLayout.iconSm,
                           color: XplmColors.cyan,
                         ),
                       )
                     else
                       XplmFlagCircle(code: countryCode, size: 30),
-                    const SizedBox(width: 9),
+                    const SizedBox(width: AppLayout.tight),
                     Expanded(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -521,7 +499,7 @@ class _ServerCard extends StatelessWidget {
                               subtitle!,
                               style: const TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF91A5BF),
+                                color: XplmColors.ink3,
                                 height: 1.25,
                               ),
                             ),
@@ -532,17 +510,17 @@ class _ServerCard extends StatelessWidget {
                     const Text(
                       '›',
                       style: TextStyle(
-                        color: Color(0xFF92ADCA),
-                        fontSize: 25,
+                        color: XplmColors.ink3,
+                        fontSize: AppLayout.iconMd,
                         height: 1,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: AppLayout.hair),
               const Divider(height: 1, color: Color(0xFF19304C)),
-              const SizedBox(height: 7),
+              const SizedBox(height: AppLayout.tight),
               _HomePingLine(
                 pingMs: pingMs,
                 measuring: measuring,
@@ -573,8 +551,8 @@ class _UsageRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SizedBox(width: 32, child: Center(child: leading)),
-        const SizedBox(width: 13),
+        SizedBox(width: AppLayout.iconLg + AppLayout.hair, child: Center(child: leading)),
+        const SizedBox(width: AppLayout.stack),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -583,7 +561,7 @@ class _UsageRow extends StatelessWidget {
                 caption,
                 style: const TextStyle(
                   fontSize: 14,
-                  color: Color(0xFFAFC1D9),
+                  color: XplmColors.ink2,
                   height: 1.25,
                 ),
               ),
@@ -592,7 +570,7 @@ class _UsageRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   height: 1.25,
-                  color: const Color(0xFFF0F6FF),
+                  color: XplmColors.ink,
                   fontWeight: valueNormal ? FontWeight.w400 : FontWeight.w700,
                 ),
               ),
@@ -602,25 +580,6 @@ class _UsageRow extends StatelessWidget {
       ],
     );
   }
-}
-
-String _fmt(int bytesPerSec) {
-  if (bytesPerSec < 1024) return '$bytesPerSec Б/с';
-  if (bytesPerSec < 1024 * 1024) {
-    return '${(bytesPerSec / 1024).toStringAsFixed(0)} КБ/с';
-  }
-  return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} МБ/с';
-}
-
-String _fmtBytes(int bytes) {
-  if (bytes < 1024) return '$bytes Б';
-  if (bytes < 1024 * 1024) {
-    return '${(bytes / 1024).toStringAsFixed(0)} КБ';
-  }
-  if (bytes < 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} МБ';
-  }
-  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} ГБ';
 }
 
 String _fmtDate(DateTime d) =>
@@ -665,7 +624,9 @@ class _HtmlSurfacePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final radius = Radius.circular(primary ? 25 : 17);
+    final radius = Radius.circular(
+      primary ? AppLayout.radiusPill : AppLayout.radiusCard,
+    );
     final shape = RRect.fromRectAndRadius(rect.deflate(.5), radius);
     canvas.drawRRect(
       shape,
@@ -714,7 +675,7 @@ class _HtmlSurfacePainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..color = primary ? const Color(0xFF008CFF) : const Color(0xFF1B466B),
+        ..color = primary ? XplmColors.cyan : XplmColors.line,
     );
   }
 
@@ -756,7 +717,7 @@ class _HomePrimaryButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(25),
+        borderRadius: BorderRadius.circular(AppLayout.radiusPill),
         child: SizedBox(
           height: height,
           width: double.infinity,
@@ -776,7 +737,7 @@ class _HomePrimaryButton extends StatelessWidget {
                 : Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(icon, size: 24, color: Colors.white),
+                      Icon(icon, size: AppLayout.iconMd, color: Colors.white),
                       const SizedBox(width: 10),
                       Text(
                         label,
@@ -813,15 +774,19 @@ class _HomePingLine extends StatelessWidget {
         onTap: onRefresh,
         child: Row(
           children: [
-            const Icon(Icons.bolt_rounded, color: Color(0xFF24B5FF), size: 18),
-            const SizedBox(width: 4),
+            const Icon(
+              Icons.bolt_rounded,
+              color: XplmColors.cyan,
+              size: AppLayout.iconSm,
+            ),
+            const SizedBox(width: AppLayout.hair),
             Text(
               measuring
                   ? 'Пинг: …'
                   : pingMs >= 0
                   ? 'Пинг: $pingMs ms'
                   : 'Пинг: —',
-              style: const TextStyle(fontSize: 13, color: Color(0xFFC4D1E3)),
+              style: const TextStyle(fontSize: 13, color: XplmColors.ink2),
             ),
             const Spacer(),
             XplmSignalBars(latencyMs: pingMs),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/features/account/account_screen.dart';
 import 'package:pulse_vpn/features/home/home_screen.dart';
@@ -7,7 +8,7 @@ import 'package:pulse_vpn/features/locations/country_picker_screen.dart';
 import 'package:pulse_vpn/features/paywall/paywall_screen.dart';
 import 'package:pulse_vpn/features/xplm/widgets/xplm_html_widgets.dart';
 
-/// X-Plm root shell: bottom tabs from Codex `bottom-nav` (home/globe/crown/gear).
+/// X-Plm root shell: bottom tabs from Codex `bottom-nav` (home/globe/crown/more).
 class XplmShell extends StatefulWidget {
   const XplmShell({super.key});
 
@@ -55,7 +56,7 @@ class _XplmShellState extends State<XplmShell> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF010D1E),
+        backgroundColor: XplmColors.paper,
         body: XplmTabNavigation(
           select: _select,
           open: (index, page) {
@@ -86,10 +87,10 @@ class _XplmShellState extends State<XplmShell> {
     // Keep every desktop tab and pushed screen aligned with the Android layout.
     if (Theme.of(context).platform != TargetPlatform.windows) return shell;
     return ColoredBox(
-      color: const Color(0xFF010D1E),
+      color: XplmColors.paper,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
+          constraints: const BoxConstraints(maxWidth: AppLayout.maxContent),
           child: shell,
         ),
       ),
@@ -126,9 +127,9 @@ class XplmBottomNav extends StatelessWidget {
       (Icons.person_outline_rounded, 'Профиль'),
     ];
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Color(0xEB030D1D),
-        border: Border(top: BorderSide(color: Color(0xFF13243B))),
+      decoration: BoxDecoration(
+        color: XplmColors.paper.withValues(alpha: 0.92),
+        border: const Border(top: BorderSide(color: Color(0xFF13243B))),
       ),
       child: SafeArea(
         top: false,
@@ -146,10 +147,13 @@ class XplmBottomNav extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           CustomPaint(
-                            size: const Size(24, 24),
+                            size: const Size(
+                              AppLayout.iconMd,
+                              AppLayout.iconMd,
+                            ),
                             painter: _HtmlNavIcon(i, active: i == index),
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: AppLayout.hair),
                           Text(
                             items[i].$2,
                             style: TextStyle(
@@ -157,12 +161,12 @@ class XplmBottomNav extends StatelessWidget {
                               fontWeight: FontWeight.w400,
                               fontFamily: 'XplmArial',
                               color: i == index
-                                  ? const Color(0xFF00B8FF)
+                                  ? XplmColors.cyan
                                   : XplmColors.navMuted,
                               shadows: i == index
                                   ? const [
                                       Shadow(
-                                        color: Color(0xFF00AEFF),
+                                        color: XplmColors.cyan,
                                         blurRadius: 6,
                                       ),
                                     ]
@@ -182,7 +186,7 @@ class XplmBottomNav extends StatelessWidget {
   }
 }
 
-/// Paths copied from the approved HTML's home/globe/crown/gear symbols.
+/// Paths for home/globe/crown/more (ellipsis) bottom-nav symbols.
 class _HtmlNavIcon extends CustomPainter {
   const _HtmlNavIcon(this.index, {required this.active});
   final int index;
@@ -228,43 +232,33 @@ class _HtmlNavIcon extends CustomPainter {
           ..moveTo(5, 17)
           ..lineTo(19, 17);
       default:
+        // profile — head + shoulders
         path
-          ..moveTo(9, 3)
-          ..lineTo(15, 3)
-          ..lineTo(16, 6)
-          ..lineTo(19, 7)
-          ..lineTo(21, 12)
-          ..lineTo(19, 14)
-          ..lineTo(19, 18)
-          ..lineTo(15, 21)
-          ..lineTo(12, 20)
-          ..lineTo(9, 21)
-          ..lineTo(5, 18)
-          ..lineTo(5, 14)
-          ..lineTo(3, 12)
-          ..lineTo(5, 7)
-          ..lineTo(8, 6)
-          ..close()
-          ..addOval(const Rect.fromLTWH(9, 9, 6, 6));
+          ..addOval(const Rect.fromLTWH(8, 3.5, 8, 8))
+          ..moveTo(4.5, 20.5)
+          ..cubicTo(4.5, 15.5, 8, 13, 12, 13)
+          ..cubicTo(16, 13, 19.5, 15.5, 19.5, 20.5);
     }
+    final color = active ? XplmColors.cyan : XplmColors.navMuted;
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+      ..strokeJoin = StrokeJoin.round
+      ..color = color;
     if (active) {
       canvas.drawPath(
         path,
-        paint
-          ..color = const Color(0xFF00AAFF)
+        Paint()
+          ..style = paint.style
+          ..strokeWidth = paint.strokeWidth
+          ..strokeCap = paint.strokeCap
+          ..strokeJoin = paint.strokeJoin
+          ..color = XplmColors.cyan
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
       );
-      paint.maskFilter = null;
     }
-    canvas.drawPath(
-      path,
-      paint..color = active ? const Color(0xFF00B8FF) : XplmColors.navMuted,
-    );
+    canvas.drawPath(path, paint);
   }
 
   @override

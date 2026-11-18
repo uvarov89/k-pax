@@ -55,6 +55,7 @@ class AppSettings {
     this.autoConnectOnWifi = false,
     this.autoConnectOnMobile = false,
     this.rememberLastCountry = true,
+    this.diagnosticsEnabled = true,
     this.splitTunnelMode = SplitTunnelMode.allApps,
     this.splitTunnelPackages = const [],
   });
@@ -67,6 +68,8 @@ class AppSettings {
   final bool autoConnectOnWifi;
   final bool autoConnectOnMobile;
   final bool rememberLastCountry;
+  /// Client connection diagnostics telemetry (default ON).
+  final bool diagnosticsEnabled;
   final SplitTunnelMode splitTunnelMode;
   final List<String> splitTunnelPackages;
 
@@ -79,6 +82,7 @@ class AppSettings {
     bool? autoConnectOnWifi,
     bool? autoConnectOnMobile,
     bool? rememberLastCountry,
+    bool? diagnosticsEnabled,
     SplitTunnelMode? splitTunnelMode,
     List<String>? splitTunnelPackages,
   }) {
@@ -91,6 +95,7 @@ class AppSettings {
       autoConnectOnWifi: autoConnectOnWifi ?? this.autoConnectOnWifi,
       autoConnectOnMobile: autoConnectOnMobile ?? this.autoConnectOnMobile,
       rememberLastCountry: rememberLastCountry ?? this.rememberLastCountry,
+      diagnosticsEnabled: diagnosticsEnabled ?? this.diagnosticsEnabled,
       splitTunnelMode: splitTunnelMode ?? this.splitTunnelMode,
       splitTunnelPackages: splitTunnelPackages ?? this.splitTunnelPackages,
     );

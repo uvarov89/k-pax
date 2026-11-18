@@ -11,6 +11,7 @@ import 'package:pulse_vpn/core/models/connection_models.dart';
 import 'package:pulse_vpn/core/models/server_location.dart';
 import 'package:pulse_vpn/core/models/subscription.dart';
 import 'package:pulse_vpn/core/models/tunnel_node.dart';
+import 'package:pulse_vpn/core/services/client_diagnostics.dart';
 import 'package:pulse_vpn/core/services/settings_repository.dart';
 import 'package:pulse_vpn/core/services/singbox_vpn_service.dart';
 import 'package:pulse_vpn/core/services/subscription_client.dart';
@@ -21,18 +22,29 @@ import 'package:pulse_vpn/core/services/windows_platform.dart';
 
 enum SubscriptionLinkState { missing, loading, ready, expired, failed }
 
+/// Soft subscription auto-refresh entry points (see [VpnController.maybeAutoRefreshSubscription]).
+enum SoftAutoRefreshTrigger { launch, deferred, resume }
+
 class VpnController extends ChangeNotifier {
   VpnController({
     VpnService? service,
     SettingsRepository? repository,
     SubscriptionClient? subscriptions,
+    ClientDiagnostics? diagnostics,
   }) : _service = service ?? defaultVpnService(),
        _repository = repository ?? SettingsRepository(),
-       _subscriptions = subscriptions ?? SubscriptionClient();
+       _subscriptions = subscriptions ?? SubscriptionClient() {
+    _diagnostics = diagnostics ??
+        ClientDiagnostics(tokenProvider: () async => subscriptionToken);
+  }
 
   final VpnService _service;
   final SettingsRepository _repository;
   final SubscriptionClient _subscriptions;
+  late final ClientDiagnostics _diagnostics;
+
+  /// Sideload / updater failure reports (no secrets).
+  ClientDiagnostics get diagnostics => _diagnostics;
   int _loginEpoch = 0;
   bool _disposed = false;
   (int, String)? _pollingLogin;
@@ -81,6 +93,15 @@ class VpnController extends ChangeNotifier {
   bool isProbing = false;
   bool isHydrated = false;
   bool isRefreshingServers = false;
+  /// First launch soft auto-refresh handled (see [maybeAutoRefreshSubscription]).
+  bool _launchAutoRefreshAttempted = false;
+  /// Armed when launch skipped/failed offline; consumed by one deferred retry.
+  bool _deferredAutoRefreshArmed = false;
+  bool _deferredAutoRefreshUsed = false;
+  Timer? _deferredAutoRefreshTimer;
+  DateTime? _lastSuccessfulSubscriptionRefreshAt;
+  static const Duration _autoRefreshCooldown = Duration(minutes: 3);
+  static const Duration _deferredAutoRefreshDelay = Duration(seconds: 8);
   SubscriptionLinkState linkState = SubscriptionLinkState.missing;
   String? subscriptionUrl;
   String? linkError;
@@ -99,8 +120,14 @@ class VpnController extends ChangeNotifier {
 
   Timer? _sessionTimer;
   Timer? _loginPoll;
+  Timer? _connectHangTimer;
+  bool _connectHangLogged = false;
+  TunnelNode? _hangWatchNode;
   DateTime? _loginStartedAt;
   DateTime? _connectedAt;
+  DateTime? _connectStartedAt;
+  int _diagAttempt = 0;
+  bool _lastStartWasProbeFail = false;
   StreamSubscription<String>? _vpnStatusSub;
   StreamSubscription<TunnelSpeed>? _trafficSub;
   int uploadBytesPerSec = 0;
@@ -256,6 +283,19 @@ class VpnController extends ChangeNotifier {
     return '$h:$m:$s';
   }
 
+  /// Live rates only: ↓ download/s ↑ upload/s (zeros until traffic moves).
+  String get trafficStatsLabel {
+    String rate(int bytesPerSec) {
+      if (bytesPerSec < 1024) return '$bytesPerSec Б/с';
+      if (bytesPerSec < 1024 * 1024) {
+        return '${(bytesPerSec / 1024).toStringAsFixed(0)} КБ/с';
+      }
+      return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} МБ/с';
+    }
+
+    return '↓ ${rate(downloadBytesPerSec)}   ↑ ${rate(uploadBytesPerSec)}';
+  }
+
   String planLabel(SubscriptionPlan plan) {
     final s = strings;
     return switch (plan) {
@@ -298,6 +338,7 @@ class VpnController extends ChangeNotifier {
         await WindowsStartup.setEnabled(true);
       }
     }
+    await _diagnostics.start(enabled: appSettings.diagnosticsEnabled);
     isHydrated = true;
     notifyListeners();
     await _resumePendingLogin();
@@ -361,16 +402,25 @@ class VpnController extends ChangeNotifier {
       unawaited(_onVpnStatus(status));
     });
     _trafficSub ??= _service.trafficStream.listen((speed) {
-      if (!isConnected) return;
-      uploadBytesPerSec = speed.upBytesPerSec;
-      downloadBytesPerSec = speed.downBytesPerSec;
+      // SoftProbe + first packets arrive while still "connecting"; do not drop.
+      if (!isConnected &&
+          connectionState != VpnConnectionState.connecting) {
+        return;
+      }
+      uploadBytesPerSec = speed.upBytesPerSec < 0 ? 0 : speed.upBytesPerSec;
+      downloadBytesPerSec =
+          speed.downBytesPerSec < 0 ? 0 : speed.downBytesPerSec;
+      // Prefer platform session totals; otherwise integrate rates (~1 Hz streams).
       if (speed.upBytesTotal > 0 || speed.downBytesTotal > 0) {
-        uploadBytesTotal = speed.upBytesTotal;
-        downloadBytesTotal = speed.downBytesTotal;
-      } else if (speed.upBytesPerSec > 0 || speed.downBytesPerSec > 0) {
-        // Approximate session totals when platform only reports rates.
-        uploadBytesTotal += speed.upBytesPerSec;
-        downloadBytesTotal += speed.downBytesPerSec;
+        if (speed.upBytesTotal >= uploadBytesTotal) {
+          uploadBytesTotal = speed.upBytesTotal;
+        }
+        if (speed.downBytesTotal >= downloadBytesTotal) {
+          downloadBytesTotal = speed.downBytesTotal;
+        }
+      } else if (uploadBytesPerSec > 0 || downloadBytesPerSec > 0) {
+        uploadBytesTotal += uploadBytesPerSec;
+        downloadBytesTotal += downloadBytesPerSec;
       }
       notifyListeners();
     });
@@ -385,6 +435,18 @@ class VpnController extends ChangeNotifier {
     if (_reconnectInFlight) return;
 
     final lastNode = connectedNode;
+    final dropMs = _connectedAt == null
+        ? null
+        : DateTime.now().difference(_connectedAt!).inMilliseconds;
+    final dropUp = uploadBytesTotal;
+    final dropDown = downloadBytesTotal;
+    _diagnostics.logTunnelDrop(
+      node: lastNode,
+      connectedMs: dropMs,
+      upTotal: dropUp,
+      downTotal: dropDown,
+      errorCode: normalized,
+    );
     _sessionTimer?.cancel();
     _sessionTimer = null;
     _connectedAt = null;
@@ -411,25 +473,38 @@ class VpnController extends ChangeNotifier {
   Future<void> _attemptReconnect(TunnelNode? lastNode) async {
     if (!_wantConnected || _reconnectBudget <= 0 || _reconnectInFlight) return;
     _reconnectInFlight = true;
+    final epoch = _connectEpoch;
     try {
-      while (_wantConnected && _reconnectBudget > 0) {
+      while (_wantConnected && _reconnectBudget > 0 && epoch == _connectEpoch) {
         _reconnectBudget -= 1;
         connectionState = VpnConnectionState.connecting;
         errorMessage = strings.reconnectingStatus;
+        _armConnectHangWatchdog(node: lastNode);
         notifyListeners();
 
         await Future<void>.delayed(const Duration(seconds: 2));
-        if (!_wantConnected) {
-          connectionState = VpnConnectionState.disconnected;
-          errorMessage = null;
-          connectedNode = null;
-          notifyListeners();
+        if (!_wantConnected || epoch != _connectEpoch) {
+          _cancelConnectHangWatchdog();
+          if (epoch == _connectEpoch) {
+            connectionState = VpnConnectionState.disconnected;
+            errorMessage = null;
+            connectedNode = null;
+            notifyListeners();
+          }
           return;
         }
 
         try {
           final seed = lastNode ?? await _selectNode();
+          _armConnectHangWatchdog(node: seed);
+          _diagnostics.logConnectStart(seed);
           final node = await _startWithFailover(seed);
+          if (!_wantConnected || epoch != _connectEpoch) {
+            try {
+              await _service.disconnect();
+            } catch (_) {}
+            return;
+          }
           await WindowsFirewall.clear();
           connectedNode = node;
           connectionState = VpnConnectionState.connected;
@@ -439,6 +514,11 @@ class VpnController extends ChangeNotifier {
           uploadBytesTotal = 0;
           downloadBytesTotal = 0;
           _connectedAt = DateTime.now();
+          _cancelConnectHangWatchdog();
+          _diagnostics.logConnectOk(
+            node,
+            attempt: _diagAttempt <= 0 ? 1 : _diagAttempt,
+          );
           sessionDuration = Duration.zero;
           _sessionTimer?.cancel();
           _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -447,14 +527,22 @@ class VpnController extends ChangeNotifier {
             notifyListeners();
           });
           return;
-        } catch (_) {
+        } catch (error) {
           connectedNode = null;
+          if (epoch != _connectEpoch) return;
           if (_wantConnected && _reconnectBudget > 0) {
+            _cancelConnectHangWatchdog();
             connectionState = VpnConnectionState.disconnected;
             errorMessage = strings.reconnectingStatus;
             notifyListeners();
             continue;
           }
+          _cancelConnectHangWatchdog();
+          _diagnostics.logConnectFail(
+            error: error,
+            errorCode: 'reconnect',
+            attempt: _diagAttempt <= 0 ? null : _diagAttempt,
+          );
           connectionState = VpnConnectionState.error;
           errorMessage = strings.reconnectFailed;
           notifyListeners();
@@ -464,6 +552,32 @@ class VpnController extends ChangeNotifier {
     } finally {
       _reconnectInFlight = false;
     }
+  }
+
+  /// One-shot: if still [VpnConnectionState.connecting] after
+  /// [kConnectHangTimeout], emit `connect_hang` (error_code=hang) and flush.
+  void _armConnectHangWatchdog({TunnelNode? node}) {
+    if (node != null) _hangWatchNode = node;
+    _connectHangTimer?.cancel();
+    _connectHangLogged = false;
+    final epoch = _connectEpoch;
+    _connectHangTimer = Timer(kConnectHangTimeout, () {
+      if (_disposed) return;
+      if (epoch != _connectEpoch) return;
+      if (connectionState != VpnConnectionState.connecting) return;
+      if (_connectHangLogged) return;
+      _connectHangLogged = true;
+      _diagnostics.logConnectHang(
+        node: connectedNode ?? _hangWatchNode,
+        attempt: _diagAttempt <= 0 ? null : _diagAttempt,
+      );
+    });
+  }
+
+  void _cancelConnectHangWatchdog() {
+    _connectHangTimer?.cancel();
+    _connectHangTimer = null;
+    _connectHangLogged = false;
   }
 
   void _restoreSavedLocation() {
@@ -555,6 +669,10 @@ class VpnController extends ChangeNotifier {
     await reloadSubscription();
     if (_disposed || epoch != _accountEpoch) return;
     await _persistAccountState();
+    // Login / import can finish after the post-frame launch hook missed hasAccess.
+    unawaited(
+      maybeAutoRefreshSubscription(trigger: SoftAutoRefreshTrigger.resume),
+    );
   }
 
   Future<void> switchSubscription(String url) async {
@@ -855,6 +973,9 @@ class VpnController extends ChangeNotifier {
       }
       _applyProfile();
       _restoreSavedLocation();
+      if (linkState == SubscriptionLinkState.ready) {
+        _lastSuccessfulSubscriptionRefreshAt = DateTime.now();
+      }
     } on FormatException {
       if (_disposed ||
           reloadEpoch != _subscriptionReloadEpoch ||
@@ -959,6 +1080,97 @@ class VpnController extends ChangeNotifier {
     await connect(userInitiated: true);
   }
 
+  /// Soft subscription refresh (same path as Account → Refresh).
+  ///
+  /// - [SoftAutoRefreshTrigger.launch]: once per cold start; arms a single
+  ///   deferred retry when skipped (no access / failed load) or the fetch does
+  ///   not record a fresh success (offline).
+  /// - [SoftAutoRefreshTrigger.deferred]: one connectivity/timer retry after
+  ///   launch armed it.
+  /// - [SoftAutoRefreshTrigger.resume]: foreground resume; cooldown only.
+  ///
+  /// Always respects [_autoRefreshCooldown]. Failures stay soft —
+  /// [reloadSubscription] keeps the last good profile.
+  Future<void> maybeAutoRefreshSubscription({
+    SoftAutoRefreshTrigger trigger = SoftAutoRefreshTrigger.launch,
+  }) async {
+    if (_disposed) return;
+    if (subscriptionUrl == null || isLoginWaiting) return;
+    // No access yet (hydrate race / not ready): launch arms one soft deferred retry.
+    // Offline failed loads set subscriptionLoadFailed and continue below.
+    if (!hasAccess && !subscriptionLoadFailed) {
+      if (trigger == SoftAutoRefreshTrigger.launch) {
+        _launchAutoRefreshAttempted = true;
+        _armDeferredAutoRefresh();
+      }
+      return;
+    }
+    if (isRefreshingServers) return;
+
+    if (trigger == SoftAutoRefreshTrigger.launch) {
+      if (_launchAutoRefreshAttempted) return;
+      _launchAutoRefreshAttempted = true;
+    } else if (trigger == SoftAutoRefreshTrigger.deferred) {
+      if (!_deferredAutoRefreshArmed || _deferredAutoRefreshUsed) return;
+      _deferredAutoRefreshUsed = true;
+      _deferredAutoRefreshArmed = false;
+      _cancelDeferredAutoRefreshTimer();
+    }
+
+    final last = _lastSuccessfulSubscriptionRefreshAt;
+    if (last != null &&
+        DateTime.now().difference(last) < _autoRefreshCooldown) {
+      if (showRefreshSubscriptionNotice) {
+        await dismissRefreshSubscriptionNotice();
+      }
+      return;
+    }
+
+    final successBefore = _lastSuccessfulSubscriptionRefreshAt;
+    await refreshServers();
+    if (_disposed) return;
+
+    final gotFreshSuccess =
+        _lastSuccessfulSubscriptionRefreshAt != null &&
+        _lastSuccessfulSubscriptionRefreshAt != successBefore;
+    if (trigger == SoftAutoRefreshTrigger.launch && !gotFreshSuccess) {
+      _armDeferredAutoRefresh();
+    }
+
+    if (linkState == SubscriptionLinkState.ready &&
+        showRefreshSubscriptionNotice) {
+      await dismissRefreshSubscriptionNotice();
+    }
+  }
+
+  void _armDeferredAutoRefresh() {
+    if (_disposed || _deferredAutoRefreshUsed || _deferredAutoRefreshArmed) {
+      return;
+    }
+    _deferredAutoRefreshArmed = true;
+    _deferredAutoRefreshTimer?.cancel();
+    _deferredAutoRefreshTimer = Timer(_deferredAutoRefreshDelay, () {
+      unawaited(
+        maybeAutoRefreshSubscription(trigger: SoftAutoRefreshTrigger.deferred),
+      );
+    });
+  }
+
+  void _cancelDeferredAutoRefreshTimer() {
+    _deferredAutoRefreshTimer?.cancel();
+    _deferredAutoRefreshTimer = null;
+  }
+
+  /// Connectivity restored — consume the armed offline deferred retry if any.
+  Future<void> onConnectivityRestored() async {
+    if (_disposed || !_deferredAutoRefreshArmed || _deferredAutoRefreshUsed) {
+      return;
+    }
+    await maybeAutoRefreshSubscription(
+      trigger: SoftAutoRefreshTrigger.deferred,
+    );
+  }
+
   Future<void> _appSettingsWrites = Future<void>.value();
 
   Future<void> updateAppSettings(AppSettings settings) {
@@ -973,6 +1185,7 @@ class VpnController extends ChangeNotifier {
     final previous = appSettings;
     final launchChanged = settings.launchAtLogin != previous.launchAtLogin;
     appSettings = settings;
+    _diagnostics.setEnabled(settings.diagnosticsEnabled);
     notifyListeners();
     try {
       if (launchChanged) {
@@ -1023,13 +1236,72 @@ class VpnController extends ChangeNotifier {
     }
     notifyListeners();
     await _persistSession();
+    await _reconnectAfterLocationChange();
   }
 
   Future<void> selectLocation(ServerLocation location) async {
+    final same =
+        selectedLocation.id == location.id &&
+        locationMode ==
+            (location.isAuto ? LocationMode.auto : LocationMode.country);
     selectedLocation = location;
     locationMode = location.isAuto ? LocationMode.auto : LocationMode.country;
     notifyListeners();
     await _persistSession();
+    if (same) return;
+    await _reconnectAfterLocationChange();
+  }
+
+  /// When already connected/connecting, apply the new country/Auto by restarting
+  /// the tunnel. Disconnected picks only update preference (manual Connect).
+  Future<void> _reconnectAfterLocationChange() async {
+    if (_disposed) return;
+    final active = isConnected ||
+        connectionState == VpnConnectionState.connecting ||
+        _reconnectInFlight;
+    if (!active) return;
+
+    _userStopped = false;
+    _wantConnected = true;
+    // Invalidate in-flight connect / drop-reconnect so they cannot win the race.
+    final epoch = ++_connectEpoch;
+    _reconnectBudget = 0;
+    _cancelConnectHangWatchdog();
+    _sessionTimer?.cancel();
+    _sessionTimer = null;
+    _connectedAt = null;
+    connectedNode = null;
+    uploadBytesPerSec = 0;
+    downloadBytesPerSec = 0;
+    uploadBytesTotal = 0;
+    downloadBytesTotal = 0;
+    sessionDuration = Duration.zero;
+    connectionState = VpnConnectionState.connecting;
+    errorMessage = strings.reconnectingStatus;
+    notifyListeners();
+
+    try {
+      await _service.disconnect().timeout(const Duration(seconds: 8));
+    } catch (_) {}
+
+    var spins = 0;
+    while (_reconnectInFlight && spins < 40) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      spins++;
+    }
+
+    if (_disposed || epoch != _connectEpoch || !_wantConnected) return;
+
+    if (connectionState == VpnConnectionState.connected) {
+      try {
+        await _service.disconnect().timeout(const Duration(seconds: 4));
+      } catch (_) {}
+    }
+    connectedNode = null;
+    connectionState = VpnConnectionState.disconnected;
+    errorMessage = null;
+    notifyListeners();
+    await connect(userInitiated: true);
   }
 
   Future<void> updateProSettings(ProSettings settings) async {
@@ -1196,6 +1468,7 @@ class VpnController extends ChangeNotifier {
     // node. Failures throw so [_startWithFailover] can try spares. Probes use
     // short timeouts (see tunnel_connectivity.dart); attempt/deadline caps
     // prevent multi-minute loops.
+    _lastStartWasProbeFail = false;
     await _service.connect(
       location: effectiveLocation,
       settings: proSettings,
@@ -1209,7 +1482,9 @@ class VpnController extends ChangeNotifier {
     if (verifier != null) {
       try {
         await verifier.verifyConnectivity();
-      } catch (_) {
+      } catch (error) {
+        _lastStartWasProbeFail = true;
+        _diagnostics.logProbeFail(node, error, attempt: _diagAttempt);
         try {
           await _service.disconnect();
         } catch (_) {}
@@ -1314,8 +1589,14 @@ class VpnController extends ChangeNotifier {
         return null;
       }
       attempts += 1;
+      _diagAttempt = attempts;
+      // Keep hang payload on the latest try; do not re-arm (once per attempt).
+      _hangWatchNode = node;
       tried.add(_endpointKey(node));
       triedCountries.add(node.countryId);
+      if (disconnectFirst || attempts > 1) {
+        _diagnostics.logFailoverTry(node, attempt: attempts);
+      }
       if (disconnectFirst) {
         try {
           await _service.disconnect();
@@ -1327,6 +1608,14 @@ class VpnController extends ChangeNotifier {
         return node;
       } catch (e) {
         lastError = e;
+        if (!_lastStartWasProbeFail) {
+          _diagnostics.logConnectFail(
+            node: node,
+            error: e,
+            errorCode: 'start',
+            attempt: attempts,
+          );
+        }
         return null;
       }
     }
@@ -1391,7 +1680,7 @@ class VpnController extends ChangeNotifier {
         ? pool
         : pool.where((node) => node.kind != TunnelKind.message).toList();
     final source = race.isEmpty ? pool : race;
-    // Protocol order wins first; among Reality prefer :443 (primary dest) over self-steal.
+    // Protocol order wins first; among Reality prefer :443, then RU fronts.
     for (final kind in order) {
       final same = _preferPrimaryEndpoints(
         source.where((node) => node.kind == kind).toList(),
@@ -1402,22 +1691,35 @@ class VpnController extends ChangeNotifier {
     return _preferType(pool, order);
   }
 
-  /// Prefer primary Reality (:443) ahead of self-steal (:2053) before probing.
+  /// Reality sticky order:
+  /// 1) Direct exit :443 (lowest latency when the path works)
+  /// 2) RU front ports (panel `front_ports`, typically 2443–2445) — spare
+  /// 3) Self-steal / other ports (:2053, …)
+  ///
+  /// 1.0.69 put fronts first; that blackholed some users (status-bar VPN,
+  /// zero traffic). SoftProbe+Clash gate + failover still reach fronts when
+  /// bare :443 is filtered. Panel subscription keeps fronts first for Hiddify.
   List<TunnelNode> _preferPrimaryEndpoints(List<TunnelNode> nodes) {
     if (nodes.length <= 1) return nodes;
     if (nodes.first.kind != TunnelKind.reality) return nodes;
-    final primary = <TunnelNode>[];
-    final secondary = <TunnelNode>[];
+    final direct443 = <TunnelNode>[];
+    final fronts = <TunnelNode>[];
+    final other = <TunnelNode>[];
     for (final node in nodes) {
       final port = node.port == 0 ? 443 : node.port;
       if (port == 443) {
-        primary.add(node);
+        direct443.add(node);
+      } else if (_isRuFrontPort(port)) {
+        fronts.add(node);
       } else {
-        secondary.add(node);
+        other.add(node);
       }
     }
-    return [...primary, ...secondary];
+    return [...direct443, ...fronts, ...other];
   }
+
+  /// Panel publishes RU front Reality on 2443–2445 (de/fi/bg mapped ports).
+  static bool _isRuFrontPort(int port) => port >= 2443 && port <= 2499;
 
   /// Instant pick for connect. Do not TCP-probe here: waiting on host RTT (even
   /// in parallel) blocks TUN start for seconds. UI latency stays on
@@ -1611,6 +1913,9 @@ class VpnController extends ChangeNotifier {
     final epoch = ++_connectEpoch;
     connectionState = VpnConnectionState.connecting;
     errorMessage = null;
+    _connectStartedAt = DateTime.now();
+    _diagAttempt = 0;
+    _armConnectHangWatchdog();
     notifyListeners();
 
     TunnelNode seed;
@@ -1618,16 +1923,22 @@ class VpnController extends ChangeNotifier {
       seed = await _selectNode();
     } catch (error) {
       if (epoch != _connectEpoch || !_wantConnected) {
+        _cancelConnectHangWatchdog();
         connectionState = VpnConnectionState.disconnected;
         errorMessage = null;
         notifyListeners();
         return true;
       }
+      _cancelConnectHangWatchdog();
+      _diagnostics.logConnectFail(error: error, errorCode: 'select');
       connectionState = VpnConnectionState.error;
       errorMessage = _failureText(error);
       notifyListeners();
       return true;
     }
+
+    _armConnectHangWatchdog(node: seed);
+    _diagnostics.logConnectStart(seed);
 
     try {
       final node = await _startWithFailover(seed);
@@ -1636,6 +1947,7 @@ class VpnController extends ChangeNotifier {
           await _service.disconnect();
         } catch (_) {}
         if (epoch == _connectEpoch) {
+          _cancelConnectHangWatchdog();
           connectionState = VpnConnectionState.disconnected;
           connectedNode = null;
           errorMessage = null;
@@ -1651,6 +1963,15 @@ class VpnController extends ChangeNotifier {
       uploadBytesTotal = 0;
       downloadBytesTotal = 0;
       _connectedAt = DateTime.now();
+      final connectedMs = _connectStartedAt == null
+          ? null
+          : _connectedAt!.difference(_connectStartedAt!).inMilliseconds;
+      _cancelConnectHangWatchdog();
+      _diagnostics.logConnectOk(
+        node,
+        attempt: _diagAttempt <= 0 ? 1 : _diagAttempt,
+        connectedMs: connectedMs,
+      );
       sessionDuration = Duration.zero;
       _sessionTimer?.cancel();
       _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -1660,10 +1981,17 @@ class VpnController extends ChangeNotifier {
       });
     } catch (e) {
       if (epoch != _connectEpoch || !_wantConnected) {
+        _cancelConnectHangWatchdog();
         connectionState = VpnConnectionState.disconnected;
         connectedNode = null;
         errorMessage = null;
       } else {
+        _cancelConnectHangWatchdog();
+        _diagnostics.logConnectFail(
+          error: e,
+          errorCode: 'failover',
+          attempt: _diagAttempt <= 0 ? null : _diagAttempt,
+        );
         connectionState = VpnConnectionState.error;
         errorMessage = _failureText(e);
       }
@@ -1679,6 +2007,18 @@ class VpnController extends ChangeNotifier {
       _forceDisconnectedUi();
       return;
     }
+    final discNode = connectedNode;
+    final discMs = _connectedAt == null
+        ? null
+        : DateTime.now().difference(_connectedAt!).inMilliseconds;
+    final discUp = uploadBytesTotal;
+    final discDown = downloadBytesTotal;
+    _diagnostics.logDisconnect(
+      node: discNode,
+      connectedMs: discMs,
+      upTotal: discUp,
+      downTotal: discDown,
+    );
     _userStopped = true;
     _wantConnected = false;
     _reconnectBudget = 0;
@@ -1701,9 +2041,11 @@ class VpnController extends ChangeNotifier {
   }
 
   void _forceDisconnectedUi() {
+    _cancelConnectHangWatchdog();
     _sessionTimer?.cancel();
     _sessionTimer = null;
     _connectedAt = null;
+    _hangWatchNode = null;
     sessionDuration = Duration.zero;
     connectedNode = null;
     uploadBytesPerSec = 0;
@@ -1777,10 +2119,13 @@ class VpnController extends ChangeNotifier {
     _loginEpoch++;
     _devicesEpoch++;
     _accountEpoch++;
+    _cancelConnectHangWatchdog();
+    _cancelDeferredAutoRefreshTimer();
     _sessionTimer?.cancel();
     _loginPoll?.cancel();
     _vpnStatusSub?.cancel();
     _trafficSub?.cancel();
+    _diagnostics.dispose();
     super.dispose();
   }
 }

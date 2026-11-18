@@ -52,6 +52,7 @@ final class AppBrand {
   Uri appLinkEmailConfirm() => Uri.parse('https://$host/app/link-email/confirm');
   Uri appDevices() => Uri.parse('https://$host/app/devices');
   Uri appDevicesKick() => Uri.parse('https://$host/app/devices/kick');
+  Uri appClientEvents() => Uri.parse('https://$host/app/client-events');
 
   String inviteLink(String id) => 'https://$host/?ref=$id';
 

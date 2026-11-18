@@ -27,6 +27,10 @@ class NetworkAutoConnect {
   }
 
   Future<void> _maybeConnect(List<ConnectivityResult> results) async {
+    final online = results.any((r) => r != ConnectivityResult.none);
+    if (online) {
+      unawaited(_controller.onConnectivityRestored());
+    }
     if (_busy) return;
     final settings = _controller.appSettings;
     final wifiOk =

@@ -24,6 +24,11 @@ Flutter VPN client + server ops for k-pax.space. Site frontend is **not** in thi
 
 Canonical map (keep short): `.cursor/project-source-index.txt`
 
+## Known-good / rollback
+
+- Pre-stable sideload (operator OK **2026-11-18**): **`v1.0.70`** — tags `v1.0.70`, `v1.0.70-xplm`, `v1.0.70-windows`, `v1.0.70-xplm-windows`.
+- Full constraints + history (`1.0.50` tunnel JSON, no fronts-first sticky): `.cursor/rules/known-good-client.mdc`.
+
 ## Token workflow
 
 1. **A — find:** Grep/Glob with a narrow path. Do not walk the whole workspace or `third_party/` without a reason.

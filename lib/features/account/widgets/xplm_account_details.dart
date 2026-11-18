@@ -18,6 +18,8 @@ class XplmAccountDetails extends StatefulWidget {
     required this.onOpenDevices,
     required this.subscriptions,
     required this.onLogout,
+    this.showBack = true,
+    this.onOpenSettings,
   });
   final VpnController controller;
   final TextEditingController contact;
@@ -27,6 +29,8 @@ class XplmAccountDetails extends StatefulWidget {
   final VoidCallback onOpenDevices;
   final Widget subscriptions;
   final VoidCallback onLogout;
+  final bool showBack;
+  final VoidCallback? onOpenSettings;
   @override
   State<XplmAccountDetails> createState() => _XplmAccountDetailsState();
 }
@@ -92,6 +96,15 @@ class _XplmAccountDetailsState extends State<XplmAccountDetails> {
     );
     return XplmHtmlPage(
       title: s.account,
+      showBack: widget.showBack,
+      action: widget.onOpenSettings == null
+          ? null
+          : XplmHtmlIconButton(
+              key: const ValueKey('account-settings'),
+              icon: Icons.settings_outlined,
+              tooltip: s.isRu ? 'Ещё / настройки' : 'More / settings',
+              onPressed: widget.onOpenSettings!,
+            ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
         children: [

@@ -16,8 +16,18 @@ const good = FetchedSubscription(
 );
 
 class Repo extends SettingsRepository {
+  String? dismissedHomeNoticeId;
+
   @override
   Future<void> saveAccount(UserAccount account) async {}
+
+  @override
+  Future<String?> loadDismissedHomeNoticeId() async => dismissedHomeNoticeId;
+
+  @override
+  Future<void> dismissHomeNotice(String id) async {
+    dismissedHomeNoticeId = id;
+  }
 }
 
 class Client extends SubscriptionClient {
@@ -90,4 +100,117 @@ void main() {
     expect(controller.linkState, SubscriptionLinkState.expired);
     expect(controller.subscriptionUrl, url);
   });
+  test(
+    'launch auto-refresh skips network within cooldown after a successful load',
+    () async {
+      var fetches = 0;
+      client.next = () async {
+        fetches++;
+        return good;
+      };
+      await controller.reloadSubscription();
+      expect(fetches, 1);
+      expect(controller.hasAccess, isTrue);
+      await controller.maybeAutoRefreshSubscription();
+      expect(fetches, 1);
+      await controller.maybeAutoRefreshSubscription();
+      expect(fetches, 1);
+    },
+  );
+  test(
+    'launch auto-refresh fetches once when ready without a recent success',
+    () async {
+      var fetches = 0;
+      client.next = () async {
+        fetches++;
+        return good;
+      };
+      final now = DateTime.now();
+      controller.linkState = SubscriptionLinkState.ready;
+      controller.account = UserAccount(
+        userId: 'XPLM-12345',
+        referralCode: 'ref',
+        plan: SubscriptionPlan.trial,
+        trialStartedAt: now,
+        accessExpiresAt: now.add(const Duration(days: 1)),
+      );
+      expect(controller.hasAccess, isTrue);
+      await controller.maybeAutoRefreshSubscription();
+      expect(fetches, 1);
+      expect(controller.hasAccess, isTrue);
+      await controller.maybeAutoRefreshSubscription();
+      expect(fetches, 1);
+    },
+  );
+  test(
+    'offline launch arms one deferred retry that recovers when network returns',
+    () async {
+      var fetches = 0;
+      client.next = () async {
+        fetches++;
+        throw const SocketException('offline at launch');
+      };
+      await controller.reloadSubscription();
+      expect(controller.subscriptionLoadFailed, isTrue);
+      expect(fetches, 1);
+
+      await controller.maybeAutoRefreshSubscription();
+      expect(fetches, 2);
+      expect(controller.subscriptionLoadFailed, isTrue);
+
+      client.next = () async {
+        fetches++;
+        return good;
+      };
+      await controller.onConnectivityRestored();
+      expect(fetches, 3);
+      expect(controller.hasAccess, isTrue);
+
+      await controller.onConnectivityRestored();
+      expect(fetches, 3);
+    },
+  );
+  test(
+    'resume auto-refresh respects cooldown after a successful load',
+    () async {
+      var fetches = 0;
+      client.next = () async {
+        fetches++;
+        return good;
+      };
+      await controller.reloadSubscription();
+      expect(fetches, 1);
+      await controller.maybeAutoRefreshSubscription(
+        trigger: SoftAutoRefreshTrigger.resume,
+      );
+      expect(fetches, 1);
+    },
+  );
+  test(
+    'resume auto-refresh fetches once when cooldown allows',
+    () async {
+      var fetches = 0;
+      client.next = () async {
+        fetches++;
+        return good;
+      };
+      final now = DateTime.now();
+      controller.linkState = SubscriptionLinkState.ready;
+      controller.account = UserAccount(
+        userId: 'XPLM-12345',
+        referralCode: 'ref',
+        plan: SubscriptionPlan.trial,
+        trialStartedAt: now,
+        accessExpiresAt: now.add(const Duration(days: 1)),
+      );
+      await controller.maybeAutoRefreshSubscription(
+        trigger: SoftAutoRefreshTrigger.resume,
+      );
+      expect(fetches, 1);
+      await controller.maybeAutoRefreshSubscription(
+        trigger: SoftAutoRefreshTrigger.resume,
+      );
+      expect(fetches, 1);
+    },
+  );
 }

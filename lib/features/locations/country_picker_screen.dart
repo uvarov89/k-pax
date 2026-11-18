@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -189,10 +190,17 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                         30,
                       ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppLayout.pagePad,
+                    ),
                     child: ListView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(0, 12, 0, 18),
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        AppLayout.stack,
+                        0,
+                        AppLayout.block,
+                      ),
                       children: [
                         for (final entry in [
                           (_RegionChip.all, 'Все страны'),
@@ -201,7 +209,9 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                           (_RegionChip.northAmerica, 'Северная Америка'),
                         ])
                           Padding(
-                            padding: const EdgeInsets.only(right: 7),
+                            padding: const EdgeInsets.only(
+                              right: AppLayout.tight,
+                            ),
                             child: _CodexChip(
                               label: entry.$2,
                               selected: _chip == entry.$1,
@@ -214,7 +224,12 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                 ),
                 if (_searchOpen)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppLayout.pagePad,
+                      0,
+                      AppLayout.pagePad,
+                      AppLayout.tight,
+                    ),
                     child: TextField(
                       controller: _search,
                       autofocus: true,
@@ -238,7 +253,7 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                   child: locations.isEmpty
                       ? Center(
                           child: Padding(
-                            padding: const EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(AppLayout.pagePad),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -281,7 +296,12 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                          padding: const EdgeInsets.fromLTRB(
+                            AppLayout.pagePad,
+                            0,
+                            AppLayout.pagePad,
+                            AppLayout.block,
+                          ),
                           itemCount: locations.length,
                           separatorBuilder: (_, index) => SizedBox(
                             height: locations[index].id == selectedId ? 5 : 0,
@@ -337,13 +357,19 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                     child: Text('Нет серверов', style: TextStyle(color: muted)),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppLayout.pagePad,
+                      AppLayout.hair,
+                      AppLayout.pagePad,
+                      AppLayout.block,
+                    ),
                     itemCount: locations.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: AppLayout.tight),
                     itemBuilder: (context, index) {
                       final server = locations[index];
                       final selected = server.id == selectedId;
-                      final radius = BorderRadius.circular(12);
+                      final radius = BorderRadius.circular(AppLayout.radiusCard);
                       return Material(
                         key: ValueKey('server-${server.id}'),
                         color: selected
@@ -355,8 +381,8 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                           onTap: () => controller.selectLocation(server),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
+                              horizontal: AppLayout.cardPad,
+                              vertical: AppLayout.stack,
                             ),
                             decoration: BoxDecoration(
                               borderRadius: radius,
@@ -423,7 +449,12 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
             top: false,
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              padding: const EdgeInsets.fromLTRB(
+                AppLayout.pagePad,
+                AppLayout.stack,
+                AppLayout.pagePad,
+                AppLayout.block,
+              ),
               decoration: BoxDecoration(
                 color: barBg.withValues(alpha: 0.92),
                 border: Border(top: BorderSide(color: border)),
@@ -446,11 +477,13 @@ class _CountryPickerScreenState extends State<CountryPickerScreen> {
                       backgroundColor: accentFill,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 14,
+                        horizontal: AppLayout.section,
+                        vertical: AppLayout.stack,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          AppLayout.radiusCard,
+                        ),
                       ),
                     ),
                     onPressed: () {
@@ -493,16 +526,19 @@ class _CodexChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppLayout.radiusCard),
         child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppLayout.stack,
+            vertical: AppLayout.tight,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppLayout.radiusCard),
             gradient: selected
                 ? const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0xFF02AAFF), Color(0xFF007EE6)],
+                    colors: [XplmColors.cyan, XplmColors.accentHover],
                   )
                 : const LinearGradient(
                     begin: Alignment.topCenter,
@@ -512,7 +548,7 @@ class _CodexChip extends StatelessWidget {
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF008BFF).withValues(alpha: 0.4),
+                      color: XplmColors.cyan.withValues(alpha: 0.4),
                       blurRadius: 9,
                     ),
                   ]
@@ -551,45 +587,48 @@ class _CodexServerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppLayout.radiusCard),
       border: selected
-          ? Border.all(color: const Color(0xFF30BAFF))
+          ? Border.all(color: XplmColors.cyan)
           : const Border(bottom: BorderSide(color: Color(0xFF152A42))),
       gradient: LinearGradient(
         begin: const Alignment(-.8, 0),
         end: const Alignment(.9, 0),
         colors: selected
-            ? const [Color(0xFF06416A), Color(0xFF002345)]
+            ? const [XplmColors.accentSoft, Color(0xFF002345)]
             : const [Color(0x550C2441), Color(0x55020D1E)],
       ),
       boxShadow: selected
-          ? const [BoxShadow(color: Color(0xFF009DFF), blurRadius: 8)]
+          ? const [BoxShadow(color: XplmColors.cyan, blurRadius: 8)]
           : null,
     ),
     child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppLayout.radiusCard),
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: selected ? 63 : 64),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppLayout.stack,
+              vertical: AppLayout.tight,
+            ),
             child: Row(
               children: [
                 if (server.isAuto)
                   const CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Color(0xFF06416A),
+                    radius: AppLayout.cardPad,
+                    backgroundColor: XplmColors.accentSoft,
                     child: Icon(
                       Icons.public_rounded,
-                      size: 20,
-                      color: Color(0xFF30BAFF),
+                      size: AppLayout.iconSm,
+                      color: XplmColors.cyan,
                     ),
                   )
                 else
                   XplmHtmlFlag(code: server.countryCode),
-                const SizedBox(width: 16),
+                const SizedBox(width: AppLayout.block),
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -602,7 +641,7 @@ class _CodexServerRow extends StatelessWidget {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: AppLayout.hair),
                       Text(
                         server.isAuto
                             ? autoSubtitle
@@ -613,23 +652,23 @@ class _CodexServerRow extends StatelessWidget {
                             : 'Пинг: —',
                         style: const TextStyle(
                           fontSize: 13,
-                          color: Color(0xFF91A5BF),
+                          color: XplmColors.ink3,
                         ),
                       ),
                     ],
                   ),
                 ),
                 if (!server.isAuto) XplmSignalBars(latencyMs: server.latencyMs),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppLayout.stack),
                 if (selected)
                   Container(
                     width: 22,
                     height: 22,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFF06BAFF),
+                      color: XplmColors.cyan,
                       boxShadow: [
-                        BoxShadow(color: Color(0xFF00BFFF), blurRadius: 8),
+                        BoxShadow(color: XplmColors.cyan, blurRadius: 8),
                       ],
                     ),
                     child: const Icon(
@@ -640,11 +679,11 @@ class _CodexServerRow extends StatelessWidget {
                   )
                 else
                   const SizedBox(
-                    width: 17,
+                    width: AppLayout.iconMd,
                     child: Icon(
                       Icons.chevron_right_rounded,
-                      size: 21,
-                      color: Color(0xFF8AA4C2),
+                      size: AppLayout.iconMd,
+                      color: XplmColors.ink3,
                     ),
                   ),
               ],

@@ -22,6 +22,7 @@ class IosSingboxVpnService
   static const _channel = MethodChannel('sing_box');
   final TunnelSpeedTracker _speedTracker = TunnelSpeedTracker();
   bool _ready = false;
+  String? _clashSecret;
 
   static String _newClashSecret() {
     final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
@@ -96,12 +97,13 @@ class IosSingboxVpnService
     _speedTracker.reset();
     // Per-app split tunnel is not available on iOS; config is full-tunnel.
     // Clash API unlocks Libbox trafficAvailable / totals for the status stream.
+    _clashSecret = _newClashSecret();
     final config = buildTunnelConfig(
       node,
       settings,
       appSettings: appSettings,
       enableStats: true,
-      clashSecret: _newClashSecret(),
+      clashSecret: _clashSecret,
     );
     final bool started;
     try {
@@ -187,7 +189,13 @@ class IosSingboxVpnService
   }
 
   @override
-  Future<void> verifyConnectivity() => verifyTunnelConnectivity();
+  Future<void> verifyConnectivity() {
+    final secret = _clashSecret;
+    if (secret == null || secret.isEmpty) {
+      return verifyTunnelConnectivity();
+    }
+    return verifyTunnelConnectivityViaProxy(clashSecret: secret);
+  }
 
   @override
   Future<void> disconnect() async {
@@ -203,6 +211,8 @@ class IosSingboxVpnService
       throw StateError('[DISCONNECT_TIMEOUT] Остановка VPN не ответила');
     } on PlatformException catch (e) {
       throw StateError(_platformErrorText(e));
+    } finally {
+      _clashSecret = null;
     }
   }
 

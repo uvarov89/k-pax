@@ -176,6 +176,7 @@ void main() {
     expect(ok, isTrue);
     expect(c.isConnected, isTrue);
     expect(c.connectedNode?.countryId, 'fi');
+    // :443 first, then RU front spare, then Auto jumps to FI :443.
     expect(service.startedHosts, [
       'de-primary.invalid',
       'de-spare.invalid',
@@ -207,7 +208,85 @@ void main() {
     expect(
       service.startedHosts,
       ['de-primary.invalid', 'de-spare.invalid'],
-      reason: 'manual DE must not try FI',
+      reason: 'manual DE must not try FI; :443 then front spare',
+    );
+  });
+
+  test('Auto prefers direct :443 over RU front for sticky pick', () async {
+    final service = _ScriptedVpnService(failHosts: {});
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+
+    final ok = await c.connect();
+    expect(ok, isTrue);
+    expect(c.connectedNode?.port, 443);
+    expect(service.startedHosts.first, 'de-primary.invalid');
+  });
+
+  test('selectLocation while connected reconnects to the new country', () async {
+    final service = _ScriptedVpnService(failHosts: {});
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+    c.locationMode = LocationMode.country;
+    c.selectedLocation = const ServerLocation(
+      id: 'de',
+      countryCode: 'DE',
+      nameRu: 'Германия',
+    );
+
+    expect(await c.connect(), isTrue);
+    expect(c.connectedNode?.countryId, 'de');
+    final hostsBefore = List<String>.from(service.startedHosts);
+
+    await c.selectLocation(
+      const ServerLocation(
+        id: 'fi',
+        countryCode: 'FI',
+        nameRu: 'Финляндия',
+      ),
+    );
+    // Soft reconnect is async; allow connect() to finish.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    for (var i = 0; i < 40 && c.isBusy; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+
+    expect(c.selectedLocation.id, 'fi');
+    expect(c.isConnected, isTrue);
+    expect(c.connectedNode?.countryId, 'fi');
+    expect(service.startedHosts.length, greaterThan(hostsBefore.length));
+    expect(service.startedHosts.last, 'fi-primary.invalid');
+  });
+
+  test('selectLocation while disconnected only updates preference', () async {
+    final service = _ScriptedVpnService(failHosts: {});
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+
+    await c.selectLocation(
+      const ServerLocation(
+        id: 'fi',
+        countryCode: 'FI',
+        nameRu: 'Финляндия',
+      ),
+    );
+    expect(c.selectedLocation.id, 'fi');
+    expect(c.isConnected, isFalse);
+    expect(service.startedHosts, isEmpty);
+  });
+
+  test('trafficStatsLabel shows live rates only', () {
+    final c = _readyController(_ScriptedVpnService(failHosts: {}));
+    addTearDown(c.dispose);
+    expect(
+      c.trafficStatsLabel,
+      '↓ 0 Б/с   ↑ 0 Б/с',
+    );
+    c.downloadBytesPerSec = 10 * 1024;
+    c.uploadBytesPerSec = 4 * 1024;
+    expect(
+      c.trafficStatsLabel,
+      '↓ 10 КБ/с   ↑ 4 КБ/с',
     );
   });
 }

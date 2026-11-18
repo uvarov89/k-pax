@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/app/brand/brand_logo.dart';
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/connection_models.dart';
@@ -74,14 +75,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openProfile() {
+    // X-Plm: profile icon → Account tab (subscription / devices), not settings.
     if (AppBrand.current.isXplm && XplmTabNavigation.go(context, 3)) {
       return Future<void>.value();
     }
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => AccountScreen(
-          accountDetails: context.read<VpnController>().needsLink,
-        ),
+        builder: (_) => const AccountScreen(),
       ),
     );
   }
@@ -205,7 +205,12 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.transparent,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            padding: const EdgeInsets.fromLTRB(
+              AppLayout.pagePad,
+              AppLayout.block,
+              AppLayout.pagePad,
+              AppLayout.section,
+            ),
             child: Column(
               children: [
                 Row(
@@ -285,7 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               hasScrollBody: false,
                               child: Column(
                                 children: [
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: AppLayout.block),
                                   if (controller.isLoginWaiting)
                                     _SubscriptionBanner(
                                       text:
@@ -428,17 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            () {
-                                              final rate =
-                                                  '↓ ${_formatRate(controller.downloadBytesPerSec)}   ↑ ${_formatRate(controller.uploadBytesPerSec)}';
-                                              final hasTotals =
-                                                  controller.downloadBytesTotal >
-                                                      0 ||
-                                                  controller.uploadBytesTotal >
-                                                      0;
-                                              if (!hasTotals) return rate;
-                                              return '$rate · ↓ ${_formatBytes(controller.downloadBytesTotal)} ↑ ${_formatBytes(controller.uploadBytesTotal)}';
-                                            }(),
+                                            controller.trafficStatsLabel,
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
                                               fontSize: 13,
@@ -452,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 24),
+                                  const SizedBox(height: AppLayout.section),
                                   Center(
                                     child: ConnectButton(
                                       diameter:
@@ -591,7 +586,7 @@ class _HeaderIconButton extends StatelessWidget {
                 ),
               ],
             ),
-            child: Icon(icon, size: 20, color: XplmColors.cyan),
+            child: Icon(icon, size: AppLayout.iconSm, color: XplmColors.cyan),
           ),
         ),
       ),
@@ -670,7 +665,7 @@ class _SubscriptionBanner extends StatelessWidget {
     final xplm = AppBrand.current.isXplm;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(AppLayout.cardPad),
       decoration: BoxDecoration(
         color: danger
             ? (xplm
@@ -679,7 +674,7 @@ class _SubscriptionBanner extends StatelessWidget {
             : (xplm
                   ? XplmColors.cyan.withValues(alpha: 0.12)
                   : NordColors.cyan.withValues(alpha: 0.10)),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppLayout.radiusCard),
         border: Border.all(
           color: danger
               ? (xplm
@@ -725,21 +720,3 @@ class _SubscriptionBanner extends StatelessWidget {
   }
 }
 
-String _formatRate(int bytesPerSec) {
-  if (bytesPerSec < 1024) return '$bytesPerSec Б/с';
-  if (bytesPerSec < 1024 * 1024) {
-    return '${(bytesPerSec / 1024).toStringAsFixed(0)} КБ/с';
-  }
-  return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} МБ/с';
-}
-
-String _formatBytes(int bytes) {
-  if (bytes < 1024) return '$bytes Б';
-  if (bytes < 1024 * 1024) {
-    return '${(bytes / 1024).toStringAsFixed(0)} КБ';
-  }
-  if (bytes < 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} МБ';
-  }
-  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} ГБ';
-}

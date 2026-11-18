@@ -81,6 +81,7 @@ Future<void> checkForWindowsUpdate(
     if (!context.mounted) return;
     switch (lookup.status) {
       case WindowsUpdateStatus.unavailable:
+        controller.diagnostics.logUpdateFail(errorCode: 'update_check');
         if (manual) {
           messenger?.showSnackBar(SnackBar(content: Text(s.updateCheckFailed)));
         }
@@ -120,6 +121,7 @@ Future<void> checkForWindowsUpdate(
           );
           if (!context.mounted) return;
           if (file == null) {
+            controller.diagnostics.logUpdateFail(errorCode: 'update_download');
             messenger?.showSnackBar(
               SnackBar(content: Text(s.updateApplyFailed)),
             );
@@ -127,6 +129,7 @@ Future<void> checkForWindowsUpdate(
           }
           final started = await _applySetup(file);
           if (!started) {
+            controller.diagnostics.logUpdateFail(errorCode: 'update_install');
             messenger?.showSnackBar(
               SnackBar(content: Text(s.updateApplyFailed)),
             );

@@ -6,13 +6,13 @@ import 'package:pulse_vpn/core/services/tunnel_config.dart';
 typedef TunnelProbe = Future<bool> Function(Uri endpoint);
 
 /// Light post-connect check. 1.0.50 had none (Started == Connected).
-/// Keep a short settle + first-success HTTPS probe for failover only —
-/// do not require both endpoints or Clash totals (those caused false fails /
-/// false Connected while the real break was tunnel_config drift).
+/// Keep a short settle + first-success HTTPS probe for failover only.
+/// Pair with [assertClashSawProxyTraffic] so a clearnet leak cannot mark
+/// Connected while TUN blackholes the rest of the device.
 Future<void> verifyTunnelConnectivity({
   TunnelProbe? probe,
-  Duration settle = const Duration(milliseconds: 400),
-  int attemptsPerEndpoint = 2,
+  Duration settle = const Duration(milliseconds: 300),
+  int attemptsPerEndpoint = 1,
 }) async {
   final test = probe ?? _probeHttps;
   final endpoints = <Uri>[
@@ -28,13 +28,13 @@ Future<void> verifyTunnelConnectivity({
       try {
         if (await test(endpoint)) return;
         if (attempt + 1 < attemptsPerEndpoint) {
-          await Future<void>.delayed(const Duration(milliseconds: 300));
+          await Future<void>.delayed(const Duration(milliseconds: 200));
           continue;
         }
         failures.add('${endpoint.host}: unexpected response');
       } catch (error) {
         if (attempt + 1 < attemptsPerEndpoint) {
-          await Future<void>.delayed(const Duration(milliseconds: 300));
+          await Future<void>.delayed(const Duration(milliseconds: 200));
           continue;
         }
         failures.add('${endpoint.host}: ${error.runtimeType}');
@@ -45,6 +45,31 @@ Future<void> verifyTunnelConnectivity({
     'VPN-движок запущен, но доступ к интернету не подтверждён: '
     '${failures.join('; ')}',
   );
+}
+
+/// SoftProbe then prove the bytes went through Clash (not a clearnet leak).
+/// If Clash API is unreachable (Android VPN-process isolation), SoftProbe alone
+/// still gates connect — do not hard-fail the whole path.
+Future<void> verifyTunnelConnectivityViaProxy({
+  required String clashSecret,
+  TunnelProbe? probe,
+}) async {
+  await verifyTunnelConnectivity(probe: probe);
+  // Give Clash a tick to record the SoftProbe connection.
+  await Future<void>.delayed(const Duration(milliseconds: 250));
+  try {
+    await assertClashSawProxyTraffic(
+      clashSecret,
+      timeout: const Duration(seconds: 3),
+    );
+  } on StateError catch (error) {
+    final message = error.message;
+    if (message.contains('Clash API недоступен') ||
+        message.contains('Clash secret отсутствует')) {
+      return;
+    }
+    rethrow;
+  }
 }
 
 /// Optional Clash proof for diagnostics / Windows traffic UI — not a connect gate.
@@ -98,26 +123,26 @@ Future<void> assertClashSawProxyTraffic(
 
 Future<bool> _probeHttps(Uri endpoint) async {
   final client = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 5)
-    ..idleTimeout = const Duration(seconds: 5);
+    ..connectionTimeout = const Duration(seconds: 3)
+    ..idleTimeout = const Duration(seconds: 3);
   try {
     final request = await client.getUrl(endpoint).timeout(
-      const Duration(seconds: 6),
+      const Duration(seconds: 4),
     );
     request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
     final response = await request.close().timeout(
-      const Duration(seconds: 6),
+      const Duration(seconds: 4),
     );
     if (endpoint.host == 'www.gstatic.com') {
-      await response.drain<void>().timeout(const Duration(seconds: 5));
+      await response.drain<void>().timeout(const Duration(seconds: 3));
       return response.statusCode == HttpStatus.noContent;
     }
     if (response.statusCode != HttpStatus.ok) {
-      await response.drain<void>().timeout(const Duration(seconds: 5));
+      await response.drain<void>().timeout(const Duration(seconds: 3));
       return false;
     }
     final body = await response.transform(utf8.decoder).join().timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 3),
     );
     return body.contains('ip=') && body.contains('loc=');
   } finally {

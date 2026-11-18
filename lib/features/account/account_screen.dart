@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/subscription.dart';
@@ -20,11 +21,17 @@ class AccountScreen extends StatefulWidget {
   const AccountScreen({
     super.key,
     this.embeddedInShell = false,
+    /// Legacy flag: previously required to show account/subscription.
+    /// Kept for call sites; X-Plm account tab always shows that screen now.
     this.accountDetails = false,
+    /// X-Plm settings/more hub (notifications, security, about…), not the
+    /// account tab. Opened from the gear on the account screen.
+    this.moreHub = false,
   });
 
   final bool embeddedInShell;
   final bool accountDetails;
+  final bool moreHub;
 
   @override
   State<AccountScreen> createState() => _AccountScreenState();
@@ -74,7 +81,12 @@ class _AccountScreenState extends State<AccountScreen> {
             return SafeArea(
               child: SingleChildScrollView(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppLayout.pagePad,
+                    AppLayout.tight,
+                    AppLayout.pagePad,
+                    AppLayout.section,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -323,11 +335,6 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 
   Widget _buildXplmProfile(VpnController controller) {
-    void account() => Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const AccountScreen(accountDetails: true),
-      ),
-    );
     void settings() => Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
@@ -336,7 +343,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final notifications = controller.appSettings.notificationsEnabled;
     return XplmHtmlPage(
       title: s.settings,
-      showBack: !widget.embeddedInShell,
+      showBack: true,
       action: XplmHtmlIconButton(
         key: const ValueKey('profile-settings'),
         icon: Icons.settings_outlined,
@@ -344,12 +351,17 @@ class _AccountScreenState extends State<AccountScreen> {
         onPressed: settings,
       ),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePad,
+          AppLayout.block,
+          AppLayout.pagePad,
+          AppLayout.section,
+        ),
         children: [
           const _XplmProfileHeader(),
-          const SizedBox(height: 25),
+          const SizedBox(height: AppLayout.section),
           XplmHtmlGlass(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: AppLayout.stack),
             child: Column(
               children: [
                 _XplmMenuRow(
@@ -362,7 +374,7 @@ class _AccountScreenState extends State<AccountScreen> {
                         : (s.isRu ? 'Выкл.' : 'Off'),
                     style: const TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF00BAFF),
+                      color: XplmColors.cyan,
                     ),
                   ),
                   onTap: () => controller.updateAppSettings(
@@ -411,31 +423,31 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
           ),
           if (channel != null) ...[
-            const SizedBox(height: 18),
+            const SizedBox(height: AppLayout.block),
             Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: BorderRadius.circular(AppLayout.radiusCard),
                 onTap: () => launchUrl(
                   Uri.parse(channel),
                   mode: LaunchMode.externalApplication,
                 ),
                 child: XplmHtmlGlass(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 13,
-                    vertical: 16,
+                    horizontal: AppLayout.stack,
+                    vertical: AppLayout.cardPad,
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.send_rounded,
                         size: 38,
-                        color: Color(0xFF00BAFF),
+                        color: XplmColors.cyan,
                         shadows: [
-                          Shadow(color: Color(0xFF009DFF), blurRadius: 9),
+                          Shadow(color: XplmColors.neonDim, blurRadius: 9),
                         ],
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppLayout.stack),
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,13 +456,13 @@ class _AccountScreenState extends State<AccountScreen> {
                               'Присоединяйтесь\nк нашему Telegram-каналу',
                               style: TextStyle(fontSize: 14, height: 1.35),
                             ),
-                            SizedBox(height: 3),
+                            SizedBox(height: AppLayout.hair),
                             Text(
                               'Новости, акции и полезные\nсоветы',
                               style: TextStyle(
                                 fontSize: 12,
                                 height: 1.35,
-                                color: Color(0xFFA3B3CA),
+                                color: XplmColors.ink3,
                               ),
                             ),
                           ],
@@ -458,8 +470,8 @@ class _AccountScreenState extends State<AccountScreen> {
                       ),
                       const Icon(
                         Icons.chevron_right_rounded,
-                        size: 22,
-                        color: Color(0xFF8AA4C2),
+                        size: AppLayout.iconMd,
+                        color: XplmColors.ink3,
                       ),
                     ],
                   ),
@@ -467,42 +479,6 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 14),
-          OutlinedButton.icon(
-            key: const ValueKey('profile-logout'),
-            onPressed: controller.isBusy
-                ? null
-                : () => _confirmLogout(controller),
-            icon: const Icon(Icons.logout_rounded, size: 18),
-            label: Text(s.isRu ? 'Выйти' : 'Sign out'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFEEF6FF),
-              backgroundColor: const Color(0xFF061525),
-              side: const BorderSide(color: Color(0xFF637E99)),
-              minimumSize: const Size.fromHeight(44),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-          ),
-          const SizedBox(height: 9),
-          TextButton(
-            key: const ValueKey('profile-account'),
-            style: TextButton.styleFrom(
-              minimumSize: const Size(0, 44),
-              padding: EdgeInsets.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(
-                fontFamily: 'XplmArial',
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-            onPressed: account,
-            child: Text(
-              s.isRu ? 'Аккаунт и подписки' : 'Account and subscriptions',
-            ),
-          ),
         ],
       ),
     );
@@ -532,12 +508,22 @@ class _AccountScreenState extends State<AccountScreen> {
     final showId =
         kpax && account.userId.isNotEmpty && !account.userId.startsWith('u_');
 
-    if (xplm && !widget.accountDetails) return _buildXplmProfile(controller);
+    // X-Plm tab / profile icon → account + subscription (screenshot).
+    // moreHub is the old "Ещё" settings list, opened from the gear only.
+    if (xplm && widget.moreHub) return _buildXplmProfile(controller);
     if (xplm) {
       return XplmAccountDetails(
         controller: controller,
         contact: _contact,
         submitting: _submitting,
+        showBack: true,
+        onOpenSettings: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const AccountScreen(moreHub: true),
+            ),
+          );
+        },
         onSubmit: () => _submit(controller),
         onCancelLogin: () => _cancelSubmit(controller),
         onOpenDevices: () => _openDevices(context, controller),
@@ -580,7 +566,12 @@ class _AccountScreenState extends State<AccountScreen> {
             : null,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePad,
+          AppLayout.tight,
+          AppLayout.pagePad,
+          AppLayout.section,
+        ),
         children: [
           if (controller.subscriptionLoadFailed) ...[
             _Card(
@@ -1193,21 +1184,24 @@ class _XplmMenuRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: barsIcon
-                  ? const Color(0xFF00ADF5)
-                  : const Color(0xFF8DBBE9),
-              shadows: const [Shadow(color: Color(0xFF168CDD), blurRadius: 5)],
+            SizedBox(
+              width: AppLayout.iconMd,
+              child: Icon(
+                icon,
+                size: AppLayout.iconMd,
+                color: barsIcon ? XplmColors.cyan : const Color(0xFF8DBBE9),
+                shadows: const [
+                  Shadow(color: Color(0xFF168CDD), blurRadius: 5),
+                ],
+              ),
             ),
-            const SizedBox(width: 17),
+            const SizedBox(width: AppLayout.block),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
             ?trailing,
             const Icon(
               Icons.chevron_right_rounded,
-              size: 22,
-              color: Color(0xFF8AA4C2),
+              size: AppLayout.iconMd,
+              color: XplmColors.ink3,
             ),
           ],
         ),
@@ -1231,14 +1225,17 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     final xplm = AppBrand.current.isXplm;
     if (xplm) {
-      return XplmHtmlGlass(padding: const EdgeInsets.all(16), child: child);
+      return XplmHtmlGlass(
+        padding: const EdgeInsets.all(AppLayout.cardPad),
+        child: child,
+      );
     }
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppLayout.cardPad),
       decoration: BoxDecoration(
         color: surface.withValues(alpha: xplm ? 0.9 : 1),
-        borderRadius: BorderRadius.circular(xplm ? 18 : 16),
+        borderRadius: BorderRadius.circular(AppLayout.radiusCard),
         border: Border.all(
           color: xplm ? XplmColors.cyan.withValues(alpha: 0.32) : border,
         ),

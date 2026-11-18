@@ -106,24 +106,39 @@ String buildTunnelConfig(
       },
     'route': {
       'auto_detect_interface': true,
-      'rules': _routeRules(appSettings),
+      'rules': _routeRules(appSettings, proxyHost: node.host),
       'final': _finalOutbound(appSettings),
     },
   });
 }
 
-List<Map<String, Object?>> _routeRules(AppSettings? appSettings) {
+List<Map<String, Object?>> _routeRules(
+  AppSettings? appSettings, {
+  String? proxyHost,
+}) {
   // 1.0.50 route core: sniff → hijack-dns → private direct → reject IPv6.
+  final updateDomains = List<String>.from(_updateDirectDomains);
+  final host = (proxyHost ?? '').trim();
+  // Never route the proxy endpoint through itself (front domain / exit IP).
+  if (host.isNotEmpty && InternetAddress.tryParse(host) == null) {
+    updateDomains.add(host);
+  }
   final rules = <Map<String, Object?>>[
     {'action': 'sniff'},
     {'protocol': 'dns', 'action': 'hijack-dns'},
     {'ip_is_private': true, 'action': 'route', 'outbound': 'direct'},
     {
       'domain_suffix': _updateDirectDomainSuffixes(),
-      'domain': _updateDirectDomains,
+      'domain': updateDomains,
       'action': 'route',
       'outbound': 'direct',
     },
+    if (host.isNotEmpty && InternetAddress.tryParse(host) != null)
+      {
+        'ip_cidr': ['$host/32'],
+        'action': 'route',
+        'outbound': 'direct',
+      },
     {'ip_version': 6, 'action': 'reject'},
   ];
   final names = _windowsProcessNames(appSettings);

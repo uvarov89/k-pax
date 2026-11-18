@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:pulse_vpn/app/brand/app_brand.dart';
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/nord_signal_theme.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 import 'package:pulse_vpn/core/models/app_settings.dart';
@@ -66,7 +67,12 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
       body: ListView(
-        padding: EdgeInsets.fromLTRB(xplm ? 24 : 20, 8, xplm ? 24 : 20, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.pagePad,
+          AppLayout.tight,
+          AppLayout.pagePad,
+          AppLayout.section,
+        ),
         children: [
           if (!xplm) ...[
             _SectionHeader(s.sectionPremium, first: true),
@@ -75,7 +81,9 @@ class SettingsScreen extends StatelessWidget {
               border: border,
               children: [
                 ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppLayout.cardPad,
+                  ),
                   title: Text(s.subscription),
                   subtitle: Text(
                     xplm &&
@@ -224,6 +232,14 @@ class SettingsScreen extends StatelessWidget {
                 value: settings.rememberLastCountry,
                 onChanged: (v) => controller.updateAppSettings(
                   settings.copyWith(rememberLastCountry: v),
+                ),
+              ),
+              _SwitchRow(
+                title: s.diagnosticsConnection,
+                subtitle: s.diagnosticsConnectionHint,
+                value: settings.diagnosticsEnabled,
+                onChanged: (v) => controller.updateAppSettings(
+                  settings.copyWith(diagnosticsEnabled: v),
                 ),
               ),
               if (android && !xplm)

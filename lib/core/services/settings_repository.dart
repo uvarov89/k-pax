@@ -23,6 +23,7 @@ class SettingsRepository {
   static const _kAutoWifi = 'auto_connect_wifi';
   static const _kAutoMobile = 'auto_connect_mobile';
   static const _kRememberCountry = 'remember_last_country';
+  static const _kDiagnostics = 'diagnostics_enabled';
   static const _kSplitMode = 'split_tunnel_mode';
   static const _kSplitPackages = 'split_tunnel_packages';
   static const _kUserMode = 'user_mode';
@@ -130,6 +131,7 @@ class SettingsRepository {
       autoConnectOnWifi: p.getBool(_kAutoWifi) ?? false,
       autoConnectOnMobile: p.getBool(_kAutoMobile) ?? false,
       rememberLastCountry: p.getBool(_kRememberCountry) ?? true,
+      diagnosticsEnabled: p.getBool(_kDiagnostics) ?? true,
       splitTunnelMode: SplitTunnelModeX.fromIndex(p.getInt(_kSplitMode)),
       splitTunnelPackages: p.getStringList(_kSplitPackages) ?? const [],
     );
@@ -145,6 +147,7 @@ class SettingsRepository {
     await p.setBool(_kAutoWifi, settings.autoConnectOnWifi);
     await p.setBool(_kAutoMobile, settings.autoConnectOnMobile);
     await p.setBool(_kRememberCountry, settings.rememberLastCountry);
+    await p.setBool(_kDiagnostics, settings.diagnosticsEnabled);
     await p.setInt(_kSplitMode, settings.splitTunnelMode.index);
     await p.setStringList(_kSplitPackages, settings.splitTunnelPackages);
   }

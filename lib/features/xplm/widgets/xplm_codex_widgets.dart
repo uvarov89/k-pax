@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:pulse_vpn/app/theme/app_layout.dart';
 import 'package:pulse_vpn/app/theme/xplm_colors.dart';
 
 /// Italic XPLM / VPN wordmark from Codex HTML.
@@ -110,19 +111,19 @@ class XplmRoundIconButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
-        width: 28,
+        width: AppLayout.iconLg,
         height: 30,
         child: Center(
           child: label != null
               ? Text(
                   label!,
                   style: const TextStyle(
-                    color: Color(0xFF96B3D1),
+                    color: XplmColors.ink3,
                     fontSize: 22,
                     height: 1,
                   ),
                 )
-              : Icon(icon, size: 20, color: const Color(0xFF96B3D1)),
+              : Icon(icon, size: AppLayout.iconSm, color: XplmColors.ink3),
         ),
       ),
     );

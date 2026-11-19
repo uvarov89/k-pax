@@ -138,11 +138,28 @@ workflows:
             --strict-match-identifier
           keychain add-certificates
           xcode-project use-profiles
+      - name: Resolve X-Plm recovery build identity
+        script: |
+          set -e
+          # Use the 1.0.51 source code, but a newer Apple-facing version.
+          # X-Plm 1.0.73 has already been uploaded to App Store Connect.
+          BUILD_NAME=1.0.74
+          if [ -n "${PROJECT_BUILD_NUMBER:-}" ]; then
+            BUILD_NUMBER="$PROJECT_BUILD_NUMBER"
+          else
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" --app-store-version "$BUILD_NAME" 2>/dev/null || \
+              app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo 0)
+            case "$LATEST" in
+              ''|*[!0-9]*) LATEST=0 ;;
+            esac
+            BUILD_NUMBER=$((LATEST + 1))
+          fi
+          echo "BUILD_NAME=$BUILD_NAME" >> "$CM_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$CM_ENV"
+          echo "Using X-Plm recovery source 1.0.51; upload identity $BUILD_NAME ($BUILD_NUMBER)"
       - name: Flutter build IPA (X-Plm)
         script: |
           set -e
-          BUILD_NAME=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: //;s/+.*//')
-          BUILD_NUMBER=${PROJECT_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}
           flutter build ipa --release \
             --dart-define=BRAND=xplm \
             --build-name="$BUILD_NAME" \

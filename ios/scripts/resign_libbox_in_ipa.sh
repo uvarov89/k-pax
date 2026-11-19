@@ -318,11 +318,13 @@ fi
 # ---------------------------------------------------------------------------
 # 6) Re-sign nested-first with Apple Distribution + secure timestamp.
 # ---------------------------------------------------------------------------
-echo "Signing canonical Libbox executable with bundle ID $LIBBOX_ID"
-/usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$BINARY"
-if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp --generate-entitlement-der "$LIBBOX"; then
-  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
-fi
+# Sign the FRAMEWORK as one code bundle, not its Mach-O executable first.
+# Signing the standalone dylib creates a CodeDirectory with an empty Info.plist
+# special slot (-1). Re-signing the bundle afterward did not repair this in the
+# actual Codemagic #46 IPA. Framework signing must own the signature creation.
+echo "Signing Libbox.framework as a single bundle (id=$LIBBOX_ID)"
+/usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" \
+  --timestamp --generate-entitlement-der "$LIBBOX"
 
 for path in "$BINARY" "$LIBBOX"; do
   got="$(codesign_identifier "$path")"

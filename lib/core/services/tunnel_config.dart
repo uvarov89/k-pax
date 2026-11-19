@@ -106,6 +106,12 @@ String buildTunnelConfig(
       },
     'route': {
       'auto_detect_interface': true,
+      // Required by sing-box 1.13.21 when multiple DNS servers exist.
+      // Resolve domain dial targets outside the proxy tunnel to avoid loops.
+      'default_domain_resolver': {
+        'server': 'dns-direct',
+        'strategy': dnsStrategy,
+      },
       'rules': _routeRules(appSettings, proxyHost: node.host),
       'final': _finalOutbound(appSettings),
     },

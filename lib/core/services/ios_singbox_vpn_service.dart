@@ -77,6 +77,19 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     await _waitUntilConnected();
   }
 
+  /// A startup failure in NetworkExtension is otherwise hidden behind the
+  /// generic disconnected status. Read only the sanitized diagnostic string.
+  Future<String?> _lastTunnelError() async {
+    try {
+      final raw = await const MethodChannel('sing_box')
+          .invokeMethod<String>('getLastTunnelError');
+      final detail = raw?.trim();
+      return (detail == null || detail.isEmpty) ? null : detail;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _waitUntilConnected() async {
     final deadline = DateTime.now().add(const Duration(seconds: 20));
     var sawConnecting = false;
@@ -90,11 +103,17 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
           (status == SingBoxConnectionStatus.disconnected ||
               status == SingBoxConnectionStatus.error ||
               status == SingBoxConnectionStatus.connectionLost)) {
-        throw StateError('Туннель остановился при запуске');
+        final detail = await _lastTunnelError();
+        throw StateError(detail == null
+            ? 'Туннель остановился при запуске'
+            : 'Туннель не запустился: $detail');
       }
       await Future<void>.delayed(const Duration(milliseconds: 400));
     }
-    throw StateError('Туннель не поднялся за отведённое время');
+    final detail = await _lastTunnelError();
+    throw StateError(detail == null
+        ? 'Туннель не поднялся за отведённое время'
+        : 'Ошибка запуска VPN: $detail');
   }
 
   @override

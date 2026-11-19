@@ -209,6 +209,11 @@ public class SingBoxPlugin: NSObject, FlutterPlugin {
             } else {
                 result(true)
             }
+        case "getLastTunnelError":
+            // Read the error written by PacketTunnel in the shared App Group.
+            // No server configuration or credentials are returned.
+            result(UserDefaults(suiteName: FilePath.groupName)?
+                .string(forKey: "kpax_last_tunnel_error"))
         case "getPlatformVersion":
             result("iOS " + UIDevice.current.systemVersion)
         case "connect":

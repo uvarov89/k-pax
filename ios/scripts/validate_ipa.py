@@ -129,11 +129,9 @@ def assert_macho_arm64(path: Path, label: str | None = None) -> None:
 
 
 def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | None:
-    """Prefer a real Mach-O over a short-name symlink stub.
+    """Resolve the canonical Libbox Mach-O (with legacy-layout fallback).
 
-    Post-export resign renames Mach-O to CFBundleIdentifier (typically
-    io.nekohasekai.libbox); a Libbox → long-name symlink may remain for
-    LC_LOAD_DYLIB compatibility and must not be mistaken for the binary.
+    The caller rejects extra executable aliases before final IPA acceptance.
     """
     names: list[str] = []
     if executable:
@@ -169,6 +167,34 @@ def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | No
     return max(found, key=lambda p: p.stat().st_size)
 
 
+def assert_single_libbox_executable(framework: Path) -> None:
+    """Reject extra root-level Mach-O files in the iOS framework (ITMS-90171).
+
+    A hardlink or copied Libbox binary with another filename is still an extra
+    executable in the ZIP, regardless of whether it shares the inode locally.
+    """
+    executable = framework / "Libbox"
+    assert executable.is_file() and not executable.is_symlink(), (
+        "Libbox.framework must contain one regular executable named Libbox"
+    )
+    magics = {
+        b"\\xcf\\xfa\\xed\\xfe",  # arm64 Mach-O
+        b"\\xfe\\xed\\xfa\\xcf",
+        b"\\xca\\xfe\\xba\\xbe",  # universal Mach-O
+        b"\\xbe\\xba\\xfe\\xca",
+    }
+    executables = []
+    for item in framework.iterdir():
+        if item.is_dir() or item.is_symlink() or not item.is_file():
+            continue
+        with item.open("rb") as stream:
+            if stream.read(4) in magics:
+                executables.append(item.name)
+    assert executables == ["Libbox"], (
+        f"ITMS-90171: unexpected root-level Mach-O in Libbox.framework: {executables}"
+    )
+
+
 def assert_no_frameworks_in_appex(extension: Path) -> None:
     """ASC 90205/90206: app extensions must not contain a Frameworks directory."""
     frameworks = extension / "Frameworks"
@@ -200,18 +226,15 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         exec_name = info.get("CFBundleExecutable")
         assert bundle_id, "Libbox CFBundleIdentifier missing"
         assert exec_name, "Libbox CFBundleExecutable missing"
-        # installd / ASC: CFBundleExecutable must equal CFBundleIdentifier; Mach-O
-        # file must use that name. Short "Libbox" symlink → long name is OK.
-        assert exec_name == bundle_id, (
-            f"Libbox CFBundleExecutable={exec_name!r} must equal "
-            f"CFBundleIdentifier={bundle_id!r}"
+        # Apple: CFBundleExecutable is the framework's *filename*, Libbox.
+        # CFBundleIdentifier is a separate reverse-DNS value and must NOT be
+        # used as a second executable name (ITMS-90171).
+        assert exec_name == "Libbox", (
+            f"Libbox.framework CFBundleExecutable={exec_name!r}; "
+            "expected Libbox, not CFBundleIdentifier"
         )
         assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
-        long_macho = fw / str(bundle_id)
-        assert long_macho.exists(), (
-            f"Libbox.framework missing Mach-O named {bundle_id!r} "
-            f"(CFBundleExecutable / Unable to Install)"
-        )
+        assert_single_libbox_executable(fw)
         lib_bin = _resolve_libbox_binary(fw, str(exec_name))
         assert lib_bin is not None, (
             f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
@@ -286,10 +309,10 @@ def _codesign_identifier(path: Path) -> str | None:
 
 
 def validate_libbox_signature_identifier(framework: Path) -> None:
-    """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
+    """Check the signing identifier separately from executable filename.
 
-    Post-export resign renames Mach-O to CFBundleIdentifier and re-seals with
-    codesign --identifier matching that id.
+    Framework executable is Libbox; its reverse-DNS signature identifier is
+    supplied by CFBundleIdentifier.
     """
     info = plistlib.loads((framework / "Info.plist").read_bytes())
     expected = info["CFBundleIdentifier"]

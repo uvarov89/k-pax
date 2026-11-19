@@ -127,6 +127,14 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertRegex(resign, r"Timestamp=\|Signed Time=")
         self.assertIn("embedded.mobileprovision", resign_body)
         self.assertIn('BINARY="$LIBBOX/$SHORT_EXEC"', resign)
+        # Real Codemagic #46 had an empty CodeDirectory Info.plist slot (-1):
+        # the old post-export script signed the standalone Mach-O first,
+        # before signing the enclosing framework bundle.
+        self.assertIn("Signing Libbox.framework as a single bundle", resign)
+        self.assertNotIn(
+            'codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$BINARY"',
+            resign,
+        )
         self.assertNotIn("LONG_EXEC", resign)
         self.assertIn("OLD_LOAD", resign)
         self.assertNotIn("try_change_load", resign)

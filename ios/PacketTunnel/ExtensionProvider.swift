@@ -9,49 +9,74 @@ open class ExtensionProvider: NEPacketTunnelProvider {
     private var commandServer: LibboxCommandServer?
     private var platformInterface: ExtensionPlatformInterface?
     
+    // Keep the 1.0.51 packaging unchanged. Only validate the shared runtime
+    // directories and report a startup error back to the Flutter host.
     override open func startTunnel(options: [String: NSObject]?) async throws {
-        let setupOptions = LibboxSetupOptions()
-        setupOptions.basePath = FilePath.sharedDirectory.relativePath
-        setupOptions.workingPath = FilePath.workingDirectory.relativePath
-        setupOptions.tempPath = FilePath.cacheDirectory.relativePath
-        setupOptions.logMaxLines = 3000
-        
-        var setupError: NSError?
-        LibboxSetup(setupOptions, &setupError)
-        if let setupError {
-            throw ExtensionStartupError("(packet-tunnel) error: setup service: \(setupError.localizedDescription)")
-        }
-        
-        var stderrError: NSError?
-        LibboxRedirectStderr(FilePath.cacheDirectory.appendingPathComponent("stderr.log").relativePath, &stderrError)
-        if let stderrError {
-            throw ExtensionStartupError("(packet-tunnel) redirect stderr error: \(stderrError.localizedDescription)")
-        }
-        
-        await LibboxSetMemoryLimit(!SharedPreferences.ignoreMemoryLimit.getBlocking())
-        
-        if platformInterface == nil {
-            platformInterface = ExtensionPlatformInterface(self)
-        }
-        
-        guard let platformInterface = platformInterface else {
-            throw ExtensionStartupError("(packet-tunnel): platformInterface is nil")
-        }
-        
-        var error: NSError?
-        commandServer = LibboxNewCommandServer(platformInterface, platformInterface, &error)
-        if let error {
-            throw ExtensionStartupError("(packet-tunnel): create command server error: \(error.localizedDescription)")
-        }
+        let sharedDefaults = UserDefaults(suiteName: FilePath.groupName)
+        sharedDefaults?.removeObject(forKey: "kpax_last_tunnel_error")
         do {
-            try commandServer?.start()
+            guard FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: FilePath.groupName
+            ) != nil else {
+                throw ExtensionStartupError("App Group unavailable: \(FilePath.groupName)")
+            }
+            try FileManager.default.createDirectory(
+                at: FilePath.cacheDirectory, withIntermediateDirectories: true
+            )
+            try FileManager.default.createDirectory(
+                at: FilePath.workingDirectory, withIntermediateDirectories: true
+            )
+
+            let setupOptions = LibboxSetupOptions()
+            setupOptions.basePath = FilePath.sharedDirectory.path
+            setupOptions.workingPath = FilePath.workingDirectory.path
+            setupOptions.tempPath = FilePath.cacheDirectory.path
+            setupOptions.logMaxLines = 3000
+
+            var setupError: NSError?
+            LibboxSetup(setupOptions, &setupError)
+            if let setupError {
+                throw ExtensionStartupError("Libbox setup: \(setupError.localizedDescription)")
+            }
+
+            var stderrError: NSError?
+            LibboxRedirectStderr(
+                FilePath.cacheDirectory.appendingPathComponent("stderr.log").path,
+                &stderrError
+            )
+            if let stderrError {
+                throw ExtensionStartupError("Libbox stderr: \(stderrError.localizedDescription)")
+            }
+
+            await LibboxSetMemoryLimit(!SharedPreferences.ignoreMemoryLimit.getBlocking())
+            if platformInterface == nil {
+                platformInterface = ExtensionPlatformInterface(self)
+            }
+            guard let platformInterface = platformInterface else {
+                throw ExtensionStartupError("platformInterface unavailable")
+            }
+
+            var error: NSError?
+            commandServer = LibboxNewCommandServer(platformInterface, platformInterface, &error)
+            if let error {
+                throw ExtensionStartupError("Command server creation: \(error.localizedDescription)")
+            }
+            do {
+                try commandServer?.start()
+            } catch {
+                throw ExtensionStartupError("Command server start: \(error.localizedDescription)")
+            }
+            writeMessage("(packet-tunnel): Here I stand")
+            try await startService()
         } catch {
-            throw ExtensionStartupError("(packet-tunnel): start command server error: \(error.localizedDescription)")
+            // Persist only a short error description, not the VPN configuration.
+            let description = String(error.localizedDescription.prefix(400))
+            sharedDefaults?.set(description, forKey: "kpax_last_tunnel_error")
+            NSLog("PacketTunnel startup failed: \(description)")
+            throw error
         }
-        writeMessage("(packet-tunnel): Here I stand")
-        try await startService()
     }
-    
+
     func writeMessage(_ message: String) {
         if let commandServer {
             commandServer.writeMessage(2, message: message)

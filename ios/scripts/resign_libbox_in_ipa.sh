@@ -1,24 +1,14 @@
 #!/usr/bin/env bash
-# Post-export IPA fix for Libbox.framework so installd accepts the build.
+# Post-export verification and Distribution re-signing for iOS.
 #
-# History (TF 1.0.59):
-# - Identifier-only resign with Mach-O basename still "Libbox" uploads OK but
-#   device shows "Unable to Install" — installd wants basename == Identifier.
-# - Renaming + install_name_tool -change on *already-signed* Runner/PacketTunnel
-#   corrupted Mach-Os → ASC 90085 ("No architectures").
-#
-# Durable approach (this script, post-export only):
-# 1) codesign --remove-signature nested-first (binary → framework → appex → app)
-# 2) Rename Mach-O Libbox → CFBundleIdentifier; CFBundleExecutable = that name
-# 3) Symlink Libbox → long name so LC_LOAD_DYLIB=@rpath/Libbox.framework/Libbox
-#    still resolves WITHOUT lengthening host load commands (safer than -change)
-# 4) install_name_tool -id to the long path on the *unsigned* Libbox binary
-#    (best-effort; symlink covers loads if header has no room to grow)
-# 5) Best-effort -change on unsigned host Mach-Os; symlink is the fallback
-# 6) Re-sign Libbox → framework → appex → app with Apple Distribution,
-#    --identifier matching each bundle id, secure --timestamp (not none)
-#
-# Normalize/build keep basename Libbox for Xcode -framework Libbox linking.
+# Keep exactly one real Mach-O at Libbox.framework/Libbox:
+#   CFBundleExecutable = Libbox
+#   CFBundleIdentifier = io.nekohasekai.libbox (distinct from executable)
+#   LC_ID_DYLIB = @rpath/Libbox.framework/Libbox
+# Never rename the binary to CFBundleIdentifier, or add hardlinks/symlinks:
+# Apple App Store Connect rejects extra root-level Mach-O files (ITMS-90171).
+# Existing host/PacketTunnel load commands remain untouched.
+# Resign nested-first after updating bundle metadata, preserving entitlements.
 set -euo pipefail
 
 IPA="${1:?usage: resign_libbox_in_ipa.sh path/to/App.ipa}"
@@ -142,33 +132,6 @@ remove_signature() {
   /usr/bin/codesign --remove-signature "$path" 2>/dev/null || true
 }
 
-# Rewrite LC_LOAD_DYLIB only on unsigned Mach-Os. Prefer success; on failure
-# (no headerpad for a longer path) the Libbox → long-name symlink covers loads.
-try_change_load() {
-  local macho="$1"
-  local label="${2:-$macho}"
-  local new_load="$3"
-  if [[ ! -f "$macho" || -L "$macho" ]]; then
-    return 0
-  fi
-  local loads
-  loads="$(/usr/bin/otool -L "$macho" 2>/dev/null || true)"
-  if ! printf '%s\n' "$loads" | /usr/bin/grep -Fq "$OLD_LOAD"; then
-    return 0
-  fi
-  if /usr/bin/install_name_tool -change "$OLD_LOAD" "$new_load" "$macho" 2>/dev/null; then
-    echo "OK install_name_tool -change on $label"
-  else
-    echo "warn: install_name_tool -change failed on $label (no headerpad?) — Libbox symlink covers $OLD_LOAD"
-  fi
-}
-
-macho_loads_libbox() {
-  local macho="$1"
-  [[ -f "$macho" && ! -L "$macho" ]] || return 1
-  /usr/bin/otool -L "$macho" 2>/dev/null | /usr/bin/grep -Fq "$OLD_LOAD"
-}
-
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/resign-libbox.XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -208,9 +171,6 @@ if [[ "$LIBBOX_ID" != *.* ]]; then
   echo "error: Libbox CFBundleIdentifier '$LIBBOX_ID' must be reverse-DNS (contain '.')" >&2
   exit 1
 fi
-LONG_EXEC="$LIBBOX_ID"
-NEW_LOAD="@rpath/Libbox.framework/${LONG_EXEC}"
-NEW_ID="$NEW_LOAD"
 
 RES_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LIBBOX/Resources/Info.plist" 2>/dev/null || true)"
 if [[ -z "$RES_ID" || "$RES_ID" != "$LIBBOX_ID" ]]; then

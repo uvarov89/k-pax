@@ -70,9 +70,25 @@ class IosSingboxVpnService implements VpnService, VpnSettingsService {
     await applyAppSettings(appSettings);
     // Per-app split tunnel is not available on iOS; config is full-tunnel.
     final config = buildTunnelConfig(node, settings, appSettings: appSettings);
-    final started = await _singBox.connect(config);
+    // The vendored Dart wrapper catches native PlatformException and
+    // returns false, losing the actual iOS error code and message.
+    // Talk to the same plugin directly on iOS so the real failure survives.
+    final bool started;
+    try {
+      started = await const MethodChannel('sing_box')
+              .invokeMethod<bool>('connect', {'config': config}) ??
+          false;
+    } on PlatformException catch (error) {
+      final message = (error.message ?? '').trim();
+      throw StateError(message.isEmpty
+          ? 'iOS VPN: ${error.code}'
+          : 'iOS VPN [${error.code}]: $message');
+    }
     if (!started) {
-      throw StateError('Разрешение VPN не выдано или расширение недоступно');
+      final detail = await _lastTunnelError();
+      throw StateError(detail == null
+          ? 'Разрешение VPN не выдано или расширение недоступно'
+          : 'Ошибка запуска VPN: $detail');
     }
     await _waitUntilConnected();
   }

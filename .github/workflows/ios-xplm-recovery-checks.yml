@@ -10,23 +10,57 @@ permissions:
 
 jobs:
   source-and-ipa-contract:
-    name: Offline scripts and IPA bundle contract
+    name: Offline scripts and Codemagic configuration contract
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Check native packaging shell syntax
         run: |
+          set -euo pipefail
           bash -n ios/scripts/build_libbox.sh
           bash -n ios/scripts/normalize_libbox_framework.sh
           bash -n ios/scripts/resign_libbox_in_ipa.sh
       - name: Check Python validator and synthetic ITMS-90171 regression
         run: |
+          set -euo pipefail
           python3 -m compileall -q ios/scripts
           python3 -m unittest discover -s ios/scripts -p 'test_*.py' -v
-      - name: Ensure X-Plm build remains isolated
+      - name: Parse full Codemagic YAML and enforce separate brands
         run: |
-          grep -q 'ios-testflight-xplm:' codemagic.yaml
-          grep -q 'BRAND: xplm' codemagic.yaml
-          grep -q 'BUNDLE_ID: online.xplm.app' codemagic.yaml
+          set -euo pipefail
+          ruby -ryaml <<'RUBY'
+          config = YAML.safe_load(File.read('codemagic.yaml'), aliases: true)
+          abort 'Missing workflows: top-level mapping' unless config.is_a?(Hash) && config.keys == ['workflows']
+          all = config['workflows']
+          abort 'Invalid workflows list' unless all.is_a?(Hash) && all.keys.sort == %w[ios-testflight ios-testflight-xplm].sort
+          expected = {
+            'ios-testflight' => {
+              'BRAND' => 'kpax',
+              'BUNDLE_ID' => 'space.kpax.app',
+              'BUNDLE_ID_EXT' => 'space.kpax.app.extension',
+              'APP_GROUP' => 'group.space.kpax.app'
+            },
+            'ios-testflight-xplm' => {
+              'BRAND' => 'xplm',
+              'BUNDLE_ID' => 'online.xplm.app',
+              'BUNDLE_ID_EXT' => 'online.xplm.app.extension',
+              'APP_GROUP' => 'group.online.xplm.app'
+            }
+          }
+          expected.each do |id, settings|
+            workflow = all.fetch(id)
+            vars = workflow.fetch('environment').fetch('vars')
+            settings.each do |name, value|
+              abort "#{id}: wrong #{name}: #{vars[name].inspect}" unless vars[name] == value
+            end
+            abort "#{id}: scripts missing" unless workflow['scripts'].is_a?(Array) && !workflow['scripts'].empty?
+          end
+          puts "Valid Codemagic workflows: #{all.keys.join(', ')}"
+          RUBY
+      - name: Ensure X-Plm build guard and Libbox structure remain isolated
+        run: |
+          set -euo pipefail
+          grep -q 'ios/xplm-recovery' codemagic.yaml
           grep -q 'CFBundleExecutable string "$LIBBOX_EXEC_NAME"' ios/scripts/normalize_libbox_framework.sh
+          grep -q 'assert_single_libbox_executable(fw)' ios/scripts/validate_ipa.py

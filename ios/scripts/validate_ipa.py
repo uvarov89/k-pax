@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate app/extension identity and signing prerequisites in an exported IPA."""
 import argparse
+import hashlib
 import plistlib
 import re
 import struct
@@ -129,11 +130,9 @@ def assert_macho_arm64(path: Path, label: str | None = None) -> None:
 
 
 def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | None:
-    """Prefer a real Mach-O over a short-name symlink stub.
+    """Resolve the canonical Libbox Mach-O (with legacy-layout fallback).
 
-    Post-export resign renames Mach-O to CFBundleIdentifier (typically
-    io.nekohasekai.libbox); a Libbox → long-name symlink may remain for
-    LC_LOAD_DYLIB compatibility and must not be mistaken for the binary.
+    The caller rejects extra executable aliases before final IPA acceptance.
     """
     names: list[str] = []
     if executable:
@@ -169,6 +168,84 @@ def _resolve_libbox_binary(fw: Path, executable: str | None = None) -> Path | No
     return max(found, key=lambda p: p.stat().st_size)
 
 
+def assert_single_libbox_executable(framework: Path) -> None:
+    """Reject extra root-level Mach-O files in the iOS framework (ITMS-90171).
+
+    A hardlink or copied Libbox binary with another filename is still an extra
+    executable in the ZIP, regardless of whether it shares the inode locally.
+    """
+    executable = framework / "Libbox"
+    assert executable.is_file() and not executable.is_symlink(), (
+        "Libbox.framework must contain one regular executable named Libbox"
+    )
+    magics = {
+        b"\xcf\xfa\xed\xfe",  # arm64 Mach-O
+        b"\xfe\xed\xfa\xcf",
+        b"\xca\xfe\xba\xbe",  # universal Mach-O
+        b"\xbe\xba\xfe\xca",
+    }
+    executables = []
+    for item in framework.iterdir():
+        if item.is_dir() or item.is_symlink() or not item.is_file():
+            continue
+        with item.open("rb") as stream:
+            if stream.read(4) in magics:
+                executables.append(item.name)
+    assert executables == ["Libbox"], (
+        f"ITMS-90171: unexpected root-level Mach-O in Libbox.framework: {executables}"
+    )
+
+
+def assert_libbox_info_plist_seal(framework: Path) -> None:
+    """Ensure the embedded Mach-O signature actually seals the ROOT Info.plist.
+
+    Apple TN3126: CodeDirectory special slot -1 hashes Info.plist. The old
+    Libbox IPA had both root Info.plist (FMWK) and Resources/Info.plist (BNDL);
+    codesign sealed the BNDL one, so installd could reject the framework.
+    This check works on Linux without invoking codesign or Xcode.
+    """
+    binary = (framework / "Libbox").read_bytes()
+    assert binary[:4] == b"\xcf\xfa\xed\xfe", "Expected thin arm64 Libbox Mach-O"
+    ncmds = struct.unpack_from("<I", binary, 16)[0]
+    offset = 32
+    signature_range = None
+    for _ in range(ncmds):
+        cmd, size = struct.unpack_from("<II", binary, offset)
+        assert size >= 8 and offset + size <= len(binary), "Invalid Mach-O load command"
+        if cmd == 0x1D:  # LC_CODE_SIGNATURE
+            signature_range = struct.unpack_from("<II", binary, offset + 8)
+        offset += size
+    assert signature_range, "Libbox Mach-O is missing LC_CODE_SIGNATURE"
+    start, length = signature_range
+    assert start + length <= len(binary), "Truncated Libbox signature"
+    blob = binary[start:start + length]
+    magic, total, count = struct.unpack_from(">III", blob, 0)
+    assert magic == 0xFADE0CC0 and total <= len(blob), "Invalid embedded signature"
+    directory = None
+    for idx in range(count):
+        kind, pos = struct.unpack_from(">II", blob, 12 + idx * 8)
+        if kind == 0:  # primary CodeDirectory
+            size = struct.unpack_from(">I", blob, pos + 4)[0]
+            directory = blob[pos:pos + size]
+            break
+    assert directory and len(directory) >= 48, "Primary CodeDirectory is missing"
+    assert struct.unpack_from(">I", directory, 0)[0] == 0xFADE0C02
+    hash_offset = struct.unpack_from(">I", directory, 16)[0]
+    n_special = struct.unpack_from(">I", directory, 24)[0]
+    hash_size, hash_type = directory[36], directory[37]
+    assert n_special >= 1, "CodeDirectory missing Info.plist special slot"
+    assert hash_type == 2 and hash_size == 32, (
+        "Unsupported signing hash: expected full SHA-256 for Libbox"
+    )
+    assert hash_offset >= hash_size and hash_offset <= len(directory)
+    signed_hash = directory[hash_offset - hash_size:hash_offset]
+    root_hash = hashlib.sha256((framework / "Info.plist").read_bytes()).digest()
+    assert signed_hash == root_hash, (
+        "Invalid Libbox signature: CodeDirectory slot -1 does not seal the "
+        "root framework Info.plist (possible competing Resources/Info.plist)"
+    )
+
+
 def assert_no_frameworks_in_appex(extension: Path) -> None:
     """ASC 90205/90206: app extensions must not contain a Frameworks directory."""
     frameworks = extension / "Frameworks"
@@ -188,9 +265,9 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         fw = embedded[0]
         plist_path = fw / "Info.plist"
         assert plist_path.is_file(), f"Libbox.framework missing Info.plist: {fw}"
-        resources_plist_path = fw / "Resources" / "Info.plist"
-        assert resources_plist_path.is_file(), (
-            "Libbox.framework missing Resources/Info.plist (ASC 90171 risk)"
+        assert not (fw / "Resources" / "Info.plist").exists(), (
+            "Libbox.framework contains competing Resources/Info.plist; "
+            "CodeDirectory slot -1 will seal the wrong plist and iPhone may refuse installation"
         )
         assert not (fw / "Versions").exists(), (
             "Libbox.framework still has Versions/ — must be shallow for iOS ASC"
@@ -200,18 +277,15 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         exec_name = info.get("CFBundleExecutable")
         assert bundle_id, "Libbox CFBundleIdentifier missing"
         assert exec_name, "Libbox CFBundleExecutable missing"
-        # installd / ASC: CFBundleExecutable must equal CFBundleIdentifier; Mach-O
-        # file must use that name. Short "Libbox" symlink → long name is OK.
-        assert exec_name == bundle_id, (
-            f"Libbox CFBundleExecutable={exec_name!r} must equal "
-            f"CFBundleIdentifier={bundle_id!r}"
+        # Apple: CFBundleExecutable is the framework's *filename*, Libbox.
+        # CFBundleIdentifier is a separate reverse-DNS value and must NOT be
+        # used as a second executable name (ITMS-90171).
+        assert exec_name == "Libbox", (
+            f"Libbox.framework CFBundleExecutable={exec_name!r}; "
+            "expected Libbox, not CFBundleIdentifier"
         )
         assert info.get("CFBundlePackageType") == "FMWK", "Libbox CFBundlePackageType must be FMWK"
-        long_macho = fw / str(bundle_id)
-        assert long_macho.exists(), (
-            f"Libbox.framework missing Mach-O named {bundle_id!r} "
-            f"(CFBundleExecutable / Unable to Install)"
-        )
+        assert_single_libbox_executable(fw)
         lib_bin = _resolve_libbox_binary(fw, str(exec_name))
         assert lib_bin is not None, (
             f"Libbox.framework in Runner but no real binary (>={MIN_LIBBOX_BYTES} bytes) under {fw}"
@@ -227,19 +301,6 @@ def assert_libbox_in_host_app(app: Path, extension: Path, ext_plist: dict) -> No
         libbox_min = _minimum_os_version(info)
         assert libbox_min >= MIN_SUPPORTED_IOS, (
             f"Libbox MinimumOSVersion {libbox_min} below {MIN_SUPPORTED_IOS}"
-        )
-        # ASC 90535: nested Resources bundle must not declare CFBundleExecutable.
-        resources_info = plistlib.loads(resources_plist_path.read_bytes())
-        assert "CFBundleExecutable" not in resources_info, (
-            "Libbox Resources/Info.plist must not contain CFBundleExecutable (ASC 90535)"
-        )
-        assert resources_info.get("CFBundlePackageType") == "BNDL", (
-            "Libbox Resources/Info.plist CFBundlePackageType must be BNDL (ASC 90535)"
-        )
-        # ASC 90334: nested Resources CFBundleIdentifier must match the framework id.
-        assert resources_info.get("CFBundleIdentifier") == info.get("CFBundleIdentifier"), (
-            "Libbox Resources CFBundleIdentifier must match framework "
-            f"(got {resources_info.get('CFBundleIdentifier')!r} vs {info.get('CFBundleIdentifier')!r})"
         )
         size = lib_bin.stat().st_size
         print(f"Libbox.framework OK in Runner.app ({lib_bin.relative_to(app)}, {size} bytes)")
@@ -286,10 +347,10 @@ def _codesign_identifier(path: Path) -> str | None:
 
 
 def validate_libbox_signature_identifier(framework: Path) -> None:
-    """Outer bundle AND nested Mach-O must match CFBundleIdentifier (ASC 90334).
+    """Check the signing identifier separately from executable filename.
 
-    Post-export resign renames Mach-O to CFBundleIdentifier and re-seals with
-    codesign --identifier matching that id.
+    Framework executable is Libbox; its reverse-DNS signature identifier is
+    supplied by CFBundleIdentifier.
     """
     info = plistlib.loads((framework / "Info.plist").read_bytes())
     expected = info["CFBundleIdentifier"]
@@ -345,6 +406,7 @@ def validate_archive(ipa, brand, signing=True):
         if signing:
             libbox = app / "Frameworks" / "Libbox.framework"
             if libbox.is_dir():
+                assert_libbox_info_plist_seal(libbox)
                 validate_libbox_signature_identifier(libbox)
                 _hard_codesign_verify(libbox)
                 lib_bin = libbox / str(
@@ -355,6 +417,12 @@ def validate_archive(ipa, brand, signing=True):
                 )
                 if lib_bin.is_file():
                     _hard_codesign_verify(lib_bin)
+            # Framework signatures are nested and must match the distribution
+            # identity after re-signing Runner (see ASC 90034).
+            frameworks_dir = app / "Frameworks"
+            if frameworks_dir.is_dir():
+                for fw in sorted(frameworks_dir.glob("*.framework")):
+                    _hard_codesign_verify(fw)
             # After post-IPA resign, host/appex must verify — soft-warn hid seal breaks.
             for path in (app, extension):
                 _hard_codesign_verify(path)

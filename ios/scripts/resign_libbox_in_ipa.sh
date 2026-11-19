@@ -1,24 +1,15 @@
 #!/usr/bin/env bash
-# Post-export IPA fix for Libbox.framework so installd accepts the build.
+# Post-export verification and Distribution re-signing for iOS.
+# The canonical flat iOS framework has exactly one root Info.plist.
 #
-# History (TF 1.0.59):
-# - Identifier-only resign with Mach-O basename still "Libbox" uploads OK but
-#   device shows "Unable to Install" — installd wants basename == Identifier.
-# - Renaming + install_name_tool -change on *already-signed* Runner/PacketTunnel
-#   corrupted Mach-Os → ASC 90085 ("No architectures").
-#
-# Durable approach (this script, post-export only):
-# 1) codesign --remove-signature nested-first (binary → framework → appex → app)
-# 2) Rename Mach-O Libbox → CFBundleIdentifier; CFBundleExecutable = that name
-# 3) Symlink Libbox → long name so LC_LOAD_DYLIB=@rpath/Libbox.framework/Libbox
-#    still resolves WITHOUT lengthening host load commands (safer than -change)
-# 4) install_name_tool -id to the long path on the *unsigned* Libbox binary
-#    (best-effort; symlink covers loads if header has no room to grow)
-# 5) Best-effort -change on unsigned host Mach-Os; symlink is the fallback
-# 6) Re-sign Libbox → framework → appex → app with Apple Distribution,
-#    --identifier matching each bundle id, secure --timestamp (not none)
-#
-# Normalize/build keep basename Libbox for Xcode -framework Libbox linking.
+# Keep exactly one real Mach-O at Libbox.framework/Libbox:
+#   CFBundleExecutable = Libbox
+#   CFBundleIdentifier = io.nekohasekai.libbox (distinct from executable)
+#   LC_ID_DYLIB = @rpath/Libbox.framework/Libbox
+# Never rename the binary to CFBundleIdentifier, or add hardlinks/symlinks:
+# Apple App Store Connect rejects extra root-level Mach-O files (ITMS-90171).
+# Existing host/PacketTunnel load commands remain untouched.
+# Resign nested-first after updating bundle metadata, preserving entitlements.
 set -euo pipefail
 
 IPA="${1:?usage: resign_libbox_in_ipa.sh path/to/App.ipa}"
@@ -142,33 +133,6 @@ remove_signature() {
   /usr/bin/codesign --remove-signature "$path" 2>/dev/null || true
 }
 
-# Rewrite LC_LOAD_DYLIB only on unsigned Mach-Os. Prefer success; on failure
-# (no headerpad for a longer path) the Libbox → long-name symlink covers loads.
-try_change_load() {
-  local macho="$1"
-  local label="${2:-$macho}"
-  local new_load="$3"
-  if [[ ! -f "$macho" || -L "$macho" ]]; then
-    return 0
-  fi
-  local loads
-  loads="$(/usr/bin/otool -L "$macho" 2>/dev/null || true)"
-  if ! printf '%s\n' "$loads" | /usr/bin/grep -Fq "$OLD_LOAD"; then
-    return 0
-  fi
-  if /usr/bin/install_name_tool -change "$OLD_LOAD" "$new_load" "$macho" 2>/dev/null; then
-    echo "OK install_name_tool -change on $label"
-  else
-    echo "warn: install_name_tool -change failed on $label (no headerpad?) — Libbox symlink covers $OLD_LOAD"
-  fi
-}
-
-macho_loads_libbox() {
-  local macho="$1"
-  [[ -f "$macho" && ! -L "$macho" ]] || return 1
-  /usr/bin/otool -L "$macho" 2>/dev/null | /usr/bin/grep -Fq "$OLD_LOAD"
-}
-
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/resign-libbox.XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -208,18 +172,11 @@ if [[ "$LIBBOX_ID" != *.* ]]; then
   echo "error: Libbox CFBundleIdentifier '$LIBBOX_ID' must be reverse-DNS (contain '.')" >&2
   exit 1
 fi
-LONG_EXEC="$LIBBOX_ID"
-NEW_LOAD="@rpath/Libbox.framework/${LONG_EXEC}"
-NEW_ID="$NEW_LOAD"
 
-RES_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LIBBOX/Resources/Info.plist" 2>/dev/null || true)"
-if [[ -z "$RES_ID" || "$RES_ID" != "$LIBBOX_ID" ]]; then
-  echo "error: Libbox Resources CFBundleIdentifier '$RES_ID' != '$LIBBOX_ID' (ASC 90334)" >&2
-  exit 1
-fi
-# ASC 90535: nested Resources must not declare CFBundleExecutable.
-/usr/libexec/PlistBuddy -c 'Delete :CFBundleExecutable' "$LIBBOX/Resources/Info.plist" >/dev/null 2>&1 || true
-
+# The old gomobile Resources/Info.plist (BNDL) stole CodeDirectory's
+# Info.plist special slot -1, even when the real iOS FMWK plist was at root.
+# Remove it before code signing, so the root Info.plist is what gets sealed.
+rm -f "$LIBBOX/Resources/Info.plist"
 APP_EXEC_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist" 2>/dev/null || true)"
 APP_BINARY=""
 if [[ -n "$APP_EXEC_NAME" && -f "$APP/$APP_EXEC_NAME" ]]; then
@@ -298,100 +255,76 @@ fi
 remove_signature "$APP" "$(basename "$APP")"
 
 # ---------------------------------------------------------------------------
-# 2) Place Mach-O as CFBundleIdentifier; CFBundleExecutable must match.
-# 3) Symlink short name → long name for existing LC_LOAD_DYLIB paths.
+# 2) Preserve the framework's canonical executable name: Libbox.
+# Apple requires CFBundleExecutable to equal the framework NAME, NOT its
+# reverse-DNS CFBundleIdentifier. Do not add a second Mach-O alias.
+# 3) Preserve @rpath/Libbox.framework/Libbox expected by the host/appex.
 # ---------------------------------------------------------------------------
-BINARY="$LIBBOX/$LONG_EXEC"
-# Prefer the real dylib (Versions/A/Libbox) over a short symlink stub (~11B).
+BINARY="$LIBBOX/$SHORT_EXEC"
 REAL_BIN=""
 if [[ -e "$SHORT_BINARY" || -L "$SHORT_BINARY" ]]; then
   REAL_BIN="$(resolve_real_file "$SHORT_BINARY")"
 fi
 if [[ -z "$REAL_BIN" || ! -f "$REAL_BIN" ]]; then
-  # validate_ipa-style fallbacks when root name is a text/symlink stub
   for cand in \
     "$LIBBOX/Versions/Current/Libbox" \
     "$LIBBOX/Versions/A/Libbox" \
-    "$LIBBOX/$LONG_EXEC"; do
-    if [[ -f "$cand" && ! -L "$cand" ]]; then
+    "$LIBBOX/$LIBBOX_ID"; do
+    if [[ -f "$cand" ]]; then
       REAL_BIN="$(resolve_real_file "$cand")"
       break
     fi
   done
 fi
 if [[ -z "$REAL_BIN" || ! -f "$REAL_BIN" ]]; then
-  echo "error: cannot locate real Libbox Mach-O to rename" >&2
-  ls -laR "$LIBBOX" >&2 || true
+  echo "error: Libbox Mach-O missing" >&2
   exit 1
 fi
-assert_macho_arm64 "$REAL_BIN" "Libbox (resolved source before rename)"
+assert_macho_arm64 "$REAL_BIN" "Libbox source"
 
-if [[ "$REAL_BIN" == "$BINARY" ]]; then
-  echo "Mach-O already named $LONG_EXEC"
-elif [[ -f "$LIBBOX/$SHORT_EXEC" && ! -L "$LIBBOX/$SHORT_EXEC" && "$REAL_BIN" == "$(resolve_real_file "$LIBBOX/$SHORT_EXEC")" ]]; then
-  echo "Renaming Mach-O $SHORT_EXEC → $LONG_EXEC"
-  /bin/mv -f "$LIBBOX/$SHORT_EXEC" "$BINARY"
-else
-  echo "Copying resolved Mach-O → $LONG_EXEC (was symlink/Versions layout)"
-  /bin/cp -f "$REAL_BIN" "$BINARY"
+# Materialize a short-name executable if the framework still uses a macOS
+# Versions/ layout. A symlink is not a valid executable in this flat iOS bundle.
+if [[ -L "$BINARY" || "$REAL_BIN" != "$BINARY" ]]; then
+  /bin/cp -f "$REAL_BIN" "$TMP/Libbox.canonical"
+  /bin/rm -f "$BINARY"
+  /bin/mv -f "$TMP/Libbox.canonical" "$BINARY"
 fi
-assert_macho_arm64 "$BINARY" "Libbox.framework/$LONG_EXEC (pre-sign)"
-
-# Always (re)create short-name symlink so hosts keep loading OLD_LOAD.
-if [[ -e "$LIBBOX/$SHORT_EXEC" || -L "$LIBBOX/$SHORT_EXEC" ]]; then
-  /bin/rm -f "$LIBBOX/$SHORT_EXEC"
+# Remove historical extra executable introduced by the old resign script.
+# This is the confirmed source of Apple's ITMS-90171 error.
+if [[ "$LIBBOX_ID" != "$SHORT_EXEC" ]] && \
+   [[ -e "$LIBBOX/$LIBBOX_ID" || -L "$LIBBOX/$LIBBOX_ID" ]]; then
+  echo "Removing forbidden second Mach-O: Libbox.framework/$LIBBOX_ID"
+  /bin/rm -f "$LIBBOX/$LIBBOX_ID"
 fi
-/bin/ln -s "$LONG_EXEC" "$LIBBOX/$SHORT_EXEC"
-echo "Symlink $SHORT_EXEC → $LONG_EXEC (covers $OLD_LOAD without host -change)"
-
-/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $LONG_EXEC" "$LIBBOX/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $SHORT_EXEC" "$LIBBOX/Info.plist"
 EXEC_NOW="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$LIBBOX/Info.plist")"
-if [[ "$EXEC_NOW" != "$LONG_EXEC" || "$EXEC_NOW" != "$LIBBOX_ID" ]]; then
-  echo "error: CFBundleExecutable='$EXEC_NOW' must equal CFBundleIdentifier='$LIBBOX_ID'" >&2
+if [[ "$EXEC_NOW" != "$SHORT_EXEC" ]]; then
+  echo "error: Libbox.framework CFBundleExecutable must be Libbox" >&2
   exit 1
 fi
+assert_macho_arm64 "$BINARY" "Libbox.framework/Libbox"
 
-assert_macho_arm64 "$BINARY" "Libbox.framework/$LONG_EXEC (pre-sign)"
-
-# ---------------------------------------------------------------------------
-# 4) -id on unsigned Libbox; 5) best-effort -change on unsigned hosts.
-# ---------------------------------------------------------------------------
-if /usr/bin/install_name_tool -id "$NEW_ID" "$BINARY" 2>/dev/null; then
-  echo "OK install_name_tool -id $NEW_ID"
-else
-  echo "warn: install_name_tool -id could not lengthen to $NEW_ID — keeping prior id; symlink covers loads"
+# Rebuild the install-name while the dylib is unsigned, but do NOT rewrite
+# host/PacketTunnel load commands or reintroduce an executable alias.
+if ! /usr/bin/install_name_tool -id "$OLD_LOAD" "$BINARY"; then
+  echo "error: failed to set canonical Libbox LC_ID_DYLIB" >&2
+  exit 1
 fi
-
-if [[ -n "$APP_BINARY" ]]; then
-  try_change_load "$APP_BINARY" "Runner/$APP_EXEC_NAME" "$NEW_LOAD"
+if [[ ! -f "$BINARY" || -L "$BINARY" ]]; then
+  echo "error: Libbox framework executable must be a regular file" >&2
+  exit 1
 fi
-if [[ -n "$APPEX_BINARY" ]]; then
-  try_change_load "$APPEX_BINARY" "PacketTunnel/$APPEX_EXEC_NAME" "$NEW_LOAD"
-fi
-# Any other Mach-O under the app that still loads the short path.
-# Prefer symlink fallback over aggressive -change; scan PlugIns + Frameworks only.
-for candidate in \
-  "$APP_BINARY" \
-  "$APPEX_BINARY" \
-  "$APP"/Frameworks/*/* \
-  "$APP"/PlugIns/*/*; do
-  [[ -n "$candidate" && -f "$candidate" && ! -L "$candidate" ]] || continue
-  case "$candidate" in
-    "$BINARY"|"$LIBBOX"/*) continue ;;
-  esac
-  if macho_loads_libbox "$candidate"; then
-    try_change_load "$candidate" "${candidate#"$APP"/}" "$NEW_LOAD"
-  fi
-done
 
 # ---------------------------------------------------------------------------
 # 6) Re-sign nested-first with Apple Distribution + secure timestamp.
 # ---------------------------------------------------------------------------
-echo "Stamping Libbox Identifier=$LIBBOX_ID (Mach-O basename=$LONG_EXEC)"
-/usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$BINARY"
-if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp --generate-entitlement-der "$LIBBOX"; then
-  /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
-fi
+# Sign the FRAMEWORK as one code bundle, not its Mach-O executable first.
+# Signing the standalone dylib creates a CodeDirectory with an empty Info.plist
+# special slot (-1). Re-signing the bundle afterward did not repair this in the
+# actual Codemagic #46 IPA. Framework signing must own the signature creation.
+echo "Signing Libbox.framework as a single bundle (id=$LIBBOX_ID)"
+/usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" \
+  --timestamp --generate-entitlement-der "$LIBBOX"
 
 for path in "$BINARY" "$LIBBOX"; do
   got="$(codesign_identifier "$path")"
@@ -403,7 +336,63 @@ for path in "$BINARY" "$LIBBOX"; do
   assert_distribution_seal "$path" "$(basename "$path")"
 done
 
-assert_macho_arm64 "$BINARY" "Libbox.framework/$LONG_EXEC (post-sign)"
+assert_macho_arm64 "$BINARY" "Libbox.framework/Libbox (post-sign)"
+
+# ---------------------------------------------------------------------------
+# 6b) Re-sign EVERY embedded Runner framework with Apple Distribution.
+# Stripping Runner.app invalidates nested seals; Libbox alone is not enough.
+# ASC 90034: sing_box.framework (org.cocoapods.sing-box) must use submission cert.
+# ---------------------------------------------------------------------------
+resign_embedded_framework() {
+  local fw="$1"
+  local label
+  label="$(basename "$fw")"
+  local plist="$fw/Info.plist"
+  if [[ ! -f "$plist" ]]; then
+    echo "error: $label missing Info.plist" >&2
+    exit 1
+  fi
+  local fid fexec
+  fid="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null || true)"
+  fexec="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist" 2>/dev/null || true)"
+  if [[ -z "$fid" ]]; then
+    echo "error: $label missing CFBundleIdentifier" >&2
+    exit 1
+  fi
+  if [[ -n "$fexec" ]]; then
+    local bin="$fw/$fexec"
+    if [[ -f "$bin" || -L "$bin" ]]; then
+      remove_signature "$bin" "$label/$fexec"
+      /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$fid" --timestamp "$bin"
+    fi
+  fi
+  remove_signature "$fw" "$label"
+  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$fid" \
+    --timestamp --generate-entitlement-der "$fw" \
+    || /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$fid" --timestamp "$fw"
+  /usr/bin/codesign --verify --verbose=4 "$fw"
+  assert_distribution_seal "$fw" "$label"
+  got="$(codesign_identifier "$fw")"
+  if [[ "$got" != "$fid" ]]; then
+    echo "error: $label Identifier='$got' (want $fid) — ASC 90034 risk" >&2
+    exit 1
+  fi
+  echo "Embedded framework sealed: $label ($fid)"
+}
+
+if [[ -d "$APP/Frameworks" ]]; then
+  shopt -s nullglob
+  for fw in "$APP"/Frameworks/*.framework; do
+    [[ -d "$fw" ]] || continue
+    if [[ "$(basename "$fw")" == "Libbox.framework" ]]; then
+      echo "Skip Libbox.framework (already Distribution-sealed)"
+      continue
+    fi
+    echo "Re-signing embedded framework $(basename "$fw") (ASC 90034)"
+    resign_embedded_framework "$fw"
+  done
+  shopt -u nullglob
+fi
 
 resign_bundle() {
   local bundle="$1"
@@ -451,4 +440,4 @@ OUT="$TMP/repacked.ipa"
 )
 # Replace in place (preserve caller path).
 ditto "$OUT" "$IPA"
-echo "OK Libbox re-signed in IPA (id=$LIBBOX_ID, exec=$LONG_EXEC, symlink $SHORT_EXEC→$LONG_EXEC)"
+echo "OK IPA re-signed (Libbox executable=Libbox, bundle id=$LIBBOX_ID; no executable alias)"

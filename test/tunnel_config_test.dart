@@ -47,7 +47,11 @@ void main() {
 
     final rules = (built['route'] as Map)['rules'] as List;
     expect(rules.first, {'action': 'sniff'});
-    expect((built['route'] as Map).containsKey('default_domain_resolver'), isFalse);
+    // Core 1.13.21 refuses multi-DNS configs missing a dial resolver.
+    expect(
+      (built['route'] as Map)['default_domain_resolver'],
+      {'server': 'dns-direct', 'strategy': 'ipv4_only'},
+    );
     expect((built['route'] as Map).containsKey('override_android_vpn'), isFalse);
 
     final dns = built['dns'] as Map;

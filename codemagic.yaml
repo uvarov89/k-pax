@@ -30,6 +30,18 @@ workflows:
         - $HOME/.pub-cache
         - $HOME/Library/Caches/CocoaPods
     scripts:
+      - name: Verify isolated K-Pax recovery branch and brand
+        script: |
+          set -e
+          if [ "${CM_BRANCH:-}" != "ios/kpax-recovery" ] || [ "${BRAND:-}" != "kpax" ]; then
+            echo "Refusing K-Pax iOS recovery build from wrong branch/brand: ${CM_BRANCH:-unset}, ${BRAND:-unset}" >&2
+            exit 1
+          fi
+          if [ "${BUNDLE_ID:-}" != "space.kpax.app" ] || [ "${BUNDLE_ID_EXT:-}" != "space.kpax.app.extension" ] || [ "${APP_GROUP:-}" != "group.space.kpax.app" ]; then
+            echo "Refusing K-Pax iOS recovery build with incorrect identifiers" >&2
+            exit 1
+          fi
+          echo "K-Pax iOS recovery branch and signing identifiers verified"
       - name: Get Flutter packages
         script: |
           flutter pub get
@@ -88,12 +100,12 @@ workflows:
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
-      - name: Re-sign Libbox identifiers in IPA
+      - name: Normalize and re-sign Libbox.framework in IPA
         script: |
           set -e
           chmod +x ios/scripts/resign_libbox_in_ipa.sh
-          # exportArchive re-stamps nested Libbox Mach-O as basename "Libbox";
-          # restamp to CFBundleIdentifier before validate/upload (device install).
+          # Keep canonical Libbox.framework/Libbox, not a second Mach-O
+          # alias named after the bundle identifier (Apple ITMS-90171).
           for ipa in build/ios/ipa/*.ipa; do
             ios/scripts/resign_libbox_in_ipa.sh "$ipa"
           done
@@ -139,6 +151,14 @@ workflows:
         - $HOME/.pub-cache
         - $HOME/Library/Caches/CocoaPods
     scripts:
+      - name: Verify isolated X-Plm recovery branch
+        script: |
+          set -e
+          if [ "${CM_BRANCH:-}" != "ios/xplm-recovery" ] || [ "${BRAND:-}" != "xplm" ]; then
+            echo "Refusing X-Plm recovery build from wrong branch/brand: ${CM_BRANCH:-unset}, ${BRAND:-unset}" >&2
+            exit 1
+          fi
+          echo "X-Plm recovery branch verified"
       - name: Get Flutter packages
         script: |
           flutter pub get

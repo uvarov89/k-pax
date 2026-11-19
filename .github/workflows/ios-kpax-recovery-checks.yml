@@ -1,0 +1,94 @@
+name: K-Pax iOS recovery — free offline checks
+on:
+  push:
+    branches:
+      - ios/kpax-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-packaging-contract:
+    name: Shell syntax / IPA structure / K-Pax brand contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate iOS packaging shell syntax
+        run: |
+          set -euo pipefail
+          bash -n ios/scripts/build_libbox.sh
+          bash -n ios/scripts/normalize_libbox_framework.sh
+          bash -n ios/scripts/resign_libbox_in_ipa.sh
+      - name: Validate Python IPA tools and regress Apple ITMS-90171
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q ios/scripts
+          python3 -m unittest discover -s ios/scripts -p 'test_*.py' -v
+      - name: Parse full Codemagic YAML and verify both workflows
+        run: |
+          set -euo pipefail
+          ruby -ryaml <<'RUBY'
+          config = YAML.safe_load(File.read('codemagic.yaml'), aliases: true)
+          abort 'Codemagic config must contain ONLY the workflows root mapping' unless config.is_a?(Hash) && config.keys == ['workflows']
+          all = config.fetch('workflows')
+          abort 'workflows must be a mapping' unless all.is_a?(Hash)
+          required = ['ios-testflight', 'ios-testflight-xplm']
+          abort "Unexpected workflows: #{all.keys.inspect}" unless all.keys.sort == required.sort
+          expected = {
+            'ios-testflight' => {
+              'name' => 'iOS TestFlight (K-Pax)',
+              'BRAND' => 'kpax',
+              'BUNDLE_ID' => 'space.kpax.app',
+              'BUNDLE_ID_EXT' => 'space.kpax.app.extension',
+              'APP_GROUP' => 'group.space.kpax.app',
+            },
+            'ios-testflight-xplm' => {
+              'name' => 'iOS TestFlight (X-Plm)',
+              'BRAND' => 'xplm',
+              'BUNDLE_ID' => 'online.xplm.app',
+              'BUNDLE_ID_EXT' => 'online.xplm.app.extension',
+              'APP_GROUP' => 'group.online.xplm.app',
+            },
+          }
+          expected.each do |id, settings|
+            workflow = all.fetch(id)
+            abort "Missing scripts array for #{id}" unless workflow['scripts'].is_a?(Array) && workflow['scripts'].size > 3
+            abort "Mismatched name for #{id}" unless workflow['name'] == settings.fetch('name')
+            vars = workflow.fetch('environment').fetch('vars')
+            settings.reject { |k,_| k == 'name' }.each do |key,value|
+              abort "#{id} #{key} is #{vars[key].inspect}, expected #{value.inspect}" unless vars[key] == value
+            end
+            abort "Missing Codemagic App Store Connect integration for #{id}" unless workflow.fetch('integrations').fetch('app_store_connect') == 'kpax'
+          end
+          puts "Parsed YAML: #{all.keys.join(', ')}; both brand contracts verified."
+          RUBY
+      - name: Verify K-Pax iOS brand, extension and isolated Codemagic workflow
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          y = Path("codemagic.yaml").read_text()
+          first, separate = y.split("  ios-testflight-xplm:", 1)
+          assert "name: iOS TestFlight (K-Pax)" in first
+          assert "CM_BRANCH:-" in first and "ios/kpax-recovery" in first
+          for setting in [
+              "BRAND: kpax",
+              "BUNDLE_ID: space.kpax.app",
+              "BUNDLE_ID_EXT: space.kpax.app.extension",
+              "APP_GROUP: group.space.kpax.app",
+              "--dart-define=BRAND=kpax",
+              "python3 ios/scripts/validate_ipa.py --brand kpax",
+              "submit_to_testflight: false",
+          ]:
+              assert setting in first, f"Missing K-Pax iOS contract: {setting}"
+          assert "ios/xplm-recovery" in separate
+          assert "BRAND: xplm" in separate
+          resign = Path("ios/scripts/resign_libbox_in_ipa.sh").read_text()
+          validator = Path("ios/scripts/validate_ipa.py").read_text()
+          assert "CFBundleExecutable must be Libbox" in resign
+          assert "assert_single_libbox_executable(fw)" in validator
+          assert "unexpected root-level Mach-O" in validator
+          print("K-Pax branch and iOS IPA structure contract checks passed")
+          PY

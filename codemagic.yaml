@@ -139,6 +139,14 @@ workflows:
         - $HOME/.pub-cache
         - $HOME/Library/Caches/CocoaPods
     scripts:
+      - name: Verify isolated X-Plm recovery branch
+        script: |
+          set -e
+          if [ "${CM_BRANCH:-}" != "ios/xplm-recovery" ] || [ "${BRAND:-}" != "xplm" ]; then
+            echo "Refusing X-Plm recovery build from wrong branch/brand: ${CM_BRANCH:-unset}, ${BRAND:-unset}" >&2
+            exit 1
+          fi
+          echo "X-Plm recovery branch verified"
       - name: Get Flutter packages
         script: |
           flutter pub get

@@ -1,6 +1,9 @@
 name: sing-box native config validation
 
 on:
+  push:
+    branches:
+      - ios/xplm-recovery
   pull_request:
     paths:
       - 'lib/core/services/tunnel_config.dart'

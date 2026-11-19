@@ -9,6 +9,7 @@ from validate_ipa import (
     _macho_mentions_arm64,
     assert_macho_arm64,
     assert_single_libbox_executable,
+    assert_libbox_info_plist_seal,
     validate_bundle_info,
 )
 
@@ -96,6 +97,45 @@ class FrameworkStructureRegressionTest(unittest.TestCase):
             (fw / "Libbox").symlink_to("io.nekohasekai.libbox")
             with self.assertRaises(AssertionError):
                 assert_single_libbox_executable(fw)
+
+
+
+class SignedInfoPlistRegressionTest(unittest.TestCase):
+    """Regression for K-Pax 1.0.73 TestFlight install failure."""
+
+    def _write_fake_libbox(self, fw: Path, sealed_plist: bytes) -> None:
+        import hashlib
+        fw.mkdir(parents=True)
+        directory = bytearray(80)
+        struct.pack_into(">I", directory, 0, 0xFADE0C02)
+        struct.pack_into(">I", directory, 4, len(directory))
+        struct.pack_into(">I", directory, 16, 80)  # hashOffset
+        struct.pack_into(">I", directory, 24, 1)   # one special slot
+        directory[36], directory[37] = 32, 2      # SHA-256
+        directory[48:80] = hashlib.sha256(sealed_plist).digest()
+        signature = struct.pack(">III", 0xFADE0CC0, 20 + len(directory), 1)
+        signature += struct.pack(">II", 0, 20) + directory
+        header = bytearray(32)
+        struct.pack_into("<I", header, 0, _MH_MAGIC_64)
+        struct.pack_into("<I", header, 16, 1)  # ncmds
+        command = struct.pack("<IIII", 0x1D, 16, 48, len(signature))
+        (fw / "Libbox").write_bytes(header + command + signature)
+
+    def test_correct_root_plist_seal_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = Path(tmp) / "Libbox.framework"
+            info = b"canonical root plist"
+            self._write_fake_libbox(fw, info)
+            (fw / "Info.plist").write_bytes(info)
+            assert_libbox_info_plist_seal(fw)
+
+    def test_old_resources_plist_seal_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = Path(tmp) / "Libbox.framework"
+            self._write_fake_libbox(fw, b"old BNDL Resources/Info.plist")
+            (fw / "Info.plist").write_bytes(b"correct FMWK root Info.plist")
+            with self.assertRaisesRegex(AssertionError, "slot -1"):
+                assert_libbox_info_plist_seal(fw)
 
 
 if __name__ == "__main__": unittest.main()

@@ -268,12 +268,12 @@ runner_phase.shell_script = <<~'SCRIPT'
   rm -rf "$DEST"
   /usr/bin/ditto "$SRC" "$DEST"
 
-  for req in Info.plist Resources/Info.plist; do
-    if [ ! -f "$DEST/$req" ]; then
-      echo "error: missing $DEST/$req" >&2
-      exit 1
-    fi
-  done
+  if [ ! -f "$DEST/Info.plist" ]; then
+    echo "error: missing canonical iOS framework Info.plist in $DEST" >&2
+    exit 1
+  fi
+  # Xcode/ditto must not reintroduce gomobile's competing Info.plist.
+  rm -f "$DEST/Resources/Info.plist"
   BINARY="$DEST/Libbox"
   if [ ! -f "$BINARY" ]; then
     echo "error: Libbox binary missing in $DEST" >&2
@@ -300,22 +300,10 @@ runner_phase.shell_script = <<~'SCRIPT'
     echo "error: CFBundleExecutable='$EXEC' (want Libbox)" >&2
     exit 1
   fi
-  # ASC 90535: Resources/Info.plist must be BNDL without CFBundleExecutable.
-  RES_EXEC=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DEST/Resources/Info.plist" 2>/dev/null || true)
-  if [ -n "$RES_EXEC" ]; then
-    echo "error: Resources/Info.plist has CFBundleExecutable='$RES_EXEC' (ASC 90535)" >&2
-    exit 1
-  fi
-  RES_TYPE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$DEST/Resources/Info.plist" 2>/dev/null || true)
-  if [ "$RES_TYPE" != "BNDL" ]; then
-    echo "error: Resources/Info.plist CFBundlePackageType='$RES_TYPE' (want BNDL)" >&2
-    exit 1
-  fi
-  # ASC 90334: nested Resources id must match the framework CFBundleIdentifier.
+  # Canonical flat iOS framework plist is at bundle root, not Resources/.
   FW_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Info.plist" 2>/dev/null || true)
-  RES_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST/Resources/Info.plist" 2>/dev/null || true)
-  if [ -z "$FW_ID" ] || [ "$FW_ID" != "$RES_ID" ]; then
-    echo "error: Libbox CFBundleIdentifier mismatch root='$FW_ID' resources='$RES_ID' (ASC 90334)" >&2
+  if [ -z "$FW_ID" ]; then
+    echo "error: Libbox.framework missing CFBundleIdentifier" >&2
     exit 1
   fi
   /usr/bin/install_name_tool -id "@rpath/Libbox.framework/Libbox" "$BINARY" 2>/dev/null || true

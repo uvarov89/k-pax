@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Post-export verification and Distribution re-signing for iOS.
+# The canonical flat iOS framework has exactly one root Info.plist.
 #
 # Keep exactly one real Mach-O at Libbox.framework/Libbox:
 #   CFBundleExecutable = Libbox
@@ -172,14 +173,10 @@ if [[ "$LIBBOX_ID" != *.* ]]; then
   exit 1
 fi
 
-RES_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LIBBOX/Resources/Info.plist" 2>/dev/null || true)"
-if [[ -z "$RES_ID" || "$RES_ID" != "$LIBBOX_ID" ]]; then
-  echo "error: Libbox Resources CFBundleIdentifier '$RES_ID' != '$LIBBOX_ID' (ASC 90334)" >&2
-  exit 1
-fi
-# ASC 90535: nested Resources must not declare CFBundleExecutable.
-/usr/libexec/PlistBuddy -c 'Delete :CFBundleExecutable' "$LIBBOX/Resources/Info.plist" >/dev/null 2>&1 || true
-
+# The old gomobile Resources/Info.plist (BNDL) stole CodeDirectory's
+# Info.plist special slot -1, even when the real iOS FMWK plist was at root.
+# Remove it before code signing, so the root Info.plist is what gets sealed.
+rm -f "$LIBBOX/Resources/Info.plist"
 APP_EXEC_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist" 2>/dev/null || true)"
 APP_BINARY=""
 if [[ -n "$APP_EXEC_NAME" && -f "$APP/$APP_EXEC_NAME" ]]; then

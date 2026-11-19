@@ -178,10 +178,10 @@ def assert_single_libbox_executable(framework: Path) -> None:
         "Libbox.framework must contain one regular executable named Libbox"
     )
     magics = {
-        b"\\xcf\\xfa\\xed\\xfe",  # arm64 Mach-O
-        b"\\xfe\\xed\\xfa\\xcf",
-        b"\\xca\\xfe\\xba\\xbe",  # universal Mach-O
-        b"\\xbe\\xba\\xfe\\xca",
+        b"\xcf\xfa\xed\xfe",  # arm64 Mach-O
+        b"\xfe\xed\xfa\xcf",
+        b"\xca\xfe\xba\xbe",  # universal Mach-O
+        b"\xbe\xba\xfe\xca",
     }
     executables = []
     for item in framework.iterdir():

@@ -1,0 +1,32 @@
+name: X-Plm iOS recovery — offline checks
+on:
+  push:
+    branches:
+      - ios/xplm-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-ipa-contract:
+    name: Offline scripts and IPA bundle contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check native packaging shell syntax
+        run: |
+          bash -n ios/scripts/build_libbox.sh
+          bash -n ios/scripts/normalize_libbox_framework.sh
+          bash -n ios/scripts/resign_libbox_in_ipa.sh
+      - name: Check Python validator and synthetic ITMS-90171 regression
+        run: |
+          python3 -m compileall -q ios/scripts
+          python3 -m unittest discover -s ios/scripts -p 'test_*.py' -v
+      - name: Ensure X-Plm build remains isolated
+        run: |
+          grep -q 'ios-testflight-xplm:' codemagic.yaml
+          grep -q 'BRAND: xplm' codemagic.yaml
+          grep -q 'BUNDLE_ID: online.xplm.app' codemagic.yaml
+          grep -q 'CFBundleExecutable string "$LIBBOX_EXEC_NAME"' ios/scripts/normalize_libbox_framework.sh

@@ -324,7 +324,7 @@ fi
 echo "Signing canonical Libbox executable with bundle ID $LIBBOX_ID"
 /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$BINARY"
 if ! /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp --generate-entitlement-der "$LIBBOX"; then
-  /usr/bin/codesign --force --deep --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
+  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$LIBBOX_ID" --timestamp "$LIBBOX"
 fi
 
 for path in "$BINARY" "$LIBBOX"; do
@@ -338,6 +338,62 @@ for path in "$BINARY" "$LIBBOX"; do
 done
 
 assert_macho_arm64 "$BINARY" "Libbox.framework/Libbox (post-sign)"
+
+# ---------------------------------------------------------------------------
+# 6b) Re-sign EVERY embedded Runner framework with Apple Distribution.
+# Stripping Runner.app invalidates nested seals; Libbox alone is not enough.
+# ASC 90034: sing_box.framework (org.cocoapods.sing-box) must use submission cert.
+# ---------------------------------------------------------------------------
+resign_embedded_framework() {
+  local fw="$1"
+  local label
+  label="$(basename "$fw")"
+  local plist="$fw/Info.plist"
+  if [[ ! -f "$plist" ]]; then
+    echo "error: $label missing Info.plist" >&2
+    exit 1
+  fi
+  local fid fexec
+  fid="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null || true)"
+  fexec="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist" 2>/dev/null || true)"
+  if [[ -z "$fid" ]]; then
+    echo "error: $label missing CFBundleIdentifier" >&2
+    exit 1
+  fi
+  if [[ -n "$fexec" ]]; then
+    local bin="$fw/$fexec"
+    if [[ -f "$bin" || -L "$bin" ]]; then
+      remove_signature "$bin" "$label/$fexec"
+      /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$fid" --timestamp "$bin"
+    fi
+  fi
+  remove_signature "$fw" "$label"
+  /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$fid" \
+    --timestamp --generate-entitlement-der "$fw" \
+    || /usr/bin/codesign --force --sign "$IDENTITY" --identifier="$fid" --timestamp "$fw"
+  /usr/bin/codesign --verify --verbose=4 "$fw"
+  assert_distribution_seal "$fw" "$label"
+  got="$(codesign_identifier "$fw")"
+  if [[ "$got" != "$fid" ]]; then
+    echo "error: $label Identifier='$got' (want $fid) — ASC 90034 risk" >&2
+    exit 1
+  fi
+  echo "Embedded framework sealed: $label ($fid)"
+}
+
+if [[ -d "$APP/Frameworks" ]]; then
+  shopt -s nullglob
+  for fw in "$APP"/Frameworks/*.framework; do
+    [[ -d "$fw" ]] || continue
+    if [[ "$(basename "$fw")" == "Libbox.framework" ]]; then
+      echo "Skip Libbox.framework (already Distribution-sealed)"
+      continue
+    fi
+    echo "Re-signing embedded framework $(basename "$fw") (ASC 90034)"
+    resign_embedded_framework "$fw"
+  done
+  shopt -u nullglob
+fi
 
 resign_bundle() {
   local bundle="$1"

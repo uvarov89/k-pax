@@ -17,7 +17,7 @@ workflows:
         LIBBOX_SINGBOX_TAG: v1.13.21
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: space.kpax.app,space.kpax.app.extension
+        bundle_identifier: space.kpax.app
     scripts:
       - name: Get Flutter packages
         script: |
@@ -81,7 +81,7 @@ workflows:
         LIBBOX_SINGBOX_TAG: v1.13.21
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: online.xplm.app,online.xplm.app.extension
+        bundle_identifier: online.xplm.app
     scripts:
       - name: Get Flutter packages
         script: |

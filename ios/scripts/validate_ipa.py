@@ -378,6 +378,12 @@ def validate_archive(ipa, brand, signing=True):
                 )
                 if lib_bin.is_file():
                     _hard_codesign_verify(lib_bin)
+            # Framework signatures are nested and must match the distribution
+            # identity after re-signing Runner (see ASC 90034).
+            frameworks_dir = app / "Frameworks"
+            if frameworks_dir.is_dir():
+                for fw in sorted(frameworks_dir.glob("*.framework")):
+                    _hard_codesign_verify(fw)
             # After post-IPA resign, host/appex must verify — soft-warn hid seal breaks.
             for path in (app, extension):
                 _hard_codesign_verify(path)

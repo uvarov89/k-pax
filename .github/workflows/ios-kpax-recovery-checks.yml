@@ -26,6 +26,44 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q ios/scripts
           python3 -m unittest discover -s ios/scripts -p 'test_*.py' -v
+      - name: Parse full Codemagic YAML and verify both workflows
+        run: |
+          set -euo pipefail
+          ruby -ryaml <<'RUBY'
+          config = YAML.safe_load(File.read('codemagic.yaml'), aliases: true)
+          abort 'Codemagic config must contain ONLY the workflows root mapping' unless config.is_a?(Hash) && config.keys == ['workflows']
+          all = config.fetch('workflows')
+          abort 'workflows must be a mapping' unless all.is_a?(Hash)
+          required = ['ios-testflight', 'ios-testflight-xplm']
+          abort "Unexpected workflows: #{all.keys.inspect}" unless all.keys.sort == required.sort
+          expected = {
+            'ios-testflight' => {
+              'name' => 'iOS TestFlight (K-Pax)',
+              'BRAND' => 'kpax',
+              'BUNDLE_ID' => 'space.kpax.app',
+              'BUNDLE_ID_EXT' => 'space.kpax.app.extension',
+              'APP_GROUP' => 'group.space.kpax.app',
+            },
+            'ios-testflight-xplm' => {
+              'name' => 'iOS TestFlight (X-Plm)',
+              'BRAND' => 'xplm',
+              'BUNDLE_ID' => 'online.xplm.app',
+              'BUNDLE_ID_EXT' => 'online.xplm.app.extension',
+              'APP_GROUP' => 'group.online.xplm.app',
+            },
+          }
+          expected.each do |id, settings|
+            workflow = all.fetch(id)
+            abort "Missing scripts array for #{id}" unless workflow['scripts'].is_a?(Array) && workflow['scripts'].size > 3
+            abort "Mismatched name for #{id}" unless workflow['name'] == settings.fetch('name')
+            vars = workflow.fetch('environment').fetch('vars')
+            settings.reject { |k,_| k == 'name' }.each do |key,value|
+              abort "#{id} #{key} is #{vars[key].inspect}, expected #{value.inspect}" unless vars[key] == value
+            end
+            abort "Missing Codemagic App Store Connect integration for #{id}" unless workflow.fetch('integrations').fetch('app_store_connect') == 'kpax'
+          end
+          puts "Parsed YAML: #{all.keys.join(', ')}; both brand contracts verified."
+          RUBY
       - name: Verify K-Pax iOS brand, extension and isolated Codemagic workflow
         run: |
           set -euo pipefail

@@ -64,30 +64,9 @@ patch_plist() {
   $pb -c "Add :CFBundleSupportedPlatforms:0 string $platform" "$plist"
 }
 
-# Nested Resources/Info.plist must be a resource bundle (BNDL), not a second FMWK.
-# Apple: "Unexpected CFBundleExecutable Key" (ASC 90535) when Resources declares
-# an executable that is not inside that nested bundle.
-patch_resources_plist() {
-  local plist="$1"
-  local platform="$2"
-  local pb=/usr/libexec/PlistBuddy
-  /usr/bin/plutil -create xml1 "$plist"
-  local marketing
-  marketing="$(_libbox_marketing_version)"
-  $pb -c "Add :CFBundleInfoDictionaryVersion string 6.0" "$plist"
-  $pb -c "Add :CFBundlePackageType string BNDL" "$plist"
-  # Must match framework CFBundleIdentifier — ASC 90334 rejects a nested
-  # .resources id when codesigning Libbox.framework (keep BNDL, no executable).
-  $pb -c "Add :CFBundleIdentifier string $LIBBOX_BUNDLE_ID" "$plist"
-  $pb -c "Add :CFBundleName string Libbox" "$plist"
-  $pb -c "Add :CFBundleVersion string 1" "$plist"
-  $pb -c "Add :CFBundleShortVersionString string $marketing" "$plist"
-  $pb -c "Add :MinimumOSVersion string 15.0" "$plist"
-  $pb -c "Add :CFBundleSupportedPlatforms array" "$plist"
-  $pb -c "Add :CFBundleSupportedPlatforms:0 string $platform" "$plist"
-  # Explicitly ensure no leftover executable key if plutil reused a file.
-  $pb -c "Delete :CFBundleExecutable" "$plist" >/dev/null 2>&1 || true
-}
+# An iOS framework must have a single canonical root Info.plist.
+# Do NOT retain the gomobile macOS-style Resources/Info.plist: it causes
+# codesign slot -1 to seal the wrong plist and breaks iPhone installation.
 
 # Cronet (naive) pulls UIKit / telephony / UTType / LocalAuthentication / …
 _libbox_link_libs() {
@@ -210,9 +189,8 @@ normalize_one() {
   fi
 
   patch_plist "$framework/Info.plist" "$platform"
-  mkdir -p "$framework/Resources"
-  # Fresh BNDL plist — never clone the FMWK root plist (ASC 90535).
-  patch_resources_plist "$framework/Resources/Info.plist" "$platform"
+  # Keep any actual framework resources, but remove a competing plist.
+  rm -f "$framework/Resources/Info.plist"
 
   # Keep short-name Mach-O for Xcode link; post-IPA resign renames after strip.
   local binary="$framework/$LIBBOX_EXEC_NAME"

@@ -1,0 +1,106 @@
+name: iOS framework codesign laboratory (no Apple credentials)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios/kpax-recovery]
+    paths:
+      - .github/workflows/ios-libbox-codesign-laboratory.yml
+
+permissions:
+  contents: read
+
+jobs:
+  macos-native-codesign-behavior:
+    runs-on: macos-15
+    timeout-minutes: 12
+    steps:
+      - name: Build a tiny ARM64 iOS dynamic framework test fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing-lab
+          cat > signing-lab/libbox.c <<'C'
+          int lab_dylib_check(void) { return 42; }
+          C
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 \
+            -dynamiclib signing-lab/libbox.c \
+            -Wl,-install_name,@rpath/Libbox.framework/Libbox \
+            -o signing-lab/Libbox
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          p=Path("signing-lab/Info.plist")
+          p.write_bytes(plistlib.dumps({
+              "CFBundleIdentifier":"io.nekohasekai.libbox",
+              "CFBundleExecutable":"Libbox",
+              "CFBundlePackageType":"FMWK",
+              "CFBundleInfoDictionaryVersion":"6.0",
+              "CFBundleName":"Libbox",
+              "CFBundleVersion":"1",
+              "CFBundleShortVersionString":"1.0",
+              "MinimumOSVersion":"15.0",
+              "CFBundleSupportedPlatforms":["iPhoneOS"]
+          }))
+          PY
+          for scenario in bundle_only binary_then_bundle bundle_with_resources_plist; do
+            mkdir -p "signing-lab/$scenario/Libbox.framework"/{Headers,Modules,Resources}
+            cp signing-lab/Libbox "signing-lab/$scenario/Libbox.framework/Libbox"
+            cp signing-lab/Info.plist "signing-lab/$scenario/Libbox.framework/Info.plist"
+            echo 'module Libbox { header "Libbox.h" export * }' > "signing-lab/$scenario/Libbox.framework/Modules/module.modulemap"
+            echo 'int lab_dylib_check(void);' > "signing-lab/$scenario/Libbox.framework/Headers/Libbox.h"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          p=Path("signing-lab/bundle_with_resources_plist/Libbox.framework/Resources/Info.plist")
+          p.write_bytes(plistlib.dumps({"CFBundleIdentifier":"io.nekohasekai.libbox.Resources","CFBundlePackageType":"BNDL","CFBundleVersion":"1"}))
+          PY
+      - name: Sign each framework in three ways without any distribution credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scenario in bundle_only binary_then_bundle bundle_with_resources_plist; do
+            fw="signing-lab/$scenario/Libbox.framework"
+            if [ "$scenario" = "binary_then_bundle" ]; then
+              codesign --force --sign - --identifier io.nekohasekai.libbox "$fw/Libbox"
+            fi
+            codesign --force --sign - --identifier io.nekohasekai.libbox "$fw"
+            codesign --verify --verbose=4 "$fw"
+            echo "=== $scenario codesign metadata ==="
+            codesign -d --verbose=6 "$fw" 2>&1 | grep -E 'CodeDirectory|Info.plist|Identifier=|^-1=|^-3=' || true
+          done
+      - name: Compare actual signed special slot -1 with root Info.plist hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,struct
+          for scenario in ("bundle_only", "binary_then_bundle", "bundle_with_resources_plist"):
+              fw=Path("signing-lab")/scenario/"Libbox.framework"
+              b=(fw/"Libbox").read_bytes()
+              assert b[:4]==b"\xcf\xfa\xed\xfe"
+              ncmds=struct.unpack_from("<I",b,16)[0]
+              off=32
+              signature=None
+              for _ in range(ncmds):
+                  cmd,sz=struct.unpack_from("<II",b,off)
+                  if cmd==0x1D: signature=struct.unpack_from("<II",b,off+8)
+                  off+=sz
+              assert signature is not None
+              start,length=signature
+              signed=b[start:start+length]
+              magic,total,nslots=struct.unpack_from(">III",signed,0)
+              assert magic==0xFADE0CC0
+              for i in range(nslots):
+                  kind,pos=struct.unpack_from(">II",signed,12+8*i)
+                  if kind:continue
+                  cd=signed[pos:pos+struct.unpack_from(">I",signed,pos+4)[0]]
+                  hOff=struct.unpack_from(">I",cd,16)[0]
+                  size=cd[36]
+                  nSpecial=struct.unpack_from(">I",cd,24)[0]
+                  assert nSpecial>=1
+                  slot=cd[hOff-size:hOff].hex()
+                  expected=hashlib.sha256((fw/"Info.plist").read_bytes()).hexdigest()
+                  print(f"{scenario}: CodeDirectory -1={slot}, root Info.plist={expected}, match={slot==expected}, zero={slot=='00'*size}")
+          PY

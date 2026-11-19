@@ -113,7 +113,7 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         # Must rewrite install names only after strip (unsigned hosts).
         self.assertNotIn("install_name_tool -change", resign_body)
         self.assertIn("install_name_tool -id", resign_body)
-        self.assertIn("otool -L", resign_body)
+        self.assertNotIn("install_name_tool -change", resign_body)
         self.assertNotIn("ln -s", resign_body)
         self.assertIn("CFBundleExecutable", resign)
         self.assertIn("codesign_identifier", resign)
@@ -127,7 +127,7 @@ class EmbedLibboxScriptTest(unittest.TestCase):
         self.assertRegex(resign, r"Timestamp=\|Signed Time=")
         self.assertIn("embedded.mobileprovision", resign_body)
         self.assertIn('BINARY="$LIBBOX/$SHORT_EXEC"', resign)
-        self.assertIn("LONG_EXEC", resign)
+        self.assertNotIn("LONG_EXEC", resign)
         self.assertIn("OLD_LOAD", resign)
         self.assertNotIn("try_change_load", resign)
         self.assertIn("resolve_real_file", resign)

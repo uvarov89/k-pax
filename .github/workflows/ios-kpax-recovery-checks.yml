@@ -1,0 +1,56 @@
+name: K-Pax iOS recovery — free offline checks
+on:
+  push:
+    branches:
+      - ios/kpax-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-packaging-contract:
+    name: Shell syntax / IPA structure / K-Pax brand contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate iOS packaging shell syntax
+        run: |
+          set -euo pipefail
+          bash -n ios/scripts/build_libbox.sh
+          bash -n ios/scripts/normalize_libbox_framework.sh
+          bash -n ios/scripts/resign_libbox_in_ipa.sh
+      - name: Validate Python IPA tools and regress Apple ITMS-90171
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q ios/scripts
+          python3 -m unittest discover -s ios/scripts -p 'test_*.py' -v
+      - name: Verify K-Pax iOS brand, extension and isolated Codemagic workflow
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          y = Path("codemagic.yaml").read_text()
+          first, separate = y.split("  ios-testflight-xplm:", 1)
+          assert "name: iOS TestFlight (K-Pax)" in first
+          assert "CM_BRANCH:-" in first and "ios/kpax-recovery" in first
+          for setting in [
+              "BRAND: kpax",
+              "BUNDLE_ID: space.kpax.app",
+              "BUNDLE_ID_EXT: space.kpax.app.extension",
+              "APP_GROUP: group.space.kpax.app",
+              "--dart-define=BRAND=kpax",
+              "python3 ios/scripts/validate_ipa.py --brand kpax",
+              "submit_to_testflight: false",
+          ]:
+              assert setting in first, f"Missing K-Pax iOS contract: {setting}"
+          assert "ios/xplm-recovery" in separate
+          assert "BRAND: xplm" in separate
+          resign = Path("ios/scripts/resign_libbox_in_ipa.sh").read_text()
+          validator = Path("ios/scripts/validate_ipa.py").read_text()
+          assert "CFBundleExecutable must be Libbox" in resign
+          assert "assert_single_libbox_executable(fw)" in validator
+          assert "unexpected root-level Mach-O" in validator
+          print("K-Pax branch and iOS IPA structure contract checks passed")
+          PY

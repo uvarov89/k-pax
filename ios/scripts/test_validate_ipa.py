@@ -8,6 +8,7 @@ from validate_ipa import (
     _MH_MAGIC_64,
     _macho_mentions_arm64,
     assert_macho_arm64,
+    assert_single_libbox_executable,
     validate_bundle_info,
 )
 
@@ -61,5 +62,40 @@ class ArchiveContractTest(unittest.TestCase):
     def test_minimum_os_mismatch_rejected(self):
         self.ext["MinimumOSVersion"] = "16.0"
         with self.assertRaises(AssertionError): validate_bundle_info(self.app, self.ext, "xplm")
+
+
+class FrameworkStructureRegressionTest(unittest.TestCase):
+    """Reproduces the ITMS-90171 duplicate Mach-O in K-Pax 1.0.68."""
+
+    def test_single_canonical_executable_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = Path(tmp) / "Libbox.framework"
+            fw.mkdir()
+            (fw / "Libbox").write_bytes(
+                struct.pack("<II", _MH_MAGIC_64, _CPU_TYPE_ARM64)
+            )
+            assert_single_libbox_executable(fw)
+
+    def test_extra_executable_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = Path(tmp) / "Libbox.framework"
+            fw.mkdir()
+            binary = fw / "Libbox"
+            binary.write_bytes(struct.pack("<II", _MH_MAGIC_64, _CPU_TYPE_ARM64))
+            (fw / "io.nekohasekai.libbox").write_bytes(binary.read_bytes())
+            with self.assertRaisesRegex(AssertionError, "ITMS-90171"):
+                assert_single_libbox_executable(fw)
+
+    def test_symlink_executable_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fw = Path(tmp) / "Libbox.framework"
+            fw.mkdir()
+            (fw / "io.nekohasekai.libbox").write_bytes(
+                struct.pack("<II", _MH_MAGIC_64, _CPU_TYPE_ARM64)
+            )
+            (fw / "Libbox").symlink_to("io.nekohasekai.libbox")
+            with self.assertRaises(AssertionError):
+                assert_single_libbox_executable(fw)
+
 
 if __name__ == "__main__": unittest.main()

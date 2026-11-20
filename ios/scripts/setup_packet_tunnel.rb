@@ -42,8 +42,12 @@ abort 'Runner target not found' unless runner
 tunnel = project.targets.find { |t| t.name == 'PacketTunnel' }
 if tunnel.nil?
   tunnel = project.new_target(:app_extension, 'PacketTunnel', :ios, '15.0')
-  tunnel.product_reference.name = 'PacketTunnel.appex'
 end
+# Empty PRODUCT_NAME yields UninstalledProducts/iphoneos/.appex and
+# "Multiple commands produce" during archive.
+product_ref = tunnel.product_reference
+product_ref.name = 'PacketTunnel.appex'
+product_ref.path = 'PacketTunnel.appex' if product_ref.respond_to?(:path=)
 
 # Group for sources
 group = project.main_group.find_subpath('PacketTunnel', true)
@@ -66,14 +70,39 @@ entitlements = 'PacketTunnel.entitlements'
   end
 end
 
-# Embed extension in Runner
+# Info.plist / entitlements must not be in Copy Bundle Resources (duplicate outputs).
+if tunnel.resources_build_phase
+  tunnel.resources_build_phase.files.to_a.each do |bf|
+    ref = bf.file_ref
+    next unless ref
+    path = ref.path.to_s
+    if path.end_with?('Info.plist') || path.end_with?('.entitlements')
+      tunnel.resources_build_phase.remove_build_file(bf)
+    end
+  end
+end
+
+# Embed extension in Runner (once).
 embed = runner.copy_files_build_phases.find { |p| p.name == 'Embed Foundation Extensions' }
 unless embed
   embed = runner.new_copy_files_build_phase('Embed Foundation Extensions')
   embed.symbol_dst_subfolder_spec = :plug_ins # 13
 end
-product_ref = tunnel.product_reference
-unless embed.files_references.include?(product_ref)
+kept_product = false
+embed.files.to_a.each do |bf|
+  ref = bf.file_ref
+  next unless ref
+  is_appex = ref == product_ref ||
+             ref.path.to_s.end_with?('.appex') ||
+             ref.name.to_s.end_with?('.appex')
+  next unless is_appex
+  if ref == product_ref && !kept_product
+    kept_product = true
+    next
+  end
+  embed.remove_build_file(bf)
+end
+unless kept_product
   build_file = embed.add_file_reference(product_ref)
   build_file.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
 end
@@ -96,8 +125,11 @@ abort 'Flutter Debug/Release xcconfig references are required' unless debug_xcco
   # so PacketTunnel Info.plist $(FLUTTER_BUILD_*) resolves at archive time.
   xcconfig = cfg_name == 'Debug' ? debug_xcconfig : release_xcconfig
   tcfg.base_configuration_reference = xcconfig if xcconfig
+  tcfg.build_settings['PRODUCT_NAME'] = 'PacketTunnel'
   tcfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = BUNDLE_EXT
+  tcfg.build_settings['WRAPPER_EXTENSION'] = 'appex'
   tcfg.build_settings['INFOPLIST_FILE'] = 'PacketTunnel/Info.plist'
+  tcfg.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
   tcfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'PacketTunnel/PacketTunnel.entitlements'
   tcfg.build_settings['LD_RUNPATH_SEARCH_PATHS'] = '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks'
   tcfg.build_settings['SKIP_INSTALL'] = 'YES'

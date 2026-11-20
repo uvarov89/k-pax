@@ -98,16 +98,16 @@ void main() {
       port: 443,
       host: 'de.example',
       errorCode: 'hang',
-      error: 'connecting >45s',
+      error: 'connecting >70s',
       attempt: 3,
     );
     expect(event['event'], 'connect_hang');
     expect(event['error_code'], 'hang');
-    expect(event['error'], 'connecting >45s');
+    expect(event['error'], 'connecting >70s');
     expect(event['attempt'], 3);
     expect(event['host'], 'de.example');
     expect(event['port'], 443);
-    expect(kConnectHangTimeout, const Duration(seconds: 45));
+    expect(kConnectHangTimeout, const Duration(seconds: 70));
   });
 
   test('logConnectHang enqueues once and marks urgent flush path', () async {
@@ -120,14 +120,14 @@ void main() {
     );
     await diag.start(enabled: true);
     final before = diag.queuedCount;
-    diag.logConnectHang(attempt: 2, error: 'connecting >45s');
+    diag.logConnectHang(attempt: 2, error: 'connecting >70s');
     expect(diag.queuedCount, greaterThan(before));
     final hang = diag.debugQueue.lastWhere(
       (e) => e['event'] == 'connect_hang',
     );
     expect(hang['error_code'], 'hang');
     expect(hang['attempt'], 2);
-    expect(hang['error'], 'connecting >45s');
+    expect(hang['error'], 'connecting >70s');
     // tokenProvider returns null → flush no-ops but urgent path was taken.
     await diag.flush(urgent: true);
     diag.dispose();

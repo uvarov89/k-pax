@@ -21,8 +21,9 @@ class SubscriptionClient {
           .transform(utf8.decoder)
           .join()
           .timeout(const Duration(seconds: 20));
-      if (response.statusCode == 403 ||
-          body.contains('Подписка недействительна')) {
+      // Bare 403 (CDN/WAF) must not wipe a working profile — only the panel's
+      // explicit invalid-subscription body means SubscriptionRejected.
+      if (body.contains('Подписка недействительна')) {
         throw const SubscriptionRejected();
       }
       if (response.statusCode != 200) {

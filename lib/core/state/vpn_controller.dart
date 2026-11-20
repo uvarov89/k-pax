@@ -555,7 +555,8 @@ class VpnController extends ChangeNotifier {
   }
 
   /// One-shot: if still [VpnConnectionState.connecting] after
-  /// [kConnectHangTimeout], emit `connect_hang` (error_code=hang) and flush.
+  /// [kConnectHangTimeout], emit `connect_hang`, abort native start, and surface
+  /// an error so the UI cannot sit on Connecting forever.
   void _armConnectHangWatchdog({TunnelNode? node}) {
     if (node != null) _hangWatchNode = node;
     _connectHangTimer?.cancel();
@@ -571,7 +572,39 @@ class VpnController extends ChangeNotifier {
         node: connectedNode ?? _hangWatchNode,
         attempt: _diagAttempt <= 0 ? null : _diagAttempt,
       );
+      unawaited(_failHungConnect());
     });
+  }
+
+  Future<void> _failHungConnect() async {
+    _wantConnected = false;
+    _reconnectBudget = 0;
+    _reconnectInFlight = false;
+    _connectEpoch++;
+    connectionState = VpnConnectionState.disconnecting;
+    notifyListeners();
+    try {
+      await _service.disconnect().timeout(const Duration(seconds: 5));
+      await WindowsFirewall.clear();
+    } catch (_) {
+      try {
+        await _service.disconnect().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    } finally {
+      if (_disposed) return;
+      _sessionTimer?.cancel();
+      _sessionTimer = null;
+      _connectedAt = null;
+      _hangWatchNode = null;
+      sessionDuration = Duration.zero;
+      uploadBytesPerSec = 0;
+      downloadBytesPerSec = 0;
+      connectedNode = null;
+      connectionState = VpnConnectionState.error;
+      errorMessage = strings.connectFailed;
+      _cancelConnectHangWatchdog();
+      notifyListeners();
+    }
   }
 
   void _cancelConnectHangWatchdog() {
@@ -1784,8 +1817,9 @@ class VpnController extends ChangeNotifier {
   String _endpointKey(TunnelNode node) =>
       '${node.countryId}|${node.kind.name}|${node.host}|${node.port}';
 
-  /// Same-country fallbacks: self-steal / other ports, then other hosts (RU front),
-  /// then next protocol kinds. [tried] prevents 443↔2053 loops.
+  /// Same-country fallbacks: RU fronts before same-host self-steal, then other
+  /// kinds. [tried] prevents 443↔2053 loops. Fronts-first matches sticky connect
+  /// and TSPU paths where bare EU :443 / :2053 die while :2443–2445 still work.
   TunnelNode? _spareFor(TunnelNode node, [Set<String>? tried]) {
     final seen = tried ?? {_endpointKey(node)};
     final nodes = profile?.nodes ?? const <TunnelNode>[];
@@ -1793,7 +1827,7 @@ class VpnController extends ChangeNotifier {
         .where((item) => item.countryId == node.countryId)
         .toList();
 
-    // Reality: prefer other endpoints on the same host, then other hosts (front).
+    // Reality: other hosts (RU fronts) before same-host self-steal (:2053).
     if (node.kind == TunnelKind.reality) {
       final sameHost = <TunnelNode>[];
       final otherHost = <TunnelNode>[];
@@ -1812,7 +1846,10 @@ class VpnController extends ChangeNotifier {
         final idx = _stickyIndex(otherHost.length);
         otherHost.insert(0, otherHost.removeAt(idx));
       }
-      for (final candidate in [..._preferPrimaryEndpoints(sameHost), ...otherHost]) {
+      for (final candidate in [
+        ...otherHost,
+        ..._preferPrimaryEndpoints(sameHost),
+      ]) {
         return candidate;
       }
     } else {

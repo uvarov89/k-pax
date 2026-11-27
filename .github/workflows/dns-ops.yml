@@ -1,0 +1,116 @@
+# Limited Cloudflare DNS ops for allowlisted hostnames only.
+# Token must be scoped Zone.DNS Edit on our zones — never Global API Key.
+name: DNS ops (Cloudflare)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DNS to proceed'
+        required: true
+        type: string
+      action:
+        description: 'list | upsert-a'
+        required: true
+        default: 'list'
+        type: choice
+        options: [list, upsert-a]
+      name:
+        description: 'Record name (FQDN), e.g. pl.k-pax.space'
+        required: false
+        default: 'pl.k-pax.space'
+        type: string
+      content:
+        description: 'A record IPv4 (upsert-a only)'
+        required: false
+        default: ''
+        type: string
+      proxied:
+        description: 'Cloudflare proxy (usually false / DNS-only for Reality)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-dns-ops
+  cancel-in-progress: false
+
+jobs:
+  dns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "DNS" ]] || {
+            echo "::error::Type DNS to confirm"
+            exit 1
+          }
+
+      - name: Allowlist + mutate
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ZONE_KPAX: ${{ secrets.CLOUDFLARE_ZONE_ID_KPAX }}
+          ACTION: ${{ inputs.action }}
+          NAME: ${{ inputs.name }}
+          CONTENT: ${{ inputs.content }}
+          PROXIED: ${{ inputs.proxied }}
+        run: |
+          set -euo pipefail
+          [[ -n "${CF_TOKEN:-}" && -n "${CF_ZONE_KPAX:-}" ]] || {
+            echo "::error::Missing CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID_KPAX"
+            exit 1
+          }
+          # Strict allowlist — expand deliberately
+          case "$NAME" in
+            pl.k-pax.space|de.k-pax.space|fi.k-pax.space|cdn.k-pax.space|k-pax.space|www.k-pax.space) ;;
+            *) echo "::error::name not allowlisted: $NAME"; exit 1 ;;
+          esac
+          auth=(-H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json")
+          if [[ "$ACTION" == "list" ]]; then
+            curl -fsS "${auth[@]}" \
+              "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_KPAX}/dns_records?name=${NAME}" \
+              | tee dns-result.json
+            grep -q '"success":true' dns-result.json
+            exit 0
+          fi
+          [[ -n "$CONTENT" ]] || { echo "::error::content (IPv4) required for upsert-a"; exit 1; }
+          # Find existing
+          id=$(curl -fsS "${auth[@]}" \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_KPAX}/dns_records?type=A&name=${NAME}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("result") or [{}])[0].get("id",""))')
+          body=$(python3 - <<PY
+          import json,os
+          print(json.dumps({
+            "type":"A",
+            "name":os.environ["NAME"],
+            "content":os.environ["CONTENT"],
+            "ttl":300,
+            "proxied": os.environ.get("PROXIED","false").lower()=="true",
+          }))
+          PY
+          )
+          if [[ -n "$id" ]]; then
+            curl -fsS -X PUT "${auth[@]}" \
+              --data "$body" \
+              "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_KPAX}/dns_records/${id}" \
+              | tee dns-result.json
+          else
+            curl -fsS -X POST "${auth[@]}" \
+              --data "$body" \
+              "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_KPAX}/dns_records" \
+              | tee dns-result.json
+          fi
+          grep -q '"success":true' dns-result.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dns-ops-${{ github.run_id }}
+          path: dns-result.json
+          retention-days: 14
+          if-no-files-found: ignore

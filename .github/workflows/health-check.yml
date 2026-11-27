@@ -1,4 +1,5 @@
 # Read-only VPN path / service health checks.
+# Scheduled every 10 minutes; fails the job (not false Success) when probes FAIL.
 name: Health check
 
 on:
@@ -9,9 +10,13 @@ on:
         required: false
         default: false
         type: boolean
+  schedule:
+    # Every 10 minutes UTC
+    - cron: '*/10 * * * *'
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: kpax-health
@@ -31,19 +36,21 @@ jobs:
         run: bash tools/ci/ssh_setup.sh
 
       - name: Run health probes
+        id: probes
         env:
           PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
-          INCLUDE_BG: ${{ inputs.include_bg }}
+          INCLUDE_BG: ${{ inputs.include_bg || false }}
         run: |
           set -euo pipefail
           mkdir -p out
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
 
           run_one() {
             local id="$1" host="$2" role="$3"
             echo "== $id role=$role =="
-            if KPAX_CI_ROLE="$role" "${SSH[@]}" "gha@${host}" "KPAX_CI_ROLE=$role bash -s" \
-              < tools/ci/remote_health_check.sh > "out/${id}-health.txt" 2>&1; then
+            if "${SSH[@]}" "gha@${host}" "sudo $CI health $role" \
+              > "out/${id}-health.txt" 2>&1; then
               echo "ok $id"
             else
               echo "FAIL $id" | tee -a "out/${id}-health.txt"
@@ -56,11 +63,10 @@ jobs:
           run_one pl 2.26.225.213 exit
           run_one ru 195.133.45.167 front
           run_one ru2 152.228.112.142 front
-          if [[ "$INCLUDE_BG" == "true" ]]; then
+          if [[ "${INCLUDE_BG}" == "true" ]]; then
             run_one bg 79.124.7.111 exit
           fi
 
-          # Public subscription / site smoke from runner (no tokens)
           {
             echo "=== public smoke ==="
             for url in \
@@ -70,16 +76,44 @@ jobs:
             do
               code=$(curl -s -o /dev/null -w '%{http_code}' -m 12 -L "$url" || echo err)
               echo "GET $url -> $code"
+              case "$code" in
+                200|204|301|302) ;;
+                *) echo "FAIL public $url code=$code" ;;
+              esac
             done
           } | tee out/public-smoke.txt
 
           {
             echo "# health summary $(date -u +%Y-%m-%dT%H:%MZ)"
-            grep -E 'FAIL|ok |tcp |http ' out/* 2>/dev/null || true
+            grep -E 'FAIL|ok |tcp |http |STATUS=' out/* 2>/dev/null || true
           } > out/SUMMARY.txt
 
+          bash tools/ci/lib/fail_if_marked.sh out
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: health-${{ github.run_id }}
           path: out/
           retention-days: 14
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.KPAX_ALERT_TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.KPAX_ALERT_TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          msg="K-Pax Health check FAILED run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ -n "${TG_TOKEN:-}" && -n "${TG_CHAT:-}" ]]; then
+            curl -fsS -m 15 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d chat_id="$TG_CHAT" -d text="$msg" >/dev/null || true
+          fi
+          # Open / update incident issue (dedupe by title)
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title Health check FAILED" --json number --jq '.[0].number' || true)
+          if [[ -n "$existing" && "$existing" != "null" ]]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$msg" || true
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Health check FAILED" --body "$msg" || true
+          fi

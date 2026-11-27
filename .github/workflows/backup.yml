@@ -52,7 +52,7 @@ jobs:
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
 
-          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'bash -s' < tools/ci/remote_backup.sh | tail -1)
+          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci backup' | awk '/\/tmp\/kpax-ci-backup-.*\.tar\.gz/{print; exit}')
           [[ "$remote_tar" == /tmp/kpax-ci-backup-*.tar.gz ]]
           "${SCP[@]}" "gha@${PANEL}:${remote_tar}" "out/raw.tar.gz"
           "${SSH[@]}" "gha@${PANEL}" "rm -f '${remote_tar}'"

@@ -1,0 +1,121 @@
+# Controlled node operations via fixed kpax-ci wrappers.
+# Dangerous actions require production Environment approval + confirm string.
+name: Node ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type NODEOPS to proceed'
+        required: true
+        type: string
+      action:
+        description: 'diag | health | validate-singbox | sync-users | restart | list-backups'
+        required: true
+        default: 'diag'
+        type: choice
+        options:
+          - diag
+          - health
+          - validate-singbox
+          - sync-users
+          - restart
+          - list-backups
+      targets:
+        description: 'Comma hosts ids: panel,de,fi,pl,ru,ru2'
+        required: true
+        default: 'panel,pl'
+        type: string
+      service:
+        description: 'For restart only: k-pax | kpax-front-relay | sing-box | caddy'
+        required: false
+        default: 'sing-box'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-node-ops
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "NODEOPS" ]] || {
+            echo "::error::Type NODEOPS to confirm"
+            exit 1
+          }
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Run action
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          ACTION: ${{ inputs.action }}
+          TARGETS: ${{ inputs.targets }}
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
+          declare -A HOSTS=(
+            [panel]="$PANEL"
+            [de]=31.77.116.51
+            [fi]=144.31.169.6
+            [pl]=2.26.225.213
+            [ru]=195.133.45.167
+            [ru2]=152.228.112.142
+          )
+          IFS=',' read -ra items <<< "$TARGETS"
+          for id in "${items[@]}"; do
+            id="$(echo "$id" | xargs)"
+            host="${HOSTS[$id]:-}"
+            [[ -n "$host" ]] || { echo "FAIL unknown $id" | tee "out/${id}.txt"; continue; }
+            case "$ACTION" in
+              diag) remote="sudo $CI diag" ;;
+              health)
+                role=exit
+                [[ "$id" == "panel" ]] && role=panel
+                [[ "$id" == "ru" || "$id" == "ru2" ]] && role=front
+                remote="sudo $CI health $role"
+                ;;
+              validate-singbox) remote="sudo $CI validate-singbox" ;;
+              sync-users)
+                [[ "$id" == "panel" ]] || { echo "skip sync on $id"; continue; }
+                remote="sudo $CI sync-users"
+                ;;
+              restart) remote="sudo $CI restart $SERVICE" ;;
+              list-backups)
+                [[ "$id" == "panel" ]] || continue
+                remote="sudo $CI list-backups"
+                ;;
+              *) echo "FAIL bad action"; exit 1 ;;
+            esac
+            echo "== $id $ACTION =="
+            if "${SSH[@]}" "gha@${host}" "$remote" > "out/${id}-${ACTION}.txt" 2>&1; then
+              echo "ok $id"
+            else
+              echo "FAIL $id" | tee -a "out/${id}-${ACTION}.txt"
+            fi
+          done
+          bash tools/ci/lib/fail_if_marked.sh out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: node-ops-${{ github.run_id }}
+          path: out/
+          retention-days: 14

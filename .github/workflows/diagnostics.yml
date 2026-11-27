@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: 'Comma list: panel,de,fi,ru,ru2,bg,all'
+        description: 'Comma list: panel,de,fi,pl,ru,ru2,bg,all'
         required: true
         default: 'panel,de,fi,pl,ru,ru2'
         type: string
@@ -50,6 +50,7 @@ jobs:
           set -euo pipefail
           mkdir -p out
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
 
           declare -A HOSTS=(
             [panel]="$PANEL"
@@ -72,11 +73,11 @@ jobs:
             [[ -n "$id" ]] || continue
             host="${HOSTS[$id]:-}"
             if [[ -z "$host" ]]; then
-              echo "unknown target $id" | tee "out/${id}.txt"
+              echo "FAIL unknown target $id" | tee "out/${id}.txt"
               continue
             fi
             echo "== $id ($host) =="
-            if "${SSH[@]}" "gha@${host}" 'bash -s' < tools/ci/remote_diagnostics.sh \
+            if "${SSH[@]}" "gha@${host}" "sudo $CI diag" \
               > "out/${id}.txt" 2>&1; then
               echo "ok $id"
             else
@@ -88,8 +89,10 @@ jobs:
             echo "ref=$GITHUB_SHA"
             ls -la out/
           } > out/SUMMARY.txt
+          bash tools/ci/lib/fail_if_marked.sh out
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: diagnostics-${{ github.run_id }}
           path: out/

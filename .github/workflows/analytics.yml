@@ -32,9 +32,9 @@ jobs:
           mkdir -p out
           ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
             -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            "gha@${PANEL}" 'sudo python3 -' < tools/ci/remote_analytics.py \
+            "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci analytics' \
             | tee out/analytics.txt
-          grep -q '^DONE$' out/analytics.txt
+          grep -qE '^(DONE|STATUS=OK)$' out/analytics.txt
 
       - uses: actions/upload-artifact@v4
         with:

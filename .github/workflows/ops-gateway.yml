@@ -1,0 +1,166 @@
+# ChatGPT / GitHub connector entrypoint: Issues cannot call workflow_dispatch.
+# Authorized authors open/comment with /kpax <cmd>; this gateway dispatches
+# existing workflows. Dangerous ops still require Environment `production` approval.
+name: Ops gateway (Issues)
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: kpax-ops-gateway
+  cancel-in-progress: false
+
+jobs:
+  route:
+    if: github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Authorize + parse + dispatch
+        uses: actions/github-script@v7
+        env:
+          ALLOWLIST: ${{ secrets.KPAX_OPS_ALLOWLIST }}
+        with:
+          script: |
+            const core = require('@actions/core');
+            const allowRaw = (process.env.ALLOWLIST || '').trim();
+            const allow = allowRaw.split(/[,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+            const login = (context.payload.sender?.login || '').toLowerCase();
+            const issue = context.payload.issue;
+            const body = (context.payload.comment?.body || issue.body || '');
+            const text = String(body);
+
+            // Only react to /kpax commands
+            const m = text.match(/^\s*\/kpax\s+(\S+)(.*)$/im);
+            if (!m) {
+              core.info('no /kpax command — ignore');
+              return;
+            }
+
+            // AuthZ: allowlist OR repo admin/maintain
+            let ok = allow.includes(login);
+            if (!ok) {
+              try {
+                const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: context.payload.sender.login,
+                });
+                ok = ['admin', 'maintain'].includes(perm.permission);
+              } catch (e) {
+                ok = false;
+              }
+            }
+            if (!ok) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `❌ **Unauthorized** (\`${login}\`). Add login to secret \`KPAX_OPS_ALLOWLIST\` or use a repo admin account.`,
+              });
+              core.setFailed('unauthorized');
+              return;
+            }
+
+            const cmd = m[1].toLowerCase();
+            const rest = (m[2] || '').trim();
+            const ref = context.ref || 'main';
+
+            const safe = {
+              health: { workflow: 'health-check.yml', inputs: {} },
+              diag: { workflow: 'diagnostics.yml', inputs: { targets: rest || 'panel,de,fi,pl,ru,ru2' } },
+              diagnostics: { workflow: 'diagnostics.yml', inputs: { targets: rest || 'panel,de,fi,pl,ru,ru2' } },
+              analytics: { workflow: 'analytics.yml', inputs: {} },
+              e2e: { workflow: 'vpn-e2e.yml', inputs: {} },
+            };
+            const dangerous = {
+              backup: { workflow: 'backup.yml', inputs: { confirm: 'BACKUP' }, needsConfirm: 'CONFIRM: BACKUP' },
+              deploy: { workflow: 'deploy.yml', inputs: { confirm: 'DEPLOY', paths: 'panel.py', restart: 'false' }, needsConfirm: 'CONFIRM: DEPLOY' },
+              rollback: { workflow: 'rollback.yml', inputs: { confirm: 'ROLLBACK' }, needsConfirm: 'CONFIRM: ROLLBACK' },
+              'node-ops': { workflow: 'node-ops.yml', inputs: {}, needsConfirm: null },
+              dns: { workflow: 'dns-ops.yml', inputs: {}, needsConfirm: 'CONFIRM: DNS' },
+            };
+
+            let target = safe[cmd] || dangerous[cmd];
+            if (!target) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: [
+                  'Unknown `/kpax` command.',
+                  '',
+                  '**Read-only (no production approval):**',
+                  '- `/kpax health`',
+                  '- `/kpax diag panel,de,fi,pl,ru,ru2`',
+                  '- `/kpax analytics`',
+                  '- `/kpax e2e`',
+                  '',
+                  '**Dangerous (need `CONFIRM: …` in the same issue/comment + Environment approval):**',
+                  '- `/kpax backup` + `CONFIRM: BACKUP`',
+                  '- `/kpax deploy` + `CONFIRM: DEPLOY`',
+                  '- `/kpax rollback` + `CONFIRM: ROLLBACK`',
+                  '- `/kpax dns` + `CONFIRM: DNS`',
+                  '- `/kpax node-ops` (see node-ops workflow inputs in the run UI)',
+                ].join('\n'),
+              });
+              return;
+            }
+
+            if (target.needsConfirm && !text.includes(target.needsConfirm)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `⚠️ **${cmd}** is dangerous. Re-post the command and include exactly \`${target.needsConfirm}\` in the same message. Production Environment approval is still required.`,
+              });
+              return;
+            }
+
+            // Optional overrides for diag targets / deploy paths
+            if (cmd === 'diag' || cmd === 'diagnostics') {
+              target.inputs.targets = rest || 'panel,de,fi,pl,ru,ru2';
+            }
+            if (cmd === 'deploy') {
+              const pm = rest.match(/paths=([^\s]+)/i);
+              if (pm) target.inputs.paths = pm[1];
+              if (/restart=true/i.test(rest)) target.inputs.restart = 'true';
+            }
+
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: target.workflow,
+                ref: 'main',
+                inputs: target.inputs,
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `❌ Failed to dispatch \`${target.workflow}\`: \`${e.message}\``,
+              });
+              core.setFailed(e.message);
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                `✅ Dispatched **${target.workflow}** as \`${login}\`.`,
+                `Watch: https://github.com/${context.repo.owner}/${context.repo.repo}/actions`,
+                dangerous[cmd] ? '_Production Environment approval may be required before the job runs._' : '_Read-only run — download Artifacts when finished._',
+              ].filter(Boolean).join('\n'),
+            });

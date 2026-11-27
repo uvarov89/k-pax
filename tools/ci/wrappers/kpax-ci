@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Fixed root-owned CI entrypoint. Invoked only via sudoers for user `gha`.
+# Do not accept arbitrary shell/python from the network — only subcommands below.
+set -euo pipefail
+umask 077
+BASE="$(cd "$(dirname "$0")" && pwd)"
+SCRIPTS="$BASE/scripts"
+CMD="${1:-}"
+shift || true
+
+allow_service() {
+  case "$1" in
+    k-pax|kpax-front-relay|sing-box|caddy) return 0 ;;
+    *) echo "STATUS=FAIL refuse service=$1"; exit 2 ;;
+  esac
+}
+
+case "$CMD" in
+  diag)
+    exec bash "$SCRIPTS/diag.sh"
+    ;;
+  health)
+    export KPAX_CI_ROLE="${1:-unknown}"
+    exec bash "$SCRIPTS/health.sh"
+    ;;
+  e2e)
+    exec bash "$SCRIPTS/e2e_vpn.sh"
+    ;;
+  validate-singbox)
+    exec bash "$SCRIPTS/validate_singbox.sh"
+    ;;
+  sync-users)
+    exec bash "$SCRIPTS/sync_users.sh"
+    ;;
+  restart)
+    svc="${1:-}"
+    allow_service "$svc"
+    systemctl restart "$svc"
+    systemctl is-active "$svc"
+    echo "STATUS=OK restart=$svc"
+    ;;
+  backup)
+    exec bash "$SCRIPTS/backup.sh"
+    ;;
+  analytics)
+    exec python3 "$SCRIPTS/analytics.py"
+    ;;
+  list-backups)
+    ls -1dt /var/backups/k-pax-ci/pre-deploy-* 2>/dev/null | head -20 || true
+    echo "STATUS=OK"
+    ;;
+  *)
+    echo "STATUS=FAIL usage: kpax-ci {diag|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups}"
+    exit 2
+    ;;
+esac

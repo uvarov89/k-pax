@@ -1,0 +1,56 @@
+# End-to-end Reality SoftProbe via panel fixed wrapper (not TCP-only).
+# Requires /etc/k-pax/ci-e2e.env on panel (UUID/pbk/sid — never in git).
+name: VPN E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-vpn-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: SoftProbe fronts + exits + PL
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
+          if ! "${SSH[@]}" "gha@${PANEL}" "sudo $CI e2e" | tee out/e2e.txt; then
+            echo "FAIL e2e" | tee -a out/e2e.txt
+          fi
+          # Also validate sing-box on PL + fronts
+          for pair in "pl:2.26.225.213" "ru:195.133.45.167" "ru2:152.228.112.142" "de:31.77.116.51" "fi:144.31.169.6"; do
+            id="${pair%%:*}"; host="${pair##*:}"
+            "${SSH[@]}" "gha@${host}" "sudo $CI validate-singbox" > "out/validate-${id}.txt" 2>&1 \
+              || echo "FAIL validate $id" | tee -a "out/validate-${id}.txt"
+          done
+          {
+            echo "# e2e summary $(date -u +%Y-%m-%dT%H:%MZ)"
+            grep -E 'e2e |FAIL|STATUS=|validate' out/* || true
+          } > out/SUMMARY.txt
+          bash tools/ci/lib/fail_if_marked.sh out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vpn-e2e-${{ github.run_id }}
+          path: out/
+          retention-days: 14

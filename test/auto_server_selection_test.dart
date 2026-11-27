@@ -223,6 +223,114 @@ void main() {
     expect(service.startedHosts.first, 'de-primary.invalid');
   });
 
+  test('manual country prefers direct :443 over RU front', () async {
+    final service = _ScriptedVpnService(failHosts: {});
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+    c.locationMode = LocationMode.country;
+    c.selectedLocation = const ServerLocation(
+      id: 'fi',
+      countryCode: 'FI',
+      nameRu: 'Финляндия',
+    );
+
+    final ok = await c.connect();
+    expect(ok, isTrue);
+    expect(c.connectedNode?.countryId, 'fi');
+    expect(service.startedHosts.first, 'fi-primary.invalid');
+    expect(c.connectedNode?.port, 443);
+  });
+
+  test('Auto prefers last SoftProbe-OK country on next connect', () async {
+    SharedPreferences.setMockInitialValues({
+      'last_good_auto_country': 'fi',
+    });
+    final service = _ScriptedVpnService(failHosts: {});
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+
+    final ok = await c.connect();
+    expect(ok, isTrue);
+    expect(c.connectedNode?.countryId, 'fi');
+    expect(service.startedHosts.first, 'fi-primary.invalid');
+  });
+
+  test('Reconnect prefers last SoftProbe-OK Reality endpoint over :443', () async {
+    // Measured sticky: DE :443 SoftProbe fails, front works.
+    // Next connect must start on the proven front — not re-fail :443 every time.
+    SharedPreferences.setMockInitialValues({
+      'last_good_endpoint': 'de|de-spare.invalid|2443',
+    });
+    final service = _ScriptedVpnService(failHosts: {});
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+
+    final ok = await c.connect();
+    expect(ok, isTrue);
+    expect(service.startedHosts.first, 'de-spare.invalid');
+    expect(c.connectedNode?.port, 2443);
+  });
+
+  test('Auto skips gRPC spare and hops country after Reality fails', () async {
+    const deGrpc = TunnelNode(
+      countryId: 'de',
+      countryCode: 'DE',
+      countryName: 'Германия',
+      kind: TunnelKind.grpc,
+      host: 'de-grpc.invalid',
+      port: 8443,
+      outbound: {},
+    );
+    final service = _ScriptedVpnService(
+      failHosts: {'de-primary.invalid', 'de-spare.invalid', 'de-grpc.invalid'},
+    );
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+    c.profile = const SubscriptionProfile(
+      nodes: [_dePrimary, _deSpare, deGrpc, _fiPrimary, _fiSpare],
+    );
+
+    final ok = await c.connect();
+    expect(ok, isTrue);
+    expect(c.connectedNode?.countryId, 'fi');
+    expect(service.startedHosts, isNot(contains('de-grpc.invalid')));
+    expect(service.startedHosts, [
+      'de-primary.invalid',
+      'de-spare.invalid',
+      'fi-primary.invalid',
+    ]);
+  });
+
+  test('Auto tries CDN/message before hopping country after Reality fails', () async {
+    const deMessage = TunnelNode(
+      countryId: 'de',
+      countryCode: 'DE',
+      countryName: 'Германия',
+      kind: TunnelKind.message,
+      host: 'cdn.example.invalid',
+      port: 443,
+      outbound: {},
+    );
+    final service = _ScriptedVpnService(
+      failHosts: {'de-primary.invalid', 'de-spare.invalid'},
+    );
+    final c = _readyController(service);
+    addTearDown(c.dispose);
+    c.profile = const SubscriptionProfile(
+      nodes: [_dePrimary, _deSpare, deMessage, _fiPrimary, _fiSpare],
+    );
+
+    final ok = await c.connect();
+    expect(ok, isTrue);
+    expect(c.connectedNode?.kind, TunnelKind.message);
+    expect(service.startedHosts, [
+      'de-primary.invalid',
+      'de-spare.invalid',
+      'cdn.example.invalid',
+    ]);
+    expect(service.startedHosts, isNot(contains('fi-primary.invalid')));
+  });
+
   test('selectLocation while connected reconnects to the new country', () async {
     final service = _ScriptedVpnService(failHosts: {});
     final c = _readyController(service);

@@ -25,8 +25,9 @@ const kDiagnosticsMaxBatch = 50;
 
 /// Connecting longer than this without [logConnectOk] / final [logConnectFail]
 /// triggers a one-shot `connect_hang` event (see VpnController watchdog).
-/// SoftProbe settle/retries + Clash proof + a few failover hops need >45s.
-const kConnectHangTimeout = Duration(seconds: 70);
+/// SoftProbe settle/retries + Clash proof + a few failover hops need >40s;
+/// fail-fast SoftProbe (≈2.2s) lets Auto hop countries inside this window.
+const kConnectHangTimeout = Duration(seconds: 55);
 
 /// Strip subscription URLs, UUIDs, Reality keys, VLESS links, Clash secrets.
 String redactDiagnosticsError(Object? error, {int maxLen = kDiagnosticsMaxErrorLen}) {

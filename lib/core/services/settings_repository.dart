@@ -29,6 +29,10 @@ class SettingsRepository {
   static const _kUserMode = 'user_mode';
   static const _kLocationMode = 'location_mode';
   static const _kLocationId = 'location_id';
+  /// Last country that SoftProbe accepted in Автовыбор (e.g. fi).
+  static const _kLastGoodAutoCountry = 'last_good_auto_country';
+  /// Last SoftProbe-OK Reality endpoint: `country|host|port` (measured sticky).
+  static const _kLastGoodEndpoint = 'last_good_endpoint';
   static const _kProtocol = 'protocol';
   static const _kBypass = 'bypass';
   static const _kDns = 'dns_auto';
@@ -359,6 +363,53 @@ class SettingsRepository {
     await p.setInt(_kUserMode, mode.index);
     await p.setInt(_kLocationMode, locationMode.index);
     await p.setString(_kLocationId, locationId);
+  }
+
+  Future<String?> loadLastGoodAutoCountry() async {
+    final p = await _prefs;
+    final raw = (p.getString(_kLastGoodAutoCountry) ?? '').trim().toLowerCase();
+    if (raw.isEmpty || raw == 'auto') return null;
+    return raw;
+  }
+
+  Future<void> saveLastGoodAutoCountry(String? countryId) async {
+    final p = await _prefs;
+    final raw = (countryId ?? '').trim().toLowerCase();
+    if (raw.isEmpty || raw == 'auto') {
+      await p.remove(_kLastGoodAutoCountry);
+      return;
+    }
+    await p.setString(_kLastGoodAutoCountry, raw);
+  }
+
+  /// Returns `(countryId, host, port)` of the last SoftProbe-OK Reality path.
+  Future<({String countryId, String host, int port})?> loadLastGoodEndpoint() async {
+    final p = await _prefs;
+    final raw = (p.getString(_kLastGoodEndpoint) ?? '').trim();
+    if (raw.isEmpty) return null;
+    final parts = raw.split('|');
+    if (parts.length != 3) return null;
+    final countryId = parts[0].trim().toLowerCase();
+    final host = parts[1].trim();
+    final port = int.tryParse(parts[2].trim()) ?? 0;
+    if (countryId.isEmpty || host.isEmpty || port <= 0) return null;
+    return (countryId: countryId, host: host, port: port);
+  }
+
+  Future<void> saveLastGoodEndpoint({
+    required String countryId,
+    required String host,
+    required int port,
+  }) async {
+    final p = await _prefs;
+    final c = countryId.trim().toLowerCase();
+    final h = host.trim();
+    final portOr443 = port == 0 ? 443 : port;
+    if (c.isEmpty || h.isEmpty || portOr443 <= 0) {
+      await p.remove(_kLastGoodEndpoint);
+      return;
+    }
+    await p.setString(_kLastGoodEndpoint, '$c|$h|$portOr443');
   }
 
   Future<

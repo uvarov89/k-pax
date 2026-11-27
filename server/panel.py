@@ -53,18 +53,19 @@ WINDOWS_APP_ASSET = (
     "https://github.com/uvarov89/k-pax/releases/download/"
     "v1.0.81-windows/K-Pax-Setup-1.0.81.exe"
 )
-ANDROID_APP_VERSION = "1.0.83"
+# Forward fix after 1.0.79–1.0.83 SoftProbe regression (telemetry 2026-11-27).
+ANDROID_APP_VERSION = "1.0.84"
 ANDROID_APP_URL = "https://k-pax.space/download/android"
 ANDROID_APP_ASSET = (
     "https://github.com/uvarov89/k-pax/releases/download/"
-    "v1.0.83/K-Pax-1.0.83.apk"
+    "v1.0.84/K-Pax-1.0.84.apk"
 )
-XPLM_ANDROID_APP_VERSION = "1.0.83"
+XPLM_ANDROID_APP_VERSION = "1.0.84"
 # Public download links stay on x-plm.online (no github.com/.../k-pax in UI).
 XPLM_ANDROID_APP_URL = "https://x-plm.online/download/android"
 XPLM_ANDROID_APP_ASSET = (
     "https://github.com/uvarov89/k-pax/releases/download/"
-    "v1.0.83-xplm/X-Plm-1.0.83.apk"
+    "v1.0.84-xplm/X-Plm-1.0.84.apk"
 )
 XPLM_WINDOWS_APP_VERSION = "1.0.81"
 XPLM_WINDOWS_APP_URL = "https://x-plm.online/download/windows"
@@ -1564,8 +1565,9 @@ def links_for(user: sqlite3.Row, pinned_hy2: bool = False, full: bool = False) -
     messages = ss_message_links(user)
     # One-tap for RU third-party (Hiddify lowest-delay / v2rayNG first row):
     # RU fronts first (panel TCP relay → EU when RuVDS↛VPSPay), then direct
-    # Reality, then CDN/message, then gRPC/Hy2. K-Pax app Auto also prefers
-    # fronts; SoftProbe+Clash still gates Connected.
+    # Reality, then CDN/message, then gRPC/Hy2.
+    # K-Pax/X-Plm app sticky stays :443 → fronts → other (not fronts-first);
+    # SoftProbe+Clash still gates Connected. Do not couple app order to this list.
     return front_vless + vless + messages + grpc + hy2 + tuic
 
 

@@ -5,7 +5,16 @@ import 'package:pulse_vpn/app/brand/app_brand.dart';
 import 'package:pulse_vpn/core/services/subscription_link.dart';
 
 class SubscriptionClient {
-  String get _ua => AppBrand.current.appName;
+  /// Brand + OS so panel admin can show Android / iOS / Windows.
+  String get _ua {
+    final brand = AppBrand.current.appName;
+    if (Platform.isAndroid) return '$brand (Android)';
+    if (Platform.isIOS) return '$brand (iOS)';
+    if (Platform.isWindows) return '$brand (Windows)';
+    if (Platform.isMacOS) return '$brand (macOS)';
+    if (Platform.isLinux) return '$brand (Linux)';
+    return brand;
+  }
 
   Future<FetchedSubscription> fetch(Uri uri) async {
     final client = HttpClient();

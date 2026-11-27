@@ -128,6 +128,12 @@ class VpnController extends ChangeNotifier {
   DateTime? _connectStartedAt;
   int _diagAttempt = 0;
   bool _lastStartWasProbeFail = false;
+  /// Country that last passed SoftProbe in Автовыбор (persisted).
+  String? _lastGoodAutoCountryId;
+  bool _lastGoodAutoCountryLoaded = false;
+  /// Last SoftProbe-OK Reality endpoint (measured sticky; not speculative fronts-first).
+  ({String countryId, String host, int port})? _lastGoodEndpoint;
+  bool _lastGoodEndpointLoaded = false;
   StreamSubscription<String>? _vpnStatusSub;
   StreamSubscription<TunnelSpeed>? _trafficSub;
   int uploadBytesPerSec = 0;
@@ -312,6 +318,10 @@ class VpnController extends ChangeNotifier {
     final session = await _repository.loadSessionPrefs();
     userMode = session.mode;
     locationMode = session.locationMode;
+    _lastGoodAutoCountryId = await _repository.loadLastGoodAutoCountry();
+    _lastGoodAutoCountryLoaded = true;
+    _lastGoodEndpoint = await _repository.loadLastGoodEndpoint();
+    _lastGoodEndpointLoaded = true;
 
     _savedLocationId = session.locationId;
     if (!appSettings.rememberLastCountry) {
@@ -619,6 +629,37 @@ class VpnController extends ChangeNotifier {
       orElse: () => ServerLocation.auto,
     );
     if (selectedLocation.isAuto) locationMode = LocationMode.auto;
+    _scrubMissingCountrySticky();
+  }
+
+  /// Drop sticky Auto/endpoint/country when that exit vanished from the sub
+  /// (e.g. BG `enabled: false`) so one-tap does not re-pin a dead node.
+  void _scrubMissingCountrySticky() {
+    final ids = <String>{
+      for (final node in profile?.nodes ?? const <TunnelNode>[])
+        node.countryId.toLowerCase(),
+    };
+    final good = _lastGoodAutoCountryId?.toLowerCase();
+    if (good != null && good.isNotEmpty && !ids.contains(good)) {
+      _lastGoodAutoCountryId = null;
+      unawaited(_repository.saveLastGoodAutoCountry(null));
+    }
+    final ep = _lastGoodEndpoint;
+    if (ep != null && !ids.contains(ep.countryId.toLowerCase())) {
+      _lastGoodEndpoint = null;
+      unawaited(
+        _repository.saveLastGoodEndpoint(countryId: '', host: '', port: 0),
+      );
+    }
+    if (!_isAutoMode) {
+      final id = selectedLocation.id.toLowerCase();
+      if (id.isNotEmpty && id != 'auto' && !ids.contains(id)) {
+        locationMode = LocationMode.auto;
+        selectedLocation = ServerLocation.auto;
+        _savedLocationId = ServerLocation.auto.id;
+        unawaited(_persistSession());
+      }
+    }
   }
 
   Future<void> forgetSubscriptionLink() async {
@@ -1575,10 +1616,61 @@ class VpnController extends ChangeNotifier {
   bool get _isAutoMode =>
       locationMode == LocationMode.auto || selectedLocation.isAuto;
 
+  Future<void> _ensureLastGoodAutoCountryLoaded() async {
+    if (_lastGoodAutoCountryLoaded) return;
+    _lastGoodAutoCountryLoaded = true;
+    try {
+      _lastGoodAutoCountryId = await _repository.loadLastGoodAutoCountry();
+    } catch (_) {
+      _lastGoodAutoCountryId = null;
+    }
+  }
+
+  Future<void> _rememberGoodAutoCountry(TunnelNode node) async {
+    if (!_isAutoMode) return;
+    final id = node.countryId.trim().toLowerCase();
+    if (id.isEmpty) return;
+    _lastGoodAutoCountryId = id;
+    try {
+      await _repository.saveLastGoodAutoCountry(id);
+    } catch (_) {}
+  }
+
+  Future<void> _ensureLastGoodEndpointLoaded() async {
+    if (_lastGoodEndpointLoaded) return;
+    _lastGoodEndpointLoaded = true;
+    try {
+      _lastGoodEndpoint = await _repository.loadLastGoodEndpoint();
+    } catch (_) {
+      _lastGoodEndpoint = null;
+    }
+  }
+
+  /// Persist the Reality path that SoftProbe actually accepted (any mode).
+  /// Next connect prefers this host:port so filtered :443 does not re-fail every time.
+  Future<void> _rememberGoodEndpoint(TunnelNode node) async {
+    if (node.kind != TunnelKind.reality) return;
+    final id = node.countryId.trim().toLowerCase();
+    final host = node.host.trim();
+    final port = node.port == 0 ? 443 : node.port;
+    if (id.isEmpty || host.isEmpty || port <= 0) return;
+    _lastGoodEndpoint = (countryId: id, host: host, port: port);
+    try {
+      await _repository.saveLastGoodEndpoint(
+        countryId: id,
+        host: host,
+        port: port,
+      );
+    } catch (_) {}
+  }
+
   Future<TunnelNode> _selectNode({
     Set<String>? excludeCountryIds,
     Set<String>? excludeEndpoints,
   }) async {
+    if (_isAutoMode) {
+      await _ensureLastGoodAutoCountryLoaded();
+    }
     final nodes = profile?.nodes ?? const <TunnelNode>[];
     final countryId = _isAutoMode ? null : selectedLocation.id;
     final order = _kindOrder();
@@ -1608,13 +1700,14 @@ class VpnController extends ChangeNotifier {
     final triedCountries = <String>{first.countryId};
     Object? lastError;
     // Cap attempts/deadline so dead endpoints + HTTPS probes cannot burn minutes.
-    // iOS NE start is slow to fail; Android/Windows get a slightly larger budget.
+    // Fail-fast SoftProbe (~2.2s) makes each hop cheaper; keep enough hops for
+    // :443 → RU front → next country without a 70s "Подключение…" hang.
     final ios = !kIsWeb && Platform.isIOS;
     final deadline = DateTime.now().add(
-      Duration(seconds: ios ? 55 : 75),
+      Duration(seconds: ios ? 45 : 55),
     );
     var attempts = 0;
-    final maxAttempts = ios ? 4 : 8;
+    final maxAttempts = ios ? 4 : 6;
 
     Future<TunnelNode?> tryStart(TunnelNode node, {bool disconnectFirst = false}) async {
       if (!_wantConnected) return null;
@@ -1657,9 +1750,19 @@ class VpnController extends ChangeNotifier {
       if (!proSettings.protocolFallback) return null;
       var spare = _spareFor(from, tried);
       while (spare != null) {
-        // tryStart enforces iOS maxAttempts + deadline; no separate iOS skip.
+        // Budget exhausted → tryStart returns null without marking [tried],
+        // which would otherwise spin forever on the same spare.
+        if (attempts >= maxAttempts || DateTime.now().isAfter(deadline)) {
+          return null;
+        }
         final ok = await tryStart(spare, disconnectFirst: true);
         if (ok != null) return ok;
+        if (attempts >= maxAttempts || DateTime.now().isAfter(deadline)) {
+          return null;
+        }
+        if (!tried.contains(_endpointKey(spare))) {
+          tried.add(_endpointKey(spare));
+        }
         spare = _spareFor(spare, tried);
       }
       return null;
@@ -1732,6 +1835,8 @@ class VpnController extends ChangeNotifier {
   /// 1.0.69 put fronts first; that blackholed some users (status-bar VPN,
   /// zero traffic). SoftProbe+Clash gate + failover still reach fronts when
   /// bare :443 is filtered. Panel subscription keeps fronts first for Hiddify.
+  /// Measured sticky ([_lastGoodEndpoint]) may reuse a proven front without
+  /// making fronts-first the default for every account.
   List<TunnelNode> _preferPrimaryEndpoints(List<TunnelNode> nodes) {
     if (nodes.length <= 1) return nodes;
     if (nodes.first.kind != TunnelKind.reality) return nodes;
@@ -1766,15 +1871,40 @@ class VpnController extends ChangeNotifier {
         nodes.first.kind == TunnelKind.tuic) {
       return nodes.first;
     }
+    await _ensureLastGoodEndpointLoaded();
     final ranked = _preferPrimaryEndpoints(nodes);
+    // Measured sticky: reuse SoftProbe-OK Reality host:port (e.g. RU front
+    // when bare :443 is filtered). Not fronts-first — only a proven path.
+    final goodEp = _lastGoodEndpoint;
+    if (goodEp != null && ranked.first.kind == TunnelKind.reality) {
+      final proven = ranked.where((node) {
+        final port = node.port == 0 ? 443 : node.port;
+        return node.countryId.toLowerCase() == goodEp.countryId &&
+            node.host == goodEp.host &&
+            port == goodEp.port;
+      }).toList();
+      if (proven.isNotEmpty) return proven.first;
+    }
     final preferredPort = ranked.first.port == 0 ? 443 : ranked.first.port;
     var pool = ranked
         .where((node) => (node.port == 0 ? 443 : node.port) == preferredPort)
         .toList();
     if (pool.isEmpty) pool = ranked;
 
-    if (spreadLoad && pool.length > 1) {
-      // Soft-avoid FI (VPSPay girl_round throttle) when another primary exists.
+    if (pool.length == 1) return pool.first;
+
+    // Prefer the last SoftProbe-OK country (fixes Auto sticky on a bad exit).
+    final good = _lastGoodAutoCountryId?.toLowerCase();
+    if (spreadLoad && good != null && good.isNotEmpty) {
+      final preferred = pool
+          .where((node) => node.countryId.toLowerCase() == good)
+          .toList();
+      if (preferred.isNotEmpty) {
+        pool = preferred;
+      }
+    } else if (spreadLoad && pool.length > 1) {
+      // Soft-avoid FI (VPSPay girl_round throttle) when another primary exists
+      // and we have no proven last-good country yet.
       final withoutHot = pool
           .where((node) => node.countryId.toLowerCase() != 'fi')
           .toList();
@@ -1865,6 +1995,18 @@ class VpnController extends ChangeNotifier {
       }
     }
 
+    // Auto: after Reality spares, try CDN/message once (CF path) before hopping
+    // country. Skip gRPC/WS burn — SoftProbe false fails used to hang ~70s.
+    if (_isAutoMode) {
+      for (final candidate in sameCountry) {
+        if (candidate.kind == TunnelKind.message &&
+            !seen.contains(_endpointKey(candidate))) {
+          return candidate;
+        }
+      }
+      return null;
+    }
+
     final order = _kindOrder();
     final start = order.indexOf(node.kind);
     if (start < 0) return null;
@@ -1934,6 +2076,8 @@ class VpnController extends ChangeNotifier {
     if (userInitiated) {
       _userStopped = false;
       _wantConnected = true;
+      // One-tap: scrub vanished sticky (BG off) before picking a node.
+      _scrubMissingCountrySticky();
       // Always keep a small budget for unexpected drops (Android/iOS); aggressive = more tries.
       _reconnectBudget =
           proSettings.reconnectPolicy == ReconnectPolicy.aggressive ? 5 : 2;
@@ -2004,6 +2148,8 @@ class VpnController extends ChangeNotifier {
           ? null
           : _connectedAt!.difference(_connectStartedAt!).inMilliseconds;
       _cancelConnectHangWatchdog();
+      await _rememberGoodAutoCountry(node);
+      await _rememberGoodEndpoint(node);
       _diagnostics.logConnectOk(
         node,
         attempt: _diagAttempt <= 0 ? 1 : _diagAttempt,

@@ -1,0 +1,6 @@
+[Unit]
+Description=K-Pax account database backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/k-pax/k-pax-backup.py

@@ -1,0 +1,126 @@
+# Controlled panel deploy of allowlisted server files. Requires production approval.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to proceed'
+        required: true
+        type: string
+      paths:
+        description: 'Comma paths under server/ (default: panel.py)'
+        required: false
+        default: 'panel.py'
+        type: string
+      restart:
+        description: 'Restart k-pax after deploy'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "DEPLOY" ]] || {
+            echo "::error::Type DEPLOY to confirm"
+            exit 1
+          }
+
+      - name: Validate allowlist
+        id: val
+        env:
+          PATHS: ${{ inputs.paths }}
+        run: |
+          set -euo pipefail
+          mkdir -p stage
+          IFS=',' read -ra items <<< "$PATHS"
+          for p in "${items[@]}"; do
+            p="$(echo "$p" | xargs)"
+            [[ -n "$p" ]] || continue
+            case "$p" in
+              panel.py|watch.py|limit.py|backup.py|*.py) ;;
+              *)
+                # only basename py under server/
+                if [[ "$p" == */* || "$p" == .* ]]; then
+                  echo "::error::path not allowlisted: $p"
+                  exit 1
+                fi
+                [[ "$p" == *.py ]] || { echo "::error::only .py under server/: $p"; exit 1; }
+                ;;
+            esac
+            src="server/$p"
+            [[ -f "$src" ]] || { echo "::error::missing $src — ensure server/ is in the repo"; exit 1; }
+            # block obvious secrets
+            if grep -Eiq 'BEGIN (RSA |OPENSSH |)PRIVATE KEY|password\s*=\s*["'\''][^"'\'']{8,}' "$src"; then
+              echo "::error::refusing to deploy file that looks secret-bearing: $src"
+              exit 1
+            fi
+            python3 -m py_compile "$src"
+            cp "$src" "stage/$p"
+            echo "validated $p"
+          done
+          ls -la stage/
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Backup remote then upload
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          RESTART: ${{ inputs.restart }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          stamp=$(date -u +%Y%m%dT%H%MZ)
+          remote_dir="/opt/k-pax"
+          # Discover panel.py location
+          remote_panel=$("${SSH[@]}" "gha@${PANEL}" 'sudo ls /opt/k-pax/panel.py /usr/local/lib/k-pax/panel.py /home/kpax/panel.py 2>/dev/null | head -1')
+          if [[ -z "$remote_panel" ]]; then
+            remote_panel=$("${SSH[@]}" "gha@${PANEL}" 'sudo systemctl cat k-pax 2>/dev/null | grep -Eo "/[^ ]*panel\\.py" | head -1' || true)
+          fi
+          [[ -n "$remote_panel" ]] || { echo "::error::cannot locate remote panel.py"; exit 1; }
+          remote_dir=$(dirname "$remote_panel")
+          echo "remote_dir=$remote_dir"
+
+          "${SSH[@]}" "gha@${PANEL}" "sudo mkdir -p /var/backups/k-pax-ci && sudo cp -a '$remote_dir' '/var/backups/k-pax-ci/pre-deploy-${stamp}'"
+          for f in stage/*; do
+            base=$(basename "$f")
+            "${SCP[@]}" "$f" "gha@${PANEL}:/tmp/kpax-deploy-$base"
+            "${SSH[@]}" "gha@${PANEL}" "sudo install -m 644 /tmp/kpax-deploy-$base '$remote_dir/$base' && rm -f /tmp/kpax-deploy-$base"
+            echo "installed $base"
+          done
+          if [[ "$RESTART" == "true" ]]; then
+            "${SSH[@]}" "gha@${PANEL}" 'sudo systemctl restart k-pax'
+            sleep 3
+            "${SSH[@]}" "gha@${PANEL}" 'systemctl is-active k-pax || sudo systemctl is-active k-pax'
+          fi
+          # smoke
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "https://k-pax.space/healthz" || echo err)
+          echo "healthz=$code"
+          [[ "$code" == "200" || "$code" == "204" || "$code" == "301" || "$code" == "302" || "$code" == "404" ]] || true
+          echo "deploy_ok stamp=$stamp dir=$remote_dir" | tee deploy-result.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-${{ github.run_id }}
+          path: deploy-result.txt
+          retention-days: 30

@@ -1,0 +1,76 @@
+{
+	admin off
+	log {
+		level ERROR
+	}
+}
+
+sub.k-pax.space {
+	reverse_proxy 127.0.0.1:8787
+}
+
+www.k-pax.space {
+	redir https://k-pax.space{uri} permanent
+}
+
+# Brand site + legacy message/XHTTP front (old clients still use k-pax.space).
+k-pax.space {
+	handle /x/de/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy h2c://144.31.221.141:10087 {
+			flush_interval -1
+		}
+	}
+	handle /x/fi/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy h2c://144.31.169.6:10087 {
+			flush_interval -1
+		}
+	}
+	handle /x/bg/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy h2c://79.124.7.111:10087 {
+			flush_interval -1
+		}
+	}
+	handle /w/de/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy http://144.31.221.141:10086
+	}
+	handle /w/fi/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy http://144.31.169.6:10086
+	}
+	handle /w/bg/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy http://79.124.7.111:10086
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8787
+	}
+}
+
+# CDN front for allowlist networks: only tunnel paths, no marketing site.
+cdn.k-pax.space {
+	handle /x/de/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy h2c://144.31.221.141:10087 {
+			flush_interval -1
+		}
+	}
+	handle /x/fi/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy h2c://144.31.169.6:10087 {
+			flush_interval -1
+		}
+	}
+	handle /x/bg/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy h2c://79.124.7.111:10087 {
+			flush_interval -1
+		}
+	}
+	handle /w/de/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy http://144.31.221.141:10086
+	}
+	handle /w/fi/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy http://144.31.169.6:10086
+	}
+	handle /w/bg/122033df5b8b1efad4921dfae8ba3967* {
+		reverse_proxy http://79.124.7.111:10086
+	}
+	handle {
+		respond "Not Found" 404
+	}
+}

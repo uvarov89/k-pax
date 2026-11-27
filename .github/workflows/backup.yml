@@ -1,0 +1,72 @@
+# Encrypted DB + allowlisted config backup. Requires production approval.
+name: Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type BACKUP to proceed'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "BACKUP" ]] || {
+            echo "::error::Type BACKUP to confirm"
+            exit 1
+          }
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Create and fetch encrypted backup
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          BACKUP_PASS: ${{ secrets.KPAX_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [[ -n "${BACKUP_PASS:-}" ]] || {
+            echo "::error::Missing KPAX_BACKUP_PASSPHRASE secret"
+            exit 1
+          }
+          mkdir -p out
+          stamp=$(date -u +%Y%m%dT%H%MZ)
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+
+          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'bash -s' < tools/ci/remote_backup.sh | tail -1)
+          [[ "$remote_tar" == /tmp/kpax-ci-backup-*.tar.gz ]]
+          "${SCP[@]}" "gha@${PANEL}:${remote_tar}" "out/raw.tar.gz"
+          "${SSH[@]}" "gha@${PANEL}" "rm -f '${remote_tar}'"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in out/raw.tar.gz -out "out/kpax-backup-${stamp}.tar.gz.enc" -pass env:BACKUP_PASS
+          rm -f out/raw.tar.gz
+          test -s "out/kpax-backup-${stamp}.tar.gz.enc"
+          sha256sum "out/kpax-backup-${stamp}.tar.gz.enc" | tee out/SHA256.txt
+          ! grep -aq 'SQLite format' "out/kpax-backup-${stamp}.tar.gz.enc"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_id }}
+          path: |
+            out/*.enc
+            out/SHA256.txt
+          retention-days: 30

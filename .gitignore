@@ -44,9 +44,37 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Control plane stays on the machine that runs it
-/server/
-/docs/
+# Control plane: track source; keep runtime secrets / binaries out
+/server/**
+!/server/**/
+!/server/*.py
+!/server/*.service
+!/server/*.timer
+!/server/*.sh
+!/server/*.conf
+!/server/*.local
+!/server/Caddyfile*
+!/server/x-plm/
+!/server/x-plm/**
+!/server/.gitignore
+!/server/README.md
+/server/**/__pycache__/
+/server/**/*.pyc
+/server/assets/
+/server/fonts/
+/server/**/*.db
+/server/**/*.sqlite*
+/server/**/*.env
+/server/**/config.json
+/server/**/backup.pass
+/server/**/id_*
+/server/**/*.pem
+/server/**/*.key
+/server/**/*.jks
+/docs/**
+!/docs/**/
+!/docs/*.md
+!/docs/**/*.md
 /tool/
 
 # Signing material

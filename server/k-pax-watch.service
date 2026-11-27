@@ -1,0 +1,8 @@
+[Unit]
+Description=K-Pax site check from this node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/k-pax-watch.py

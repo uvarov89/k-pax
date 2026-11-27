@@ -1,0 +1,38 @@
+{
+	email support@x-plm.online
+}
+
+# /etc/caddy/Caddyfile on the X-Plm server (45.133.209.80).
+# 0c2a734ea7aa418b198df99fb3827c7cdf8df98d65ab9daa lives in /etc/k-pax/config.json → brands.xplm.edge_secret on the K-Pax server.
+x-plm.online, sub.x-plm.online {
+	encode gzip
+
+	@static path /assets/* /fonts/*
+	handle @static {
+		root * /var/www/x-plm
+		header Cache-Control "public, max-age=604800"
+		file_server
+	}
+
+	handle {
+		reverse_proxy https://77.221.154.107 {
+			header_up Host k-pax.space
+			header_up X-Plm-Edge "0c2a734ea7aa418b198df99fb3827c7cdf8df98d65ab9daa"
+			header_up X-Edge-Host {host}
+			header_up X-Edge-Client {remote_host}
+			header_up -X-Forwarded-Host
+			transport http {
+				tls
+				tls_server_name k-pax.space
+			}
+		}
+	}
+}
+
+www.x-plm.online {
+	redir https://x-plm.online{uri} permanent
+}
+
+mail.x-plm.online {
+	respond "" 404
+}

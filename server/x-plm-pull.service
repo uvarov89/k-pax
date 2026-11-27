@@ -1,0 +1,8 @@
+[Unit]
+Description=Fetch the latest X-Plm backup to the K-Pax server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/k-pax/x-plm-pull.sh

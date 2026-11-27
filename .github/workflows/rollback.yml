@@ -1,0 +1,72 @@
+# Restore previous server tree from /var/backups/k-pax-ci. Requires production approval.
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type ROLLBACK to proceed'
+        required: true
+        type: string
+      backup_name:
+        description: 'Backup dir name under /var/backups/k-pax-ci (empty = latest pre-deploy-*)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "ROLLBACK" ]] || {
+            echo "::error::Type ROLLBACK to confirm"
+            exit 1
+          }
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Restore
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          BACKUP_NAME: ${{ inputs.backup_name }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          remote_panel=$("${SSH[@]}" "gha@${PANEL}" 'sudo ls /opt/k-pax/panel.py /usr/local/lib/k-pax/panel.py 2>/dev/null | head -1')
+          [[ -n "$remote_panel" ]] || { echo "::error::panel.py not found"; exit 1; }
+          remote_dir=$(dirname "$remote_panel")
+          if [[ -n "$BACKUP_NAME" ]]; then
+            src="/var/backups/k-pax-ci/$BACKUP_NAME"
+          else
+            src=$("${SSH[@]}" "gha@${PANEL}" 'sudo ls -1dt /var/backups/k-pax-ci/pre-deploy-* 2>/dev/null | head -1')
+          fi
+          [[ -n "$src" ]] || { echo "::error::no backup found"; exit 1; }
+          echo "restoring $src -> $remote_dir"
+          stamp=$(date -u +%Y%m%dT%H%MZ)
+          "${SSH[@]}" "gha@${PANEL}" "sudo mkdir -p /var/backups/k-pax-ci && sudo cp -a '$remote_dir' '/var/backups/k-pax-ci/pre-rollback-${stamp}' && sudo rsync -a --delete '$src/' '$remote_dir/' && sudo systemctl restart k-pax"
+          sleep 3
+          "${SSH[@]}" "gha@${PANEL}" 'sudo systemctl is-active k-pax'
+          echo "rollback_ok from=$src" | tee rollback-result.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rollback-${{ github.run_id }}
+          path: rollback-result.txt
+          retention-days: 30

@@ -1,0 +1,148 @@
+# Build client apps. No store/TestFlight/GitHub Release publish.
+name: Client build
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Which clients to build'
+        required: true
+        default: 'android'
+        type: choice
+        options:
+          - android
+          - windows
+          - ios-codemagic-note
+          - android-and-windows
+      signed_android:
+        description: 'Use production Android signing (APK only, no publish)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    if: inputs.targets == 'android' || inputs.targets == 'android-and-windows'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+      - name: Release signing materials
+        if: inputs.signed_android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > android/app/upload-keystore.jks
+          {
+            printf 'storeFile=upload-keystore.jks\n'
+            printf 'storePassword=%s\n' "${STORE_PASSWORD}"
+            printf 'keyAlias=%s\n' "${KEY_ALIAS}"
+            printf 'keyPassword=%s\n' "${KEY_PASSWORD}"
+          } > android/key.properties
+          chmod 600 android/app/upload-keystore.jks android/key.properties
+      - run: flutter pub get
+      - name: Build K-Pax + X-Plm Android
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.signed_android }}" == "true" ]]; then
+            flutter build apk --release --flavor kpaxDirect --dart-define=BRAND=kpax
+            flutter build apk --release --flavor xplmDirect --dart-define=BRAND=xplm
+          else
+            flutter build apk --debug --flavor kpaxDirect --dart-define=BRAND=kpax
+            flutter build apk --debug --flavor xplmDirect --dart-define=BRAND=xplm
+          fi
+          ls -la build/app/outputs/flutter-apk/
+      - name: Verify signing fingerprint (signed only)
+        if: inputs.signed_android
+        env:
+          EXPECTED_SHA256: '4523e7d0220ae8709a34160aa3f604b411cd85ce35c978f78a9aa357df8885ec'
+        run: |
+          set -uo pipefail
+          ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -1)
+          [[ -n "$APKSIGNER" ]]
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            echo "== $apk =="
+            "$APKSIGNER" verify --print-certs "$apk" | tee /tmp/cert.txt
+            got=$(grep -i 'SHA-256 digest:' /tmp/cert.txt | head -1 | awk '{print tolower($NF)}' | tr -d ':')
+            echo "got=$got expected=$EXPECTED_SHA256"
+            [[ "$got" == "$EXPECTED_SHA256" ]]
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apks-${{ github.run_id }}
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 7
+
+  windows:
+    if: inputs.targets == 'windows' || inputs.targets == 'android-and-windows'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+      - name: Provision natives
+        shell: pwsh
+        run: ./scripts/provision-windows-native.ps1
+      - run: flutter pub get
+      - name: Build K-Pax Windows
+        shell: pwsh
+        run: |
+          $env:APP_BRAND = 'kpax'
+          flutter build windows --release --dart-define=BRAND=kpax
+          if (!(Test-Path 'build/windows/x64/runner/Release/KPax.exe')) { throw 'Missing KPax.exe' }
+      - name: Build X-Plm Windows
+        shell: pwsh
+        run: |
+          $env:APP_BRAND = 'xplm'
+          flutter build windows --release --dart-define=BRAND=xplm
+          if (!(Test-Path 'build/windows/x64/runner/Release/XPlm.exe')) { throw 'Missing XPlm.exe' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-bins-${{ github.run_id }}
+          path: |
+            build/windows/x64/runner/Release/KPax.exe
+            build/windows/x64/runner/Release/XPlm.exe
+          retention-days: 7
+
+  ios-note:
+    if: inputs.targets == 'ios-codemagic-note'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: iOS builds run on Codemagic
+        run: |
+          set -euo pipefail
+          {
+            echo "# iOS build path"
+            echo "K-Pax and X-Plm iOS are built on Codemagic (codemagic.yaml)."
+            echo "GitHub Actions ubuntu cannot produce App Store / TestFlight IPAs."
+            echo "Use Codemagic with existing ASC signing — publish is a separate confirmed step."
+            grep -nE '^(  )?[A-Za-z0-9_-]+:|^workflows:|name:' codemagic.yaml | head -50 || true
+          } | tee ios-build-path.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-codemagic-note-${{ github.run_id }}
+          path: ios-build-path.txt
+          retention-days: 14

@@ -1,0 +1,84 @@
+# Read-only VPN path / service health checks.
+name: Health check
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_bg:
+        description: 'Also probe BG (may be offline)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Run health probes
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          INCLUDE_BG: ${{ inputs.include_bg }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+
+          run_one() {
+            local id="$1" host="$2" role="$3"
+            echo "== $id role=$role =="
+            if KPAX_CI_ROLE="$role" "${SSH[@]}" "gha@${host}" "KPAX_CI_ROLE=$role bash -s" \
+              < tools/ci/remote_health_check.sh > "out/${id}-health.txt" 2>&1; then
+              echo "ok $id"
+            else
+              echo "FAIL $id" | tee -a "out/${id}-health.txt"
+            fi
+          }
+
+          run_one panel "$PANEL" panel
+          run_one de 31.77.116.51 exit
+          run_one fi 144.31.169.6 exit
+          run_one ru 195.133.45.167 front
+          run_one ru2 152.228.112.142 front
+          if [[ "$INCLUDE_BG" == "true" ]]; then
+            run_one bg 79.124.7.111 exit
+          fi
+
+          # Public subscription / site smoke from runner (no tokens)
+          {
+            echo "=== public smoke ==="
+            for url in \
+              "https://k-pax.space/" \
+              "https://k-pax.space/healthz" \
+              "https://x-plm.space/"
+            do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 12 -L "$url" || echo err)
+              echo "GET $url -> $code"
+            done
+          } | tee out/public-smoke.txt
+
+          {
+            echo "# health summary $(date -u +%Y-%m-%dT%H:%MZ)"
+            grep -E 'FAIL|ok |tcp |http ' out/* 2>/dev/null || true
+          } > out/SUMMARY.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: health-${{ github.run_id }}
+          path: out/
+          retention-days: 14

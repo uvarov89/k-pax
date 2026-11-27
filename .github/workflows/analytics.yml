@@ -1,0 +1,43 @@
+# Anonymized panel analytics (no emails/tokens/full UUIDs).
+name: Analytics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-analytics
+  cancel-in-progress: false
+
+jobs:
+  analytics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Collect analytics
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "gha@${PANEL}" 'sudo python3 -' < tools/ci/remote_analytics.py \
+            | tee out/analytics.txt
+          grep -q '^DONE$' out/analytics.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analytics-${{ github.run_id }}
+          path: out/
+          retention-days: 30

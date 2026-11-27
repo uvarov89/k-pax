@@ -1,0 +1,13 @@
+[Unit]
+Description=K-Pax simultaneous device limit
+After=sing-box.service network-online.target
+Wants=sing-box.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/sbin/k-pax-limit.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

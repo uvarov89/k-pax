@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly K-Pax account database backup
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=20min
+
+[Install]
+WantedBy=timers.target

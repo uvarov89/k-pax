@@ -1,0 +1,6 @@
+[Unit]
+Description=X-Plm encrypted backup of configs and mailboxes
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/x-plm-backup

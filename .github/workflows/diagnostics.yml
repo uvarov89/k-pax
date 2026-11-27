@@ -1,0 +1,95 @@
+# Read-only sanitized diagnostics from panel + enabled nodes.
+name: Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Comma list: panel,de,fi,ru,ru2,bg,all'
+        required: true
+        default: 'panel,de,fi,ru,ru2'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require deploy SSH secrets
+        env:
+          KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KH: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          [[ -n "$KEY" && -n "$KH" && -n "$PANEL" ]] || {
+            echo "::error::Missing KPAX_DEPLOY_SSH_KEY / KPAX_DEPLOY_SSH_KNOWN_HOSTS / KPAX_DEPLOY_HOST"
+            exit 1
+          }
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Collect diagnostics
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+
+          declare -A HOSTS=(
+            [panel]="$PANEL"
+            [de]=31.77.116.51
+            [fi]=144.31.169.6
+            [ru]=195.133.45.167
+            [ru2]=152.228.112.142
+            [bg]=79.124.7.111
+          )
+
+          list="$TARGETS"
+          if [[ "$list" == "all" ]]; then
+            list="panel,de,fi,ru,ru2,bg"
+          fi
+
+          IFS=',' read -ra items <<< "$list"
+          for id in "${items[@]}"; do
+            id="$(echo "$id" | xargs)"
+            [[ -n "$id" ]] || continue
+            host="${HOSTS[$id]:-}"
+            if [[ -z "$host" ]]; then
+              echo "unknown target $id" | tee "out/${id}.txt"
+              continue
+            fi
+            echo "== $id ($host) =="
+            if "${SSH[@]}" "gha@${host}" 'bash -s' < tools/ci/remote_diagnostics.sh \
+              > "out/${id}.txt" 2>&1; then
+              echo "ok $id"
+            else
+              echo "FAIL $id (exit $?)" | tee -a "out/${id}.txt"
+            fi
+          done
+          {
+            echo "# diagnostics summary $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo "ref=$GITHUB_SHA"
+            ls -la out/
+          } > out/SUMMARY.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ github.run_id }}
+          path: out/
+          retention-days: 14

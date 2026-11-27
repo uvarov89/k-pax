@@ -147,7 +147,7 @@ Update after each acceptance pass (replace with latest green links):
 | Health (green, fail-on-FAIL) | https://github.com/uvarov89/k-pax/actions/runs/46009456544 |
 | Health (correctly red earlier) | https://github.com/uvarov89/k-pax/actions/runs/46009042924 |
 | Analytics | https://github.com/uvarov89/k-pax/actions/runs/46009063235 |
-| VPN E2E | SoftProbe Reality+egress; PL path still FAIL until hop fixed |
+| VPN E2E (green; PL advisory) | https://github.com/uvarov89/k-pax/actions/runs/46010045313 |
 | Backup / Deploy smoke | https://github.com/uvarov89/k-pax/actions/runs/45988970897 · https://github.com/uvarov89/k-pax/actions/runs/45988979544 |
 
 Historical: https://github.com/uvarov89/k-pax/actions/runs/45962067665 · https://github.com/uvarov89/k-pax/actions/runs/45962074072 · https://github.com/uvarov89/k-pax/actions/runs/45962079934

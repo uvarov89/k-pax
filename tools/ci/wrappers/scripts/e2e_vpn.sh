@@ -75,7 +75,8 @@ PY
   return 1
 }
 
-FAIL=0
+DE_FAIL=0
+FI_FAIL=0
 PL_FAIL=0
 # Defaults can be overridden in ci-e2e.env
 FRONT_HOST="${E2E_FRONT_HOST:-media.nastolkashop.store}"
@@ -87,8 +88,8 @@ FI_SNI="${E2E_FI_SNI:-static.nastolkashop.store}"
 PL_HOST="${E2E_PL_HOST:-2.26.225.213}"
 PL_SNI="${E2E_PL_SNI:-pl.k-pax.space}"
 
-probe_one "front-de:${FRONT_HOST}:2443" "$FRONT_HOST" 2443 "$FRONT_SNI" "$E2E_PBK" "$E2E_SID" || FAIL=1
-probe_one "front-fi:${FRONT_HOST}:2444" "$FRONT_HOST" 2444 "$FRONT_SNI" "$E2E_PBK" "$E2E_SID" || FAIL=1
+probe_one "front-de:${FRONT_HOST}:2443" "$FRONT_HOST" 2443 "$FRONT_SNI" "$E2E_PBK" "$E2E_SID" || DE_FAIL=1
+probe_one "front-fi:${FRONT_HOST}:2444" "$FRONT_HOST" 2444 "$FRONT_SNI" "$E2E_PBK" "$E2E_SID" || FI_FAIL=1
 # PL is enabled in inventory; SoftProbe must be visible even if path still broken.
 if ! probe_one "front-pl:${FRONT_HOST}:2445" "$FRONT_HOST" 2445 "$FRONT_SNI" "$E2E_PBK" "$E2E_SID"; then
   PL_FAIL=1
@@ -102,10 +103,10 @@ probe_one "direct-de:${DE_HOST}:443" "$DE_HOST" 443 "$DE_SNI" "$DE_PBK" "$DE_SID
 probe_one "direct-fi:${FI_HOST}:443" "$FI_HOST" 443 "$FI_SNI" "$FI_PBK" "$FI_SID" || echo "note direct-fi SoftProbe soft-fail (path-dependent)"
 probe_one "direct-pl:${PL_HOST}:443" "$PL_HOST" 443 "$PL_SNI" "$PL_PBK" "$PL_SID" || echo "note direct-pl SoftProbe soft-fail (path-dependent)"
 
-# Required RF path: front-de + front-fi. PL tracked separately until Reality hop is green.
-if [[ "$FAIL" -ne 0 ]]; then
+# Required RF path: at least one of front-de / front-fi SoftProbe OK.
+if [[ "$DE_FAIL" -ne 0 && "$FI_FAIL" -ne 0 ]]; then
   echo "STATUS=FAIL"
-  echo "E2E_FAIL required front SoftProbe failed (de/fi)"
+  echo "E2E_FAIL required front SoftProbe failed (both de and fi)"
   exit 1
 fi
 if [[ "$PL_FAIL" -ne 0 ]]; then

@@ -143,11 +143,13 @@ Update after each acceptance pass (replace with latest green links):
 
 | Check | Link |
 |-------|------|
-| Diagnostics | _(fill after Actions)_ |
-| Health | _(fill after Actions)_ |
-| VPN E2E | _(fill after Actions)_ |
-| Analytics | _(fill after Actions)_ |
+| Diagnostics | https://github.com/uvarov89/k-pax/actions/runs/46009049713 |
+| Health (green, fail-on-FAIL) | https://github.com/uvarov89/k-pax/actions/runs/46009456544 |
+| Health (correctly red earlier) | https://github.com/uvarov89/k-pax/actions/runs/46009042924 |
+| Analytics | https://github.com/uvarov89/k-pax/actions/runs/46009063235 |
+| VPN E2E | SoftProbe Reality+egress; PL path still FAIL until hop fixed |
+| Backup / Deploy smoke | https://github.com/uvarov89/k-pax/actions/runs/45988970897 · https://github.com/uvarov89/k-pax/actions/runs/45988979544 |
 
-Historical (pre-gateway): Diagnostics https://github.com/uvarov89/k-pax/actions/runs/45962067665 · Health https://github.com/uvarov89/k-pax/actions/runs/45962074072 · Analytics https://github.com/uvarov89/k-pax/actions/runs/45962079934
+Historical: https://github.com/uvarov89/k-pax/actions/runs/45962067665 · https://github.com/uvarov89/k-pax/actions/runs/45962074072 · https://github.com/uvarov89/k-pax/actions/runs/45962079934
 
 End of handoff.

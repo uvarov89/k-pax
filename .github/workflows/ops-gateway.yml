@@ -1,6 +1,5 @@
-# ChatGPT / GitHub connector entrypoint: Issues cannot call workflow_dispatch.
-# Authorized authors open/comment with /kpax <cmd>; this gateway dispatches
-# existing workflows. Dangerous ops still require Environment `production` approval.
+# ChatGPT GitHub connector cannot call workflow_dispatch directly.
+# Authorized Issues/comments with `/kpax …` dispatch workflows and reply with run URL.
 name: Ops gateway (Issues)
 
 on:
@@ -15,14 +14,15 @@ permissions:
   actions: write
 
 concurrency:
-  group: kpax-ops-gateway
+  # Per-issue so parallel ChatGPT issues do not cancel each other.
+  group: kpax-ops-gateway-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   route:
     if: github.event.issue.state == 'open'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Authorize + parse + dispatch
         uses: actions/github-script@v7
@@ -30,22 +30,21 @@ jobs:
           ALLOWLIST: ${{ secrets.KPAX_OPS_ALLOWLIST }}
         with:
           script: |
-            const core = require('@actions/core');
+            // NOTE: `core`, `github`, `context` are injected by github-script — do NOT redeclare.
             const allowRaw = (process.env.ALLOWLIST || '').trim();
             const allow = allowRaw.split(/[,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
             const login = (context.payload.sender?.login || '').toLowerCase();
             const issue = context.payload.issue;
             const body = (context.payload.comment?.body || issue.body || '');
             const text = String(body);
+            const marker = '<!-- kpax-ops-dispatch:';
 
-            // Only react to /kpax commands
             const m = text.match(/^\s*\/kpax\s+(\S+)(.*)$/im);
             if (!m) {
               core.info('no /kpax command — ignore');
               return;
             }
 
-            // AuthZ: allowlist OR repo admin/maintain
             let ok = allow.includes(login);
             if (!ok) {
               try {
@@ -55,7 +54,7 @@ jobs:
                   username: context.payload.sender.login,
                 });
                 ok = ['admin', 'maintain'].includes(perm.permission);
-              } catch (e) {
+              } catch (_) {
                 ok = false;
               }
             }
@@ -64,7 +63,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: `❌ **Unauthorized** (\`${login}\`). Add login to secret \`KPAX_OPS_ALLOWLIST\` or use a repo admin account.`,
+                body: `❌ **Unauthorized** (\`${login}\`). Add login to secret \`KPAX_OPS_ALLOWLIST\` or use a repo admin/maintain account.`,
               });
               core.setFailed('unauthorized');
               return;
@@ -72,21 +71,47 @@ jobs:
 
             const cmd = m[1].toLowerCase();
             const rest = (m[2] || '').trim();
-            const ref = context.ref || 'main';
+            const fingerprint = `${cmd}|${rest}`.slice(0, 180);
+
+            // Deduplicate identical command on same issue within recent comments.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 30,
+            });
+            const recentDup = comments.reverse().find(c =>
+              (c.body || '').includes(marker + fingerprint + ' -->') &&
+              (Date.now() - Date.parse(c.created_at)) < 15 * 60 * 1000
+            );
+            if (recentDup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `⏭️ Duplicate \`/kpax ${cmd}\` ignored (same command dispatched in the last 15 minutes). See previous bot comment.`,
+              });
+              return;
+            }
 
             const safe = {
               health: { workflow: 'health-check.yml', inputs: {} },
-              diag: { workflow: 'diagnostics.yml', inputs: { targets: rest || 'panel,de,fi,pl,ru,ru2' } },
-              diagnostics: { workflow: 'diagnostics.yml', inputs: { targets: rest || 'panel,de,fi,pl,ru,ru2' } },
+              diag: { workflow: 'diagnostics.yml', inputs: { targets: 'panel,de,fi,pl,ru,ru2' } },
+              diagnostics: { workflow: 'diagnostics.yml', inputs: { targets: 'panel,de,fi,pl,ru,ru2' } },
               analytics: { workflow: 'analytics.yml', inputs: {} },
               e2e: { workflow: 'vpn-e2e.yml', inputs: {} },
+              inventory: { workflow: 'diagnostics.yml', inputs: { targets: 'panel,de,fi,pl,ru,ru2' } },
             };
             const dangerous = {
               backup: { workflow: 'backup.yml', inputs: { confirm: 'BACKUP' }, needsConfirm: 'CONFIRM: BACKUP' },
               deploy: { workflow: 'deploy.yml', inputs: { confirm: 'DEPLOY', paths: 'panel.py', restart: 'false' }, needsConfirm: 'CONFIRM: DEPLOY' },
-              rollback: { workflow: 'rollback.yml', inputs: { confirm: 'ROLLBACK' }, needsConfirm: 'CONFIRM: ROLLBACK' },
-              'node-ops': { workflow: 'node-ops.yml', inputs: {}, needsConfirm: null },
-              dns: { workflow: 'dns-ops.yml', inputs: {}, needsConfirm: 'CONFIRM: DNS' },
+              rollback: { workflow: 'rollback.yml', inputs: { confirm: 'ROLLBACK', backup_name: '' }, needsConfirm: 'CONFIRM: ROLLBACK' },
+              'node-ops': {
+                workflow: 'node-ops.yml',
+                inputs: { confirm: 'NODEOPS', action: 'diag', targets: 'panel', service: 'sing-box' },
+                needsConfirm: 'CONFIRM: NODEOPS',
+              },
+              dns: { workflow: 'dns-ops.yml', inputs: { confirm: 'DNS', action: 'list', name: 'pl.k-pax.space', content: '', proxied: 'false' }, needsConfirm: 'CONFIRM: DNS' },
             };
 
             let target = safe[cmd] || dangerous[cmd];
@@ -98,18 +123,14 @@ jobs:
                 body: [
                   'Unknown `/kpax` command.',
                   '',
-                  '**Read-only (no production approval):**',
-                  '- `/kpax health`',
-                  '- `/kpax diag panel,de,fi,pl,ru,ru2`',
-                  '- `/kpax analytics`',
-                  '- `/kpax e2e`',
+                  '**Read-only:** `/kpax health` · `/kpax diag panel,de,fi,pl,ru,ru2` · `/kpax analytics` · `/kpax e2e`',
                   '',
-                  '**Dangerous (need `CONFIRM: …` in the same issue/comment + Environment approval):**',
-                  '- `/kpax backup` + `CONFIRM: BACKUP`',
-                  '- `/kpax deploy` + `CONFIRM: DEPLOY`',
-                  '- `/kpax rollback` + `CONFIRM: ROLLBACK`',
-                  '- `/kpax dns` + `CONFIRM: DNS`',
-                  '- `/kpax node-ops` (see node-ops workflow inputs in the run UI)',
+                  '**Dangerous (same message must include CONFIRM token + Environment approval):**',
+                  '`/kpax backup` + `CONFIRM: BACKUP`',
+                  '`/kpax deploy paths=panel.py` + `CONFIRM: DEPLOY`',
+                  '`/kpax rollback` + `CONFIRM: ROLLBACK`',
+                  '`/kpax dns` + `CONFIRM: DNS`',
+                  '`/kpax node-ops` + `CONFIRM: NODEOPS`',
                 ].join('\n'),
               });
               return;
@@ -120,21 +141,34 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: `⚠️ **${cmd}** is dangerous. Re-post the command and include exactly \`${target.needsConfirm}\` in the same message. Production Environment approval is still required.`,
+                body: `⚠️ **${cmd}** is dangerous. Include exactly \`${target.needsConfirm}\` in the same message. Production Environment approval is still required.`,
               });
               return;
             }
 
-            // Optional overrides for diag targets / deploy paths
-            if (cmd === 'diag' || cmd === 'diagnostics') {
-              target.inputs.targets = rest || 'panel,de,fi,pl,ru,ru2';
+            if (cmd === 'diag' || cmd === 'diagnostics' || cmd === 'inventory') {
+              const t = rest.split(/\s+/)[0];
+              if (t && /^[a-z0-9,]+$/i.test(t)) target.inputs.targets = t;
             }
             if (cmd === 'deploy') {
               const pm = rest.match(/paths=([^\s]+)/i);
               if (pm) target.inputs.paths = pm[1];
               if (/restart=true/i.test(rest)) target.inputs.restart = 'true';
             }
+            if (cmd === 'node-ops') {
+              const am = rest.match(/action=([a-z0-9-]+)/i);
+              const tm = rest.match(/targets=([a-z0-9,]+)/i);
+              const sm = rest.match(/service=([a-z0-9-]+)/i);
+              if (am) target.inputs.action = am[1];
+              if (tm) target.inputs.targets = tm[1];
+              if (sm) target.inputs.service = sm[1];
+            }
+            if (cmd === 'rollback') {
+              const bm = rest.match(/backup=([^\s]+)/i);
+              if (bm) target.inputs.backup_name = bm[1];
+            }
 
+            const before = Date.now();
             try {
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
@@ -154,13 +188,39 @@ jobs:
               return;
             }
 
+            // Resolve concrete run URL (best-effort poll).
+            let runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${target.workflow}`;
+            let runId = '';
+            for (let i = 0; i < 8; i++) {
+              await new Promise(r => setTimeout(r, 2000));
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: target.workflow,
+                event: 'workflow_dispatch',
+                per_page: 5,
+              });
+              const hit = (data.workflow_runs || []).find(r =>
+                Date.parse(r.created_at) >= before - 5000
+              );
+              if (hit) {
+                runUrl = hit.html_url;
+                runId = String(hit.id);
+                break;
+              }
+            }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issue.number,
               body: [
+                marker + fingerprint + ' -->',
                 `✅ Dispatched **${target.workflow}** as \`${login}\`.`,
-                `Watch: https://github.com/${context.repo.owner}/${context.repo.repo}/actions`,
-                dangerous[cmd] ? '_Production Environment approval may be required before the job runs._' : '_Read-only run — download Artifacts when finished._',
+                runId ? `Run: ${runUrl}` : `Workflow: ${runUrl}`,
+                runId ? `Logs (no ZIP required): ${runUrl}` : '',
+                dangerous[cmd]
+                  ? '_Production Environment approval may be required before the job runs._'
+                  : '_Read-only — open the run page for live logs + SUMMARY in the log stream._',
               ].filter(Boolean).join('\n'),
             });

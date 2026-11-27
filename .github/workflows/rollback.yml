@@ -1,4 +1,4 @@
-# Restore previous server tree from /var/backups/k-pax-ci. Requires production approval.
+# Restore previous server tree via kpax-ci rollback. Requires production approval.
 name: Rollback
 
 on:
@@ -42,28 +42,29 @@ jobs:
           KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
         run: bash tools/ci/ssh_setup.sh
 
-      - name: Restore
+      - name: kpax-ci rollback
         env:
           PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
           BACKUP_NAME: ${{ inputs.backup_name }}
         run: |
           set -euo pipefail
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
-          remote_panel=$("${SSH[@]}" "gha@${PANEL}" 'sudo ls /opt/k-pax/panel.py /usr/local/lib/k-pax/panel.py 2>/dev/null | head -1')
-          [[ -n "$remote_panel" ]] || { echo "::error::panel.py not found"; exit 1; }
-          remote_dir=$(dirname "$remote_panel")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
           if [[ -n "$BACKUP_NAME" ]]; then
-            src="/var/backups/k-pax-ci/$BACKUP_NAME"
+            # basename only
+            case "$BACKUP_NAME" in
+              *[!a-zA-Z0-9._-]*) echo "::error::bad backup name"; exit 1 ;;
+            esac
+            "${SSH[@]}" "gha@${PANEL}" "sudo $CI rollback $BACKUP_NAME" | tee rollback-result.txt
           else
-            src=$("${SSH[@]}" "gha@${PANEL}" 'sudo ls -1dt /var/backups/k-pax-ci/pre-deploy-* 2>/dev/null | head -1')
+            "${SSH[@]}" "gha@${PANEL}" "sudo $CI rollback" | tee rollback-result.txt
           fi
-          [[ -n "$src" ]] || { echo "::error::no backup found"; exit 1; }
-          echo "restoring $src -> $remote_dir"
-          stamp=$(date -u +%Y%m%dT%H%MZ)
-          "${SSH[@]}" "gha@${PANEL}" "sudo mkdir -p /var/backups/k-pax-ci && sudo cp -a '$remote_dir' '/var/backups/k-pax-ci/pre-rollback-${stamp}' && sudo rsync -a --delete '$src/' '$remote_dir/' && sudo systemctl restart k-pax"
-          sleep 3
-          "${SSH[@]}" "gha@${PANEL}" 'sudo systemctl is-active k-pax'
-          echo "rollback_ok from=$src" | tee rollback-result.txt
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "https://k-pax.space/healthz" || true)
+          echo "healthz=$code"
+          case "$code" in
+            200|204) ;;
+            *) echo "FAIL healthz"; exit 1 ;;
+          esac
 
       - uses: actions/upload-artifact@v4
         with:

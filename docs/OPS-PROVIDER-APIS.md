@@ -1,36 +1,65 @@
 # Hosting / DNS provider APIs (emergency)
 
-Secrets are **not** stored in git. Create scoped tokens in GitHub Actions secrets only.
+Secrets are **not** stored in git. Create scoped tokens in GitHub Actions secrets only. Never paste tokens into ChatGPT chat.
 
-## Cloudflare (DNS)
+## Cloudflare (DNS) — primary automated path
 
 | Item | Guidance |
 |------|----------|
-| Secret names | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID_KPAX` (optional zone for x-plm later) |
+| Secret names | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID_KPAX` |
 | Token scope | **Zone → DNS → Edit** on `k-pax.space` only. Never Global API Key. |
-| Workflow | `.github/workflows/dns-ops.yml` (`production` approval + `CONFIRM: DNS` via Issues gateway) |
+| Workflow | `.github/workflows/dns-ops.yml` (`production` + `CONFIRM: DNS`) |
 | Allowlisted names | `pl.k-pax.space`, `de.k-pax.space`, `fi.k-pax.space`, `cdn.k-pax.space`, apex/www |
-| Reality tip | A records for exits/fronts should be **DNS-only** (`proxied=false`) |
+| Reality tip | Exit/front A records **DNS-only** (`proxied=false`) |
+| Phone fallback | Cloudflare mobile app / dashboard → DNS |
 
-## VPS providers (status / reboot)
+Status: token presence **NEEDS VERIFY** per environment secrets.
 
-Documented for operator inventory — wire tokens only when confirmed:
+## Namecheap (nastolkashop.store)
 
-| Provider (typical for this fleet) | Useful API | Emergency actions |
-|-----------------------------------|------------|-------------------|
-| RuVDS / similar RU VPS | Panel API or provider console | Power cycle front hosts |
-| VPSPay / EU VPS | Provider ticket / API if enabled | Status + hard reboot for DE/FI/PL |
-| Panel host | SSH + `systemctl` via `kpax-ci` | Prefer CI wrappers over provider reboot |
+| Item | Guidance |
+|------|----------|
+| API | Optional Namecheap API (ClientIp allowlist) — usually unused |
+| Phone fallback | Namecheap app/site → Advanced DNS for `media` / `files` / `static` / `img` |
+| Scope for ChatGPT | Describe needed record change; operator confirms in UI |
 
-**Acceptance:** ChatGPT must not receive raw API keys in chat. Store as Actions secrets; invoke only through `dns-ops` / future `provider-reboot` workflows with Environment approval.
+## VPS providers
 
-## Polish exit (`pl`)
+| Host role | Typical provider | API / actions | Phone fallback |
+|-----------|------------------|---------------|----------------|
+| Panel | **NEEDS VERIFY** brand | Status, hard reboot if API token scoped | Provider console reboot |
+| DE / FI / PL | VPSPay / EU VPS family | Status + reboot if enabled | Ticket / console |
+| RU | RuVDS | Panel API or console | App/console power cycle |
+| RU2 | AdminVPS | Console | Console |
+| X-Plm edge | **NEEDS VERIFY** | Console | Console |
 
-| Field | Value (non-secret) |
-|-------|--------------------|
+**Do not** give ChatGPT unbounded hosting account passwords. Prefer:
+
+1. `kpax-ci` via Actions for service restart.  
+2. One-shot `provider-reboot` workflow (future) with Environment approval.  
+3. Operator phone console for power only.
+
+## Domains / certificates
+
+| Domain | Where | Notes |
+|--------|-------|-------|
+| `k-pax.space` | Cloudflare + LE on panel/Caddy | diag shows expiry |
+| `media.nastolkashop.store` | LE on `ru`, sync to `ru2` | `kpax-sync-media-cert` |
+| `pl.k-pax.space` | CF A → PL | DNS-only required for Reality |
+
+## Billing / renewal alerts
+
+| Item | Status |
+|------|--------|
+| VPS payment due alerts | **PARTIAL** — rely on provider email + Telegram watch; no unified Actions notifier yet |
+| Cert expiry | diag + LE timers; alert automation **NEEDS VERIFY** |
+| Domain expiry | registrar email; no CI poll yet |
+
+## Polish exit (do not mutate)
+
+| Field | Value |
+|-------|-------|
 | Host | `2.26.225.213` |
 | SNI / domain | `pl.k-pax.space` |
-| Front port on RU | `2445` |
-| Panel relay | `28445` → PL:443 |
-
-Ensure Cloudflare A `pl.k-pax.space` → `2.26.225.213` DNS-only before expecting SoftProbe OK from clients.
+| Front port | `2445` |
+| Relay | `28445` → PL:443 |

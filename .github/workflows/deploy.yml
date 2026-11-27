@@ -1,4 +1,5 @@
-# Controlled panel deploy of allowlisted server files. Requires production approval.
+# Controlled panel deploy of allowlisted server files via kpax-ci deploy-install.
+# Requires production Environment approval. No arbitrary root shell.
 name: Deploy
 
 on:
@@ -48,32 +49,28 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p stage
+          names=()
           IFS=',' read -ra items <<< "$PATHS"
           for p in "${items[@]}"; do
             p="$(echo "$p" | xargs)"
             [[ -n "$p" ]] || continue
-            case "$p" in
-              panel.py|watch.py|limit.py|backup.py|*.py) ;;
-              *)
-                # only basename py under server/
-                if [[ "$p" == */* || "$p" == .* ]]; then
-                  echo "::error::path not allowlisted: $p"
-                  exit 1
-                fi
-                [[ "$p" == *.py ]] || { echo "::error::only .py under server/: $p"; exit 1; }
-                ;;
-            esac
+            if [[ "$p" == */* || "$p" == .* ]]; then
+              echo "::error::path not allowlisted: $p"
+              exit 1
+            fi
+            [[ "$p" == *.py ]] || { echo "::error::only .py under server/: $p"; exit 1; }
             src="server/$p"
-            [[ -f "$src" ]] || { echo "::error::missing $src — ensure server/ is in the repo"; exit 1; }
-            # block obvious secrets
+            [[ -f "$src" ]] || { echo "::error::missing $src"; exit 1; }
             if grep -Eiq 'BEGIN (RSA |OPENSSH |)PRIVATE KEY|password\s*=\s*["'\''][^"'\'']{8,}' "$src"; then
-              echo "::error::refusing to deploy file that looks secret-bearing: $src"
+              echo "::error::refusing secret-bearing file: $src"
               exit 1
             fi
             python3 -m py_compile "$src"
             cp "$src" "stage/$p"
+            names+=("$p")
             echo "validated $p"
           done
+          echo "files=${names[*]}" >> "$GITHUB_OUTPUT"
           ls -la stage/
 
       - name: Setup SSH
@@ -82,37 +79,29 @@ jobs:
           KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
         run: bash tools/ci/ssh_setup.sh
 
-      - name: Backup remote then upload
+      - name: Stage + kpax-ci deploy-install
         env:
           PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
           RESTART: ${{ inputs.restart }}
+          FILES: ${{ steps.val.outputs.files }}
         run: |
           set -euo pipefail
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
           stamp=$(date -u +%Y%m%dT%H%MZ)
-          remote_dir="/opt/k-pax"
-          # Discover panel.py location
-          remote_panel=$("${SSH[@]}" "gha@${PANEL}" 'sudo ls /opt/k-pax/panel.py /usr/local/lib/k-pax/panel.py /home/kpax/panel.py 2>/dev/null | head -1')
-          if [[ -z "$remote_panel" ]]; then
-            remote_panel=$("${SSH[@]}" "gha@${PANEL}" 'sudo systemctl cat k-pax 2>/dev/null | grep -Eo "/[^ ]*panel\\.py" | head -1' || true)
-          fi
-          [[ -n "$remote_panel" ]] || { echo "::error::cannot locate remote panel.py"; exit 1; }
-          remote_dir=$(dirname "$remote_panel")
-          echo "remote_dir=$remote_dir"
-
-          "${SSH[@]}" "gha@${PANEL}" "sudo mkdir -p /var/backups/k-pax-ci && sudo cp -a '$remote_dir' '/var/backups/k-pax-ci/pre-deploy-${stamp}'"
+          "${SSH[@]}" "gha@${PANEL}" 'rm -rf /tmp/kpax-ci-stage && mkdir -m 700 /tmp/kpax-ci-stage'
           for f in stage/*; do
             base=$(basename "$f")
-            "${SCP[@]}" "$f" "gha@${PANEL}:/tmp/kpax-deploy-$base"
-            "${SSH[@]}" "gha@${PANEL}" "sudo install -m 644 /tmp/kpax-deploy-$base '$remote_dir/$base' && rm -f /tmp/kpax-deploy-$base"
-            echo "installed $base"
+            "${SCP[@]}" "$f" "gha@${PANEL}:/tmp/kpax-ci-stage/$base"
+            echo "staged $base"
           done
+          # shellcheck disable=SC2086
+          "${SSH[@]}" "gha@${PANEL}" "sudo $CI deploy-install $stamp $FILES" | tee deploy-install.txt
           if [[ "$RESTART" == "true" ]]; then
-            "${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci restart k-pax'
+            "${SSH[@]}" "gha@${PANEL}" "sudo $CI restart k-pax"
             sleep 3
           fi
-          # smoke — must not mark Success on bad healthz
           code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "https://k-pax.space/healthz" || true)
           code=${code:-err}
           echo "healthz=$code"
@@ -120,10 +109,12 @@ jobs:
             200|204) ;;
             *) echo "FAIL healthz code=$code"; exit 1 ;;
           esac
-          echo "deploy_ok stamp=$stamp dir=$remote_dir" | tee deploy-result.txt
+          echo "deploy_ok stamp=$stamp files=$FILES" | tee deploy-result.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: deploy-${{ github.run_id }}
-          path: deploy-result.txt
+          path: |
+            deploy-result.txt
+            deploy-install.txt
           retention-days: 30

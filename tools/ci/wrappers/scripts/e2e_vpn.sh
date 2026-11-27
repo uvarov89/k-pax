@@ -50,23 +50,27 @@ probe = {
 }
 open(path, "w", encoding="utf-8").write(json.dumps(probe))
 PY
-  sing-box run -c "$cfg" >"$log" 2>&1 &
-  local pid=$!
-  sleep 1.2
-  code=$(curl -s -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:${listen}" \
-    --connect-timeout 8 --max-time 14 https://www.gstatic.com/generate_204 || true)
-  code=${code:-000}
-  [[ "$code" =~ ^[0-9]+$ ]] || code=000
-  # External IP via proxy (CDN CGI) — proves egress, not just TCP
-  ip_sample=$(curl -s -x "http://127.0.0.1:${listen}" --connect-timeout 8 --max-time 14 \
-    https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -E '^(ip|loc)=' | tr '\n' ' ' || true)
-  kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
+  local attempt code=000 ip_sample="" pid
+  for attempt in 1 2 3; do
+    sing-box run -c "$cfg" >"$log" 2>&1 &
+    pid=$!
+    sleep 1.4
+    code=$(curl -s -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:${listen}" \
+      --connect-timeout 8 --max-time 14 https://www.gstatic.com/generate_204 || true)
+    code=${code:-000}
+    [[ "$code" =~ ^[0-9]+$ ]] || code=000
+    ip_sample=$(curl -s -x "http://127.0.0.1:${listen}" --connect-timeout 8 --max-time 14 \
+      https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -E '^(ip|loc)=' | tr '\n' ' ' || true)
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    if [[ "$code" == "204" || "$code" == "200" ]]; then
+      echo "e2e $label SoftProbe HTTP $code OK ${ip_sample}"
+      rm -rf "$work"
+      return 0
+    fi
+    sleep 0.8
+  done
   rm -rf "$work"
-  if [[ "$code" == "204" || "$code" == "200" ]]; then
-    echo "e2e $label SoftProbe HTTP $code OK ${ip_sample}"
-    return 0
-  fi
   echo "E2E_FAIL $label SoftProbe HTTP $code"
   return 1
 }

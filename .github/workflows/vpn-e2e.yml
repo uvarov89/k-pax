@@ -44,7 +44,7 @@ jobs:
           done
           {
             echo "# e2e summary $(date -u +%Y-%m-%dT%H:%MZ)"
-            grep -E 'e2e |FAIL|STATUS=|validate' out/* || true
+            grep -E 'e2e |FAIL|STATUS=|validate|PL_PATH=' out/*.txt || true
           } > out/SUMMARY.txt
           bash tools/ci/lib/fail_if_marked.sh out
 

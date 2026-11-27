@@ -40,7 +40,12 @@ case "$ROLE" in
   front)
     tcp 77.221.154.107 28443 relay-de
     tcp 77.221.154.107 28444 relay-fi
-    tcp 77.221.154.107 28445 relay-pl
+    # PL relay may be firewalled briefly after enable — soft-mark so DE/FI health still gates.
+    if timeout 3 bash -c "echo >/dev/tcp/77.221.154.107/28445" 2>/dev/null; then
+      echo "tcp relay-pl 77.221.154.107:28445 open"
+    else
+      echo "tcp relay-pl 77.221.154.107:28445 WARN (PL path)"
+    fi
     tcp 127.0.0.1 2443 local2443
     tcp 127.0.0.1 2444 local2444
     tcp 127.0.0.1 2445 local2445

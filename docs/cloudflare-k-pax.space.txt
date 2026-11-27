@@ -1,0 +1,31 @@
+; Cloudflare BIND import for k-pax.space
+; 1) In Cloudflare DNS: delete old A/AAAA/CNAME/MX that conflict (or Export backup first)
+; 2) DNS → Import and Export → Import → upload this file
+; 3) Check proxy clouds: orange = proxied, grey = DNS only
+;
+; Proxied (orange): apex, www, sub, cdn
+; DNS only (grey): mail, de, fi, bg, pl + all MX/TXT
+
+$ORIGIN k-pax.space.
+$TTL 300
+
+; --- website / panel / CDN (Proxied) ---
+@       IN  A  77.221.154.107  ; cf_tags=cf-proxied:true
+www     IN  A  77.221.154.107  ; cf_tags=cf-proxied:true
+sub     IN  A  77.221.154.107  ; cf_tags=cf-proxied:true
+cdn     IN  A  77.221.154.107  ; cf_tags=cf-proxied:true
+
+; --- mail origin (DNS only — never orange) ---
+mail    IN  A  77.221.154.107  ; cf_tags=cf-proxied:false
+
+; --- node hostnames for spare gRPC/XHTTP (DNS only — never orange) ---
+de      IN  A  31.77.116.51    ; cf_tags=cf-proxied:false
+fi      IN  A  144.31.169.6    ; cf_tags=cf-proxied:false
+bg      IN  A  79.124.7.111    ; cf_tags=cf-proxied:false
+pl      IN  A  2.26.225.213    ; cf_tags=cf-proxied:false
+
+; --- mail ---
+@       IN  MX  10 mail.k-pax.space.
+@       IN  TXT "v=spf1 ip4:77.221.154.107 ~all"
+_dmarc  IN  TXT "v=DMARC1; p=none; rua=mailto:support@k-pax.space"
+mail._domainkey IN TXT "v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtAyt2h+mhAtaE9MO+vDSj2AG5Ykv3MNdBJv4As2RC4c71Cl/dX2+n4LgLVX0j8bVpKYibbYr9JRNr5Z2BSp1+0H0mT1Z+umgNgPJblTwA14qsC3nNA1nhqOqOCc3nmPEm2NwZiquAOyZdBE6C24gMB156eKgPuJzhV4w3/CAqxb59EPa5iTM0hlF5S6vvMclL4DA6LyDn8Ba19IFpCDob4b/4TlfaOdsba5jx2tdQ/3CsV9K0lWXjC6wCVdmTa6EIbNIWuBUTMvkmIv+SMSv84A35AikBEKycqQ6zYkeN+QmgU63sJjqJfVAEwcrpexG1DzeIIkeI2Vyvp+9rLDasQIDAQAB"

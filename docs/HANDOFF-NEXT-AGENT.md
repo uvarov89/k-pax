@@ -132,7 +132,20 @@ Never restart production without need. Never delete user data. Never change live
 
 ---
 
-## 8. Limits and open issues
+## 8. Readiness for ChatGPT (independent ops)
+
+| Capability | Status |
+|------------|--------|
+| Client code analysis | OK (repo) |
+| Server code analysis | OK (`server/` tracked) |
+| Read server diagnostics | OK (Artifacts) |
+| Client statistics | OK (`analytics.yml`) |
+| Prepare fixes | OK (PRs / `server/*.py`) |
+| **Launch diagnostics yourself** | OK — Actions → Diagnostics / Health / Analytics → **Run workflow** (no `production` approval). Verified runs linked in §10. |
+| **Service access security** | OK — CI user `gha` (limited sudo); **operator admin SSH rotated** 2026-11-27 (old `k-pax-admin` fingerprint retired). Panel→node key `/etc/k-pax/id_ed25519` unchanged. |
+| **Autonomous deploy** | Use Backup → Deploy → Health with `production` approval. Smoke path: deploy `ci_deploy_probe.py` with `restart=false`. |
+
+## 9. Limits and open issues
 
 **Limits**
 
@@ -140,7 +153,7 @@ Never restart production without need. Never delete user data. Never change live
 - Deploy allowlist = `server/*.py` basenames only.
 - Analytics schema depends on live SQLite tables (`client_events`, `payments`, …).
 - Do not change SoftProbe / MTU / DNS / routes / VPN architecture unless the bug is proven client-universal.
-- Admin SSH key previously exposed in chat: **rotate after confirming GHA access** (operator).
+- Deploy/Rollback/Backup require human approval on GitHub Environment `production` (by design).
 
 **Open incident (2026-11-26)**
 
@@ -150,7 +163,7 @@ Never restart production without need. Never delete user data. Never change live
 
 ---
 
-## 9. Key files
+## 10. Key files
 
 | Path | Why |
 |------|-----|
@@ -164,11 +177,17 @@ Never restart production without need. Never delete user data. Never change live
 
 ---
 
-## 10. Immediate playbook for ChatGPT
+## 11. Immediate playbook for ChatGPT
 
-1. Run **Diagnostics** + **Health check** → download Artifacts.  
+1. **Actions** → **Diagnostics** / **Health check** / **Analytics** → Run workflow → download Artifacts (you do not need Cursor).  
 2. If path broken: patch `server/` in a PR; do not edit SoftProbe first.  
-3. After review: **Backup** → **Deploy** (approval) → re-run health.  
+3. After review: **Backup** (`BACKUP`) → **Deploy** (`DEPLOY`, approval) → re-run health. First smoke: `paths=ci_deploy_probe.py`, `restart=false`.  
 4. Client builds via **Client build**; iOS via Codemagic; **no publish** unless operator asks.
+
+### Verified acceptance runs (2026-11-27)
+
+- Diagnostics: https://github.com/uvarov89/k-pax/actions/runs/45962067665  
+- Health: https://github.com/uvarov89/k-pax/actions/runs/45962074072  
+- Analytics: https://github.com/uvarov89/k-pax/actions/runs/45962079934  
 
 End of handoff.

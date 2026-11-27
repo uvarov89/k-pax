@@ -74,7 +74,8 @@ Android live **1.0.84**; Windows **1.0.81**; rollback **1.0.70**.
 
 ## Immediate priorities for ChatGPT
 
-1. Verify Issues gateway with a new `/kpax health` (expect run URL comment).  
-2. Run `/kpax e2e`; expect possible red on PL — collect fail logs, do not “fix” PL yet.  
-3. Keep deploy/rollback on wrappers only.  
-4. Expand acceptance matrix links after each verified run.
+1. Gateway verified on [#12](https://github.com/uvarov89/k-pax/issues/12) — continue with `/kpax diag` / `/kpax e2e` / `/kpax analytics`.  
+2. E2E will stay red until PL SoftProbe fixed — collect evidence only; **do not change PL config** without operator confirm.  
+3. Next operator-approved: `/kpax backup` then optional wrapper deploy/rollback drill.  
+4. Investigate RU2 Reality SoftProbe fail (dual-A `media`) separately from PL hop.  
+5. Acceptance matrix: [ACCEPTANCE-TESTS.md](ACCEPTANCE-TESTS.md).

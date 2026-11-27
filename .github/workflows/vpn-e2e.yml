@@ -36,6 +36,8 @@ jobs:
           # Refresh dedicated CI-E2E env (no customer UUID)
           "${SSH[@]}" "gha@${PANEL}" "sudo $CI ensure-e2e-env" | tee out/ensure-e2e-env.txt \
             || echo "FAIL ensure-e2e-env" | tee -a out/ensure-e2e-env.txt
+          "${SSH[@]}" "gha@${PANEL}" "sudo $CI sync-users" | tee out/sync-users.txt \
+            || echo "FAIL sync-users" | tee -a out/sync-users.txt
           if ! "${SSH[@]}" "gha@${PANEL}" "sudo $CI e2e" | tee out/e2e.txt; then
             echo "FAIL e2e" | tee -a out/e2e.txt
           fi
@@ -47,9 +49,8 @@ jobs:
           done
           {
             echo "# e2e summary $(date -u +%Y-%m-%dT%H:%MZ)"
-            grep -E 'e2e |FAIL|STATUS=|CLASS=|validate|PL_PATH=|NODE |TOOL_|HINT ' out/*.txt || true
-          } > out/SUMMARY.txt
-          cat out/SUMMARY.txt
+            grep -E 'e2e |FAIL|STATUS=|CLASS=|validate|PL_PATH=|NODE |TOOL_|HINT |sync ' out/e2e.txt out/ensure-e2e-env.txt out/sync-users.txt out/validate-*.txt 2>/dev/null || true
+          } | tee out/SUMMARY.txt
           bash tools/ci/lib/fail_if_marked.sh out
 
       - uses: actions/upload-artifact@v4

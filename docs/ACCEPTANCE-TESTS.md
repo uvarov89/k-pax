@@ -4,26 +4,28 @@ Fill **Status** after each real run: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TE
 
 | # | Capability | Status | Evidence |
 |---|------------|--------|----------|
-| 1 | Issues gateway dispatches + run URL comment | NOT TESTED | Re-test after push (fix for #8–#11 SyntaxError) |
-| 2 | Fresh diagnostics logs in Actions | NOT TESTED | `/kpax diag` |
-| 3 | Dedicated CI-E2E subscription/env | VERIFIED (panel) | `CI-E2E` created; `/etc/k-pax/ci-e2e.env` with per-exit PBK/SID; synced via `k-pax-user.py add` to de/fi/pl/ru/ru2 |
-| 4 | Per-node SoftProbe map | VERIFIED (SSH e2e) | Panel `kpax-ci e2e`: DE front+direct OK; FI direct OK; FI/PL front + PL direct FAIL; honest `STATUS=FAIL` |
-| 5 | Root-cause notes for failures | PARTIAL | See KNOWN-ISSUES (RU2 Reality + PL hop); no PL config change |
-| 6 | Server journals via diag | NOT TESTED | needs Actions after git push |
-| 7 | Encrypted backup | NOT TESTED | `/kpax backup` + CONFIRM + approval |
-| 8 | Test deploy via wrapper | NOT TESTED | code uses `deploy-install`; needs approved run |
-| 9 | Test rollback via wrapper | NOT TESTED | code uses `kpax-ci rollback` |
-| 10 | Restore from encrypted backup (isolated) | NOT TESTED | no scratch VM this pass |
-| 11 | Critical confirm from phone | NOT TESTED | Environment approval UI |
-| 12 | Manage without owner laptop | PARTIAL | Path designed; end-to-end phone drill pending after push |
+| 1 | Issues gateway dispatches + run URL comment | VERIFIED | [#12](https://github.com/uvarov89/k-pax/issues/12) → gateway success → [health 46034378616](https://github.com/uvarov89/k-pax/actions/runs/46034378616) |
+| 2 | Fresh diagnostics logs in Actions | VERIFIED | [diagnostics 46034295380](https://github.com/uvarov89/k-pax/actions/runs/46034295380) |
+| 3 | Dedicated CI-E2E subscription/env | VERIFIED | `CI-E2E` + `ci-e2e.env`; synced to de/fi/pl/ru/ru2; ensure step in E2E OK |
+| 4 | Per-node SoftProbe map | VERIFIED | [e2e 46034310970](https://github.com/uvarov89/k-pax/actions/runs/46034310970) — DE/FI OK; PL FAIL; honest red |
+| 5 | Root-cause notes for failures | PARTIAL | KNOWN-ISSUES: RU2 Reality fail + PL hop/direct SoftProbe 000; **no PL config change** |
+| 6 | Server journals via diag | VERIFIED | diagnostics run above (redacted journals in log stream) |
+| 7 | Encrypted backup | NOT TESTED | needs phone `CONFIRM: BACKUP` + production approval |
+| 8 | Test deploy via wrapper | NOT TESTED | code path `kpax-ci deploy-install`; needs approval |
+| 9 | Test rollback via wrapper | NOT TESTED | code path `kpax-ci rollback`; needs approval |
+| 10 | Restore from encrypted backup (isolated) | NOT TESTED | no scratch VM |
+| 11 | Critical confirm from phone | NOT TESTED | owner Environment approval UI |
+| 12 | Manage without owner laptop | PARTIAL | Gateway+read-only VERIFIED; mutate path waiting phone approvals |
 
-## Prior verified baselines (pre this mega-pass)
+## Runs (this pass)
 
 | Check | Run |
 |-------|-----|
-| Diagnostics | https://github.com/uvarov89/k-pax/actions/runs/46009049713 |
-| Health green | https://github.com/uvarov89/k-pax/actions/runs/46009456544 |
-| Analytics | https://github.com/uvarov89/k-pax/actions/runs/46009063235 |
-| VPN E2E (old PL-advisory green) | https://github.com/uvarov89/k-pax/actions/runs/46010045313 |
+| Gateway #12 | https://github.com/uvarov89/k-pax/actions/runs/46034364950 |
+| Health (via gateway) | https://github.com/uvarov89/k-pax/actions/runs/46034378616 |
+| Health (manual) | https://github.com/uvarov89/k-pax/actions/runs/46034288084 |
+| Diagnostics | https://github.com/uvarov89/k-pax/actions/runs/46034295380 |
+| Analytics | https://github.com/uvarov89/k-pax/actions/runs/46034303399 |
+| VPN E2E (honest PL red) | https://github.com/uvarov89/k-pax/actions/runs/46034310970 |
 
-Replace with new runs after code push. Honest E2E may now **fail** while PL SoftProbe is red — that is expected until PL RCA.
+Commits: `fdfb0fd`, `a6a5dc3`.

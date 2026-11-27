@@ -53,6 +53,7 @@ jobs:
           run_one panel "$PANEL" panel
           run_one de 31.77.116.51 exit
           run_one fi 144.31.169.6 exit
+          run_one pl 2.26.225.213 exit
           run_one ru 195.133.45.167 front
           run_one ru2 152.228.112.142 front
           if [[ "$INCLUDE_BG" == "true" ]]; then

@@ -7,7 +7,7 @@ on:
       targets:
         description: 'Comma list: panel,de,fi,ru,ru2,bg,all'
         required: true
-        default: 'panel,de,fi,ru,ru2'
+        default: 'panel,de,fi,pl,ru,ru2'
         type: string
 
 permissions:
@@ -55,6 +55,7 @@ jobs:
             [panel]="$PANEL"
             [de]=31.77.116.51
             [fi]=144.31.169.6
+            [pl]=2.26.225.213
             [ru]=195.133.45.167
             [ru2]=152.228.112.142
             [bg]=79.124.7.111
@@ -62,7 +63,7 @@ jobs:
 
           list="$TARGETS"
           if [[ "$list" == "all" ]]; then
-            list="panel,de,fi,ru,ru2,bg"
+            list="panel,de,fi,pl,ru,ru2,bg"
           fi
 
           IFS=',' read -ra items <<< "$list"

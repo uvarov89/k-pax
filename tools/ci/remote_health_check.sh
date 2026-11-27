@@ -24,6 +24,9 @@ case "$ROLE" in
     tcp 144.31.169.6 443 fi443
     tcp 195.133.45.167 2443 ru2443
     tcp 195.133.45.167 2444 ru2444
+    tcp 195.133.45.167 2445 ru2445
+    tcp 2.26.225.213 443 pl443
+    tcp 127.0.0.1 28445 relay-pl
     if curl -fsS -m 5 http://127.0.0.1:8787/healthz >/dev/null; then
       echo "http healthz ok"
     else

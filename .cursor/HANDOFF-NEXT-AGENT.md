@@ -47,11 +47,12 @@
 | panel | `77.221.154.107` | `k-pax`, `kpax-front-relay`, Caddy | Code `/opt/k-pax`, cfg `/etc/k-pax`, DB `/var/lib/k-pax/k-pax.db` |
 | de | `31.77.116.51` | exit Reality | enabled |
 | fi | `144.31.169.6` | exit Reality | enabled |
-| ru | `195.133.45.167` | front 2443/2444 | enabled |
-| ru2 | `152.228.112.142` | front | enabled |
-| bg | `79.124.7.111` | exit | **`enabled: false`** — install `gha` after recovery |
+| pl | `2.26.225.213` | exit Reality | enabled (2026-11-27); SNI `pl.k-pax.space` — set Cloudflare A DNS-only |
+| ru | `195.133.45.167` | front 2443/2444/2445 | enabled (`pl` on 2445) |
+| ru2 | `152.228.112.142` | front | enabled (`pl` on 2445) |
+| bg | `79.124.7.111` | exit | **`enabled: false`** |
 
-Relay: panel `28443`→DE:443, `28444`→FI:443. CI SSH user: **`gha`** (limited sudo). Host keys: secret `KPAX_DEPLOY_SSH_KNOWN_HOSTS`.
+Relay: panel `28443`→DE:443, `28444`→FI:443, `28445`→PL:443. CI SSH user: **`gha`** (limited sudo). Host keys: secret `KPAX_DEPLOY_SSH_KNOWN_HOSTS`.
 
 ---
 

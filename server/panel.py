@@ -1380,7 +1380,12 @@ def is_front_node(node: dict) -> bool:
 def country_name(node: dict) -> str:
     if is_front_node(node):
         return str(node.get("name") or "Russia front").strip() or "Russia front"
-    titles = {"de": "Германия", "fi": "Финляндия", "bg": "Болгария"}
+    titles = {
+        "de": "Германия",
+        "fi": "Финляндия",
+        "bg": "Болгария",
+        "pl": "Польша",
+    }
     return titles.get(str(node.get("id") or "").lower(), node["name"])
 
 
@@ -1455,7 +1460,7 @@ def reality_sni(node: dict) -> str:
 
 def grpc_host(node: dict) -> str:
     node_id = str(node.get("id") or "").lower()
-    if node_id in ("de", "fi", "bg"):
+    if node_id in ("de", "fi", "bg", "pl"):
         return node_id + ".k-pax.space"
     return str(node.get("grpc_host") or "")
 
@@ -6158,16 +6163,18 @@ def probe_front_ports(node: dict) -> tuple[list[str], list[str]]:
 
 
 def health_cards() -> str:
-    titles = {"de": "Германия", "fi": "Финляндия", "bg": "Болгария"}
     now = time.time()
     cards = []
     with DEVICE_LOCK:
         snapshot = {host: dict(sample) for host, sample in NODE_HEALTH.items()}
+    exit_ids = [
+        str(n.get("id") or "").upper()
+        for n in CFG["nodes"]
+        if not is_front_node(n) and node_enabled(n)
+    ]
+    whitelist = "/".join(exit_ids) if exit_ids else "EU"
     for node in CFG["nodes"]:
-        if is_front_node(node):
-            title = html.escape(country_name(node))
-        else:
-            title = html.escape(titles.get(str(node.get("id") or "").lower(), node["name"]))
+        title = html.escape(country_name(node) if is_front_node(node) else node_title(node))
         sample = snapshot.get(node["host"])
         if is_front_node(node):
             ok, bad = probe_front_ports(node)
@@ -6184,12 +6191,13 @@ def health_cards() -> str:
             if sample and now - sample["seen"] <= 30:
                 cards.append(
                     "<article class='health'><b>{title}</b>"
-                    "<p class='muted'>whitelist → DE/FI/BG · {label}</p>"
+                    "<p class='muted'>whitelist → {whitelist} · {label}</p>"
                     "<p><span class='figure'>{online}</span> онлайн</p>"
                     "<p><span class='figure'>{speed}</span> Мбит/с</p>"
                     "<p class='muted'>Процессор {load} из {cores}</p>"
                     "{ports}</article>".format(
                         title=title,
+                        whitelist=html.escape(whitelist),
                         label=label,
                         online=sample["online"],
                         speed=mbps_text(max(sample["rx"], sample["tx"])),
@@ -6201,9 +6209,9 @@ def health_cards() -> str:
             else:
                 cards.append(
                     "<article class='health'><b>%s</b>"
-                    "<p class='muted'>whitelist → DE/FI/BG · %s</p>"
+                    "<p class='muted'>whitelist → %s · %s</p>"
                     "<p class='muted'>Нет свежих данных нагрузки.</p>%s</article>"
-                    % (title, label, ports)
+                    % (title, html.escape(whitelist), label, ports)
                 )
             continue
         if not sample or now - sample["seen"] > 30:
@@ -6351,8 +6359,9 @@ def subscription_menu() -> str:
         ports = node.get("front_ports") or {}
         port_txt = ", ".join(
             "%s→%s" % (str(exit_id).upper(), ports[exit_id])
-            for exit_id in ("de", "fi", "bg")
-            if exit_id in ports
+            for exit_id in sorted(ports.keys())
+            if str(exit_id).lower() in {n.get("id") for n in exit_nodes()}
+            or str(exit_id).lower() in ports
         )
         front_bits.append(
             "%s (%s; %s)"
@@ -11728,7 +11737,12 @@ def mail_restore_loop(bid: str = "kpax") -> None:
 def node_title(node: dict) -> str:
     if is_front_node(node):
         return str(node.get("name") or "Russia front").strip() or "Russia front"
-    titles = {"de": "Германия", "fi": "Финляндия", "bg": "Болгария"}
+    titles = {
+        "de": "Германия",
+        "fi": "Финляндия",
+        "bg": "Болгария",
+        "pl": "Польша",
+    }
     return titles.get(str(node.get("id") or "").lower(), str(node.get("name") or node["host"]))
 
 

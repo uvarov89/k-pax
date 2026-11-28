@@ -97,7 +97,10 @@ jobs:
             echo "staged $base"
           done
           # shellcheck disable=SC2086
+          set +o pipefail
           "${SSH[@]}" "gha@${PANEL}" "sudo $CI deploy-install $stamp $FILES" | tee deploy-install.txt
+          set -o pipefail
+          grep -q 'STATUS=OK' deploy-install.txt
           if [[ "$RESTART" == "true" ]]; then
             "${SSH[@]}" "gha@${PANEL}" "sudo $CI restart k-pax"
             sleep 3

@@ -57,8 +57,11 @@ jobs:
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
 
-          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci backup' | awk '/\/tmp\/kpax-ci-backup-.*\.tar\.gz$/{print; exit}')
-          [[ "$remote_tar" == /tmp/kpax-ci-backup-*.tar.gz ]]
+          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci backup' | awk '/^\/tmp\/kpax-ci-backup-.*\.tar\.gz$/{print; exit}')
+          [[ "$remote_tar" == /tmp/kpax-ci-backup-*.tar.gz ]] || {
+            echo "::error::backup did not print tarball path (got: ${remote_tar:-empty})"
+            exit 1
+          }
           "${SCP[@]}" "gha@${PANEL}:${remote_tar}" "out/raw.tar.gz"
           remote_sha=$("${SSH[@]}" "gha@${PANEL}" "sha256sum '${remote_tar}'" | awk '{print $1}')
           local_sha=$(sha256sum out/raw.tar.gz | awk '{print $1}')

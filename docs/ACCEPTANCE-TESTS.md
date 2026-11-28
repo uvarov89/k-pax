@@ -15,11 +15,16 @@ Statuses: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TESTED`.
 | 9 | Rollback via `kpax-ci` | VERIFIED | [46126028116](https://github.com/uvarov89/k-pax/actions/runs/46126028116) |
 | 10 | Production Environment approval | VERIFIED | API/phone approve path exercised (`required_reviewers` + 5m wait_timer) |
 | 11 | Provider inventory workflow | VERIFIED | [46123387272](https://github.com/uvarov89/k-pax/actions/runs/46123387272) |
-| 12 | Cloudflare DNS ops | FAILED (secrets) | [46123394596](https://github.com/uvarov89/k-pax/actions/runs/46123394596) — missing `CLOUDFLARE_*` |
-| 13 | RuVDS API status/reboot | NOT TESTED | needs `RUVDS_API_TOKEN` secret |
+| 12 | Cloudflare DNS ops | FAILED (secrets) | [46123394596](https://github.com/uvarov89/k-pax/actions/runs/46123394596) — missing `CLOUDFLARE_*` (operator: reconnect and re-run) |
+| 13 | RuVDS API status/reboot | NOT TESTED | hardware reboot is **manual**; API optional |
 | 14 | Weekly off-VPS backup schedule | PARTIAL | cron in `backup.yml`; first schedule not yet fired |
 | 15 | Read-only e2e separated from ensure/sync | VERIFIED | `vpn-e2e.yml` SoftProbe only; `e2e-maintain.yml` gated |
-| 16 | Manage without laptop | PARTIAL | read-only + DR backup/restore/deploy verified; CF/RuVDS secrets still needed |
+| 16 | Sanitized config-get (fleet) | PENDING | `config-ops.yml` action=get — fill run link after Actions |
+| 17 | Config diff + dry-run (`ci-drill`) | PENDING | isolated; no live VPN mutate |
+| 18 | Config apply + deadman cancel (`ci-drill`) | PENDING | panel only; auto-cancel after success |
+| 19 | Config rollback (`ci-drill`) | PENDING | after apply |
+| 20 | Issues gateway `config-get` / `config` | PENDING | after gateway deploy |
+| 21 | Manage without laptop | PARTIAL | DR + config-ops path; live VPN kinds still need explicit agree |
 
 ## Key runs (2026-11-28)
 
@@ -33,10 +38,10 @@ Statuses: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TESTED`.
 | Read-only E2E | https://github.com/uvarov89/k-pax/actions/runs/46123390878 |
 | DNS (needs secrets) | https://github.com/uvarov89/k-pax/actions/runs/46123394596 |
 
-## Operator TODO (phone)
+## Operator notes
 
-1. Add `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID_KPAX` → re-run `/kpax dns`.  
-2. Add `RUVDS_API_TOKEN` (+ `RUVDS_SERVER_IDS=ru=…`) → `/kpax provider provider=ruvds action=status`.  
-3. Download a backup artifact to personal cloud (extra offsite copy).
+1. Live `singbox` / Reality / relay apply: only with explicit agree; drills use `kind=ci-drill`.  
+2. Hardware VPS reboot: manual (hosting APIs not required).  
+3. Cloudflare: re-verify secrets then `/kpax dns`.
 
-Commits: `d67f538`, `f17747e`, `45d372a`, `89cc1b9` (+ docs update).
+Commits: `d67f538`, `f17747e`, `45d372a`, `89cc1b9`, `6e783f3` (+ config-ops commit after push).

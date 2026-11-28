@@ -25,7 +25,8 @@ Isolated restore: `/kpax restore-drill` + `CONFIRM: RESTOREDRILL` — decrypt+ve
 | RU / RU2 down | diag; clients may use direct EU | RuVDS reboot API / AdminVPS phone |
 | User sync drift | `/kpax e2e-maintain` + CONFIRM (not plain e2e) | |
 | DB damaged | Stop writes; restore-drill first; restore with confirm | Never overwrite live without approval |
-| Bad config deploy | `/kpax rollback` + CONFIRM | |
+| Bad panel code deploy | `/kpax rollback` + CONFIRM | |
+| Bad allowlisted config apply | `/kpax config action=rollback kind=…` + `CONFIRM: CONFIGOPS`; or wait for deadman timer | Prefer `diff` + `dry_run` first; network kinds arm local deadman |
 | Cert expired | diag certs; renew LE | Phone CF/Namecheap if DNS blocked |
 | DNS error | `/kpax dns action=list` + CONFIRM | CF mobile app |
 | Panel VPS lost | **New VPS rebuild** (below) | |
@@ -45,6 +46,13 @@ Isolated restore: `/kpax restore-drill` + `CONFIRM: RESTOREDRILL` — decrypt+ve
 10. Re-sync users to exits (`e2e-maintain` or panel maintenance).
 
 **Do not** restore node sing-box blindly over live exits without diff — prefer panel-driven user sync; use `nodes/*.sing-box.json` from backup only when rebuilding a dead exit.
+
+## Config ops safety net
+
+Allowlisted kinds only (`singbox`, `caddy`, `relay-unit`, `kpax-unit`, `panel-config`, `ci-drill`).  
+Every real `config-apply`: validate → backup under `/var/backups/k-pax-ci/config-<kind>-pre-*` → atomic install → restart only the mapped unit → optional SoftProbe e2e → **deadman** timer (local systemd) restores backup if not cancelled (covers SSH loss after network edits).
+
+Isolated drill: `kind=ci-drill` → `/etc/k-pax/ci-drill.conf` (not VPN traffic).
 
 ## Phone confirmation
 

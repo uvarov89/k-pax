@@ -46,23 +46,35 @@ case "$CMD" in
     exec python3 "$SCRIPTS/analytics.py" "$@"
     ;;
   list-backups)
-    ls -1dt /var/backups/k-pax-ci/pre-deploy-* /var/backups/k-pax-ci/pre-rollback-* 2>/dev/null | head -20 || true
+    ls -1dt /var/backups/k-pax-ci/pre-deploy-* /var/backups/k-pax-ci/pre-rollback-* /var/backups/k-pax-ci/config-*-pre-* 2>/dev/null | head -30 || true
     echo "STATUS=OK"
     ;;
   deploy-install)
-    # Usage: kpax-ci deploy-install <stamp> <basename.py>...
     exec bash "$SCRIPTS/deploy_install.sh" "$@"
     ;;
   rollback)
-    # Usage: kpax-ci rollback [backup_dirname]
     exec bash "$SCRIPTS/rollback.sh" "$@"
     ;;
   ensure-e2e-env)
-    # Refresh dedicated CI-E2E user + /etc/k-pax/ci-e2e.env from panel config/db
     exec python3 "$SCRIPTS/ensure_ci_e2e_env.py"
     ;;
+  config-get)
+    exec bash "$SCRIPTS/config_get.sh" "$@"
+    ;;
+  config-diff)
+    exec bash "$SCRIPTS/config_diff.sh" "$@"
+    ;;
+  config-apply)
+    exec bash "$SCRIPTS/config_apply.sh" "$@"
+    ;;
+  config-rollback)
+    exec bash "$SCRIPTS/config_rollback.sh" "$@"
+    ;;
+  deadman-arm|deadman-cancel|deadman-status|deadman-fire)
+    exec bash "$SCRIPTS/deadman.sh" "${CMD#deadman-}" "$@"
+    ;;
   *)
-    echo "STATUS=FAIL usage: kpax-ci {diag|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups|deploy-install|rollback|ensure-e2e-env}"
+    echo "STATUS=FAIL usage: kpax-ci {diag|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups|deploy-install|rollback|ensure-e2e-env|config-get|config-diff|config-apply|config-rollback|deadman-arm|deadman-cancel|deadman-status}"
     exit 2
     ;;
 esac

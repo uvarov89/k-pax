@@ -26,6 +26,7 @@
 | Direct SSH / Cursor laptop | Do not rely on it |
 | Secrets in chat | **Never** |
 | PL VPN config changes | **Forbidden** without operator confirm |
+| Live VPN config apply (`singbox`/… ) | Only after explicit operator agree; prefer `ci-drill` first |
 | Mutate workflows | Need `CONFIRM:` + phone Environment **production** approve |
 
 ## ChatGPT phone path
@@ -37,6 +38,7 @@ Read-only:
 /kpax diag panel,de,fi,pl,ru,ru2
 /kpax analytics
 /kpax e2e
+/kpax config-get kind=singbox targets=panel,de,fi,pl,ru,ru2
 ```
 
 Mutate (same message includes CONFIRM; then approve in GitHub mobile):
@@ -59,7 +61,18 @@ CONFIRM: PROVIDER
 
 /kpax dns action=list name=pl.k-pax.space
 CONFIRM: DNS
+
+/kpax config action=diff kind=ci-drill targets=panel
+CONFIRM: CONFIGOPS
+
+/kpax config action=apply kind=ci-drill targets=panel dry_run=true
+CONFIRM: CONFIGOPS
+
+/kpax config action=apply kind=ci-drill targets=panel dry_run=false deadman=5
+CONFIRM: CONFIGOPS
 ```
+
+**Config fix loop:** `config-get` → commit candidate in `ops/candidates/` → `diff` → `apply dry_run=true` → `apply dry_run=false` (+ deadman) → optional `run_e2e=true` → `rollback` / deadman if bad.
 
 **Note:** `/kpax e2e` is SoftProbe-only. Refreshing `CI-E2E` / syncing UUID is `/kpax e2e-maintain`.
 
@@ -78,17 +91,16 @@ Service bugs → `server/` / fronts / relay. Client bugs → `lib/`.
 | bg | 79.124.7.111 | disabled |
 | xplm | 45.133.209.80 | brand edge |
 
-## Operator secrets to add (if missing)
+## Operator secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID_KPAX` | DNS ops |
-| `RUVDS_API_TOKEN` + optional `RUVDS_SERVER_IDS` | RU status/reboot |
+| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID_KPAX` | DNS ops (operator: already connected) |
+| `RUVDS_API_TOKEN` + optional `RUVDS_SERVER_IDS` | Optional; hardware reboot is manual |
 | Already present | `KPAX_DEPLOY_*`, `KPAX_BACKUP_PASSPHRASE`, `KPAX_OPS_ALLOWLIST` |
 
 ## Immediate priorities
 
-1. Approve pending **Backup / Restore-drill / Deploy ci_marker / Rollback** runs from phone.  
-2. Add Cloudflare + RuVDS secrets; re-run dns/provider.  
-3. Keep PL config frozen until RCA + confirm.  
-4. Track acceptance links in ACCEPTANCE-TESTS.md.
+1. Keep PL config frozen until RCA + confirm.  
+2. Use `kind=ci-drill` for config-ops acceptance; never apply live `singbox` without agree.  
+3. Track acceptance links in ACCEPTANCE-TESTS.md.

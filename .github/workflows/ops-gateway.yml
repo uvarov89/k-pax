@@ -101,6 +101,19 @@ jobs:
               analytics: { workflow: 'analytics.yml', inputs: {} },
               e2e: { workflow: 'vpn-e2e.yml', inputs: {} },
               inventory: { workflow: 'diagnostics.yml', inputs: { targets: 'panel,de,fi,pl,ru,ru2' } },
+              'config-get': {
+                workflow: 'config-ops.yml',
+                inputs: {
+                  confirm: 'GET',
+                  action: 'get',
+                  targets: 'panel,de,fi,pl,ru,ru2',
+                  kind: 'singbox',
+                  dry_run: 'true',
+                  deadman_minutes: '5',
+                  run_e2e: 'false',
+                  backup_name: '',
+                },
+              },
             };
             const dangerous = {
               backup: { workflow: 'backup.yml', inputs: { confirm: 'BACKUP' }, needsConfirm: 'CONFIRM: BACKUP' },
@@ -115,6 +128,20 @@ jobs:
               'e2e-maintain': { workflow: 'e2e-maintain.yml', inputs: { confirm: 'E2EMAINTAIN' }, needsConfirm: 'CONFIRM: E2EMAINTAIN' },
               'restore-drill': { workflow: 'restore-drill.yml', inputs: { confirm: 'RESTOREDRILL', source: 'fresh-backup' }, needsConfirm: 'CONFIRM: RESTOREDRILL' },
               provider: { workflow: 'provider-ops.yml', inputs: { confirm: 'PROVIDER', action: 'inventory', provider: 'inventory', target: 'ru' }, needsConfirm: 'CONFIRM: PROVIDER' },
+              config: {
+                workflow: 'config-ops.yml',
+                inputs: {
+                  confirm: 'CONFIGOPS',
+                  action: 'diff',
+                  targets: 'panel',
+                  kind: 'ci-drill',
+                  dry_run: 'true',
+                  deadman_minutes: '5',
+                  run_e2e: 'false',
+                  backup_name: '',
+                },
+                needsConfirm: 'CONFIRM: CONFIGOPS',
+              },
             };
 
             let target = safe[cmd] || dangerous[cmd];
@@ -126,17 +153,12 @@ jobs:
                 body: [
                   'Unknown `/kpax` command.',
                   '',
-                  '**Read-only:** `/kpax health` · `/kpax diag panel,de,fi,pl,ru,ru2` · `/kpax analytics` · `/kpax e2e`',
+                  '**Read-only:** `/kpax health` · `/kpax diag` · `/kpax analytics` · `/kpax e2e` · `/kpax config-get kind=singbox targets=panel,de`',
                   '',
-                  '**Dangerous (CONFIRM token + Environment approval):**',
+                  '**Dangerous (CONFIRM + production approval):**',
                   '`/kpax backup` + `CONFIRM: BACKUP`',
-                  '`/kpax deploy paths=ci_marker.py restart=false` + `CONFIRM: DEPLOY`',
-                  '`/kpax rollback` + `CONFIRM: ROLLBACK`',
-                  '`/kpax dns action=list name=pl.k-pax.space` + `CONFIRM: DNS`',
-                  '`/kpax node-ops` + `CONFIRM: NODEOPS`',
-                  '`/kpax e2e-maintain` + `CONFIRM: E2EMAINTAIN`',
-                  '`/kpax restore-drill` + `CONFIRM: RESTOREDRILL`',
-                  '`/kpax provider provider=inventory` + `CONFIRM: PROVIDER`',
+                  '`/kpax config action=diff|apply|rollback kind=ci-drill targets=panel dry_run=true` + `CONFIRM: CONFIGOPS`',
+                  '`/kpax deploy` · `/kpax rollback` · `/kpax dns` · `/kpax node-ops` · `/kpax e2e-maintain` · `/kpax restore-drill`',
                 ].join('\n'),
               });
               return;
@@ -193,6 +215,32 @@ jobs:
               if (am) target.inputs.action = am[1].toLowerCase();
               if (pm) target.inputs.provider = pm[1].toLowerCase();
               if (tm) target.inputs.target = tm[1];
+            }
+            if (cmd === 'config-get') {
+              const km = rest.match(/kind=([a-z0-9-]+)/i);
+              const tm = rest.match(/targets=([a-z0-9,]+)/i);
+              if (km) target.inputs.kind = km[1].toLowerCase();
+              if (tm) target.inputs.targets = tm[1];
+            }
+            if (cmd === 'config') {
+              const am = rest.match(/action=(get|diff|apply|rollback|deadman-cancel|deadman-status)/i);
+              const km = rest.match(/kind=([a-z0-9-]+)/i);
+              const tm = rest.match(/targets=([a-z0-9,]+)/i);
+              const bm = rest.match(/backup=([^\s]+)/i);
+              const dm = rest.match(/deadman=(\d+)/i);
+              if (am) target.inputs.action = am[1].toLowerCase();
+              if (km) target.inputs.kind = km[1].toLowerCase();
+              if (tm) target.inputs.targets = tm[1];
+              if (bm) target.inputs.backup_name = bm[1];
+              if (dm) target.inputs.deadman_minutes = dm[1];
+              if (/dry_run=false/i.test(rest)) target.inputs.dry_run = 'false';
+              if (/dry_run=true/i.test(rest)) target.inputs.dry_run = 'true';
+              if (/run_e2e=true/i.test(rest)) target.inputs.run_e2e = 'true';
+              // get/deadman-status via /kpax config still need CONFIGOPS confirm but read job accepts CONFIGOPS
+              if (target.inputs.action === 'get' || target.inputs.action === 'deadman-status') {
+                target.inputs.confirm = 'GET';
+                delete target.needsConfirm;
+              }
             }
 
             const before = Date.now();

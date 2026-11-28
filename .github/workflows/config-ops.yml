@@ -1,0 +1,131 @@
+# Allowlisted server config get / diff / apply / rollback via kpax-ci.
+# get / deadman-status: no Environment approval.
+# diff / apply / rollback / deadman-cancel: production approval + confirm CONFIGOPS.
+name: Config ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'GET for read; CONFIGOPS for mutate'
+        required: true
+        type: string
+      action:
+        description: 'get | diff | apply | rollback | deadman-cancel | deadman-status'
+        required: true
+        default: 'get'
+        type: choice
+        options: [get, diff, apply, rollback, deadman-cancel, deadman-status]
+      targets:
+        description: 'Comma host ids: panel,de,fi,pl,ru,ru2'
+        required: true
+        default: 'panel'
+        type: string
+      kind:
+        description: 'singbox | caddy | relay-unit | kpax-unit | panel-config | ufw-status | ci-drill'
+        required: true
+        default: 'ci-drill'
+        type: string
+      dry_run:
+        description: 'For apply: dry-run only (no write)'
+        required: false
+        default: true
+        type: boolean
+      deadman_minutes:
+        description: 'Deadman minutes for apply (1-30; 0 = kind default)'
+        required: false
+        default: '5'
+        type: string
+      run_e2e:
+        description: 'After real apply: SoftProbe e2e on panel'
+        required: false
+        default: false
+        type: boolean
+      backup_name:
+        description: 'rollback: backup basename (empty = latest config-<kind>-pre-*)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-config-ops
+  cancel-in-progress: false
+
+jobs:
+  read:
+    if: inputs.action == 'get' || inputs.action == 'deadman-status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm GET
+        run: |
+          [[ "${{ inputs.confirm }}" == "GET" || "${{ inputs.confirm }}" == "CONFIGOPS" ]] || {
+            echo "::error::Use confirm GET"
+            exit 1
+          }
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+      - name: Run read action
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          ACTION: ${{ inputs.action }}
+          TARGETS: ${{ inputs.targets }}
+          KIND: ${{ inputs.kind }}
+        run: bash tools/ci/config_ops_runner.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: config-ops-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+
+  mutate:
+    if: inputs.action == 'diff' || inputs.action == 'apply' || inputs.action == 'rollback' || inputs.action == 'deadman-cancel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm CONFIGOPS
+        run: |
+          [[ "${{ inputs.confirm }}" == "CONFIGOPS" ]] || {
+            echo "::error::Mutate requires confirm CONFIGOPS"
+            exit 1
+          }
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+      - name: Run mutate action
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          ACTION: ${{ inputs.action }}
+          TARGETS: ${{ inputs.targets }}
+          KIND: ${{ inputs.kind }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          DEADMAN: ${{ inputs.deadman_minutes }}
+          RUN_E2E: ${{ inputs.run_e2e }}
+          BACKUP_NAME: ${{ inputs.backup_name }}
+        run: bash tools/ci/config_ops_runner.sh
+      - name: Cancel deadman after successful isolated apply
+        if: success() && inputs.action == 'apply' && inputs.dry_run == false && inputs.kind == 'ci-drill'
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          ACTION: deadman-cancel
+          TARGETS: ${{ inputs.targets }}
+          KIND: ci-drill
+        run: bash tools/ci/config_ops_runner.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: config-ops-${{ github.run_id }}
+          path: out/
+          retention-days: 14

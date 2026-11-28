@@ -25,10 +25,10 @@ Statuses: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TESTED`.
 | 19 | Config rollback (`ci-drill`) | VERIFIED | [46131906402](https://github.com/uvarov89/k-pax/actions/runs/46131906402) |
 | 20 | Issues gateway `config-get` | VERIFIED | [#12 comment](https://github.com/uvarov89/k-pax/issues/12#issuecomment-7237507585) → [46132396809](https://github.com/uvarov89/k-pax/actions/runs/46132396809) |
 | 21 | Manage without laptop | PARTIAL | config-ops + DR verified; live VPN kinds still need explicit agree |
-| 22 | Deep diagnose + inline logs (PL) | PENDING | `/kpax diagnose targets=pl` / `deep-diag.yml` |
-| 23 | In-place config-patch + digest bind | PENDING | dry-run on `ci-drill` |
-| 24 | Deadman auto-fire drill | PENDING | `action=deadman-drill` isolated |
-| 25 | sync-users no false OK on partial fail | VERIFIED (code) | exits non-zero if any node fails |
+| 22 | Deep diagnose + inline logs (PL) | VERIFIED | [46135402361](https://github.com/uvarov89/k-pax/actions/runs/46135402361) — honest `STATUS=FAIL`; front Reality fail + PL DNS-to-127.0.0.1; DE/FI OK; **no PL mutate** |
+| 23 | In-place config-patch dry-run | VERIFIED | [46135857661](https://github.com/uvarov89/k-pax/actions/runs/46135857661) — `ci-drill` |
+| 24 | Deadman auto-fire drill | VERIFIED | [46135409109](https://github.com/uvarov89/k-pax/actions/runs/46135409109) — restored `drill_version=1` |
+| 25 | sync-users no false OK on partial fail | VERIFIED (code) | exits non-zero if any node fails (`eaf35ef`) |
 
 ## Key config-ops runs (2026-11-28)
 

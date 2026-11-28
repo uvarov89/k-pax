@@ -25,6 +25,9 @@ case "$CMD" in
   logs)
     exec bash "$SCRIPTS/logs.sh" "$@"
     ;;
+  dns-check)
+    exec bash "$SCRIPTS/dns_check.sh" "$@"
+    ;;
   health)
     export KPAX_CI_ROLE="${1:-unknown}"
     exec bash "$SCRIPTS/health.sh"
@@ -83,7 +86,7 @@ case "$CMD" in
     exec bash "$SCRIPTS/deadman.sh" "${CMD#deadman-}" "$@"
     ;;
   *)
-    echo "STATUS=FAIL usage: kpax-ci {diag|diagnose|logs|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups|deploy-install|rollback|ensure-e2e-env|config-get|config-diff|config-apply|config-patch|config-rollback|deadman-arm|deadman-cancel|deadman-status}"
+    echo "STATUS=FAIL usage: kpax-ci {diag|diagnose|dns-check|logs|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups|deploy-install|rollback|ensure-e2e-env|config-get|config-diff|config-apply|config-patch|config-rollback|deadman-arm|deadman-cancel|deadman-status}"
     exit 2
     ;;
 esac

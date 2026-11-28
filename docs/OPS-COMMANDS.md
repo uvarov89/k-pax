@@ -10,78 +10,97 @@
 |---------|----------|-------|
 | `/kpax health` | `health-check.yml` | Fleet TCP/HTTP |
 | `/kpax diag [targets]` | `diagnostics.yml` | Host journals |
-| `/kpax diagnose targets=pl` | `deep-diag.yml` | Deep RCA: Reality PBK/SID/SNI fingerprints, CI-E2E UUID presence, hops, SoftProbe, inline redacted logs |
-| `/kpax logs targets=pl` | `deep-diag.yml` | Same deep-diag with journals (Actions-visible) |
+| `/kpax diagnose targets=pl` | `deep-diag.yml` | Deep RCA + SoftProbe + DNS root-cause hints |
+| `/kpax dns-check targets=pl` | `deep-diag.yml` | Resolve probes + sing-box DNS summary |
+| `/kpax logs targets=pl` | `deep-diag.yml` | Journals inline in Actions |
 | `/kpax analytics` | `analytics.yml` | Anonymized counts |
-| `/kpax e2e` | `vpn-e2e.yml` | SoftProbe + **inline** fail logs — **no** ensure/sync |
-| `/kpax config-get kind=singbox targets=panel,de` | `config-ops.yml` | Sanitized allowlisted config dump |
+| `/kpax e2e` | `vpn-e2e.yml` | SoftProbe + inline fail logs |
+| `/kpax config-get kind=singbox targets=pl` | `config-ops.yml` | Sanitized dump **includes dns.servers** |
 
 ### Dangerous (CONFIRM + production approval)
 
 | Command | Confirm | Workflow |
 |---------|---------|----------|
-| `/kpax backup` | `CONFIRM: BACKUP` | Encrypted off-panel artifact |
-| `/kpax restore-drill` | `CONFIRM: RESTOREDRILL` | Isolated decrypt/verify |
-| `/kpax deploy paths=ci_marker.py` | `CONFIRM: DEPLOY` | Panel code install |
-| `/kpax rollback` | `CONFIRM: ROLLBACK` | Panel code rollback |
-| `/kpax e2e-maintain` | `CONFIRM: E2EMAINTAIN` | ensure-e2e-env + sync-users |
-| `/kpax dns …` | `CONFIRM: DNS` | Cloudflare allowlist |
-| `/kpax provider …` | `CONFIRM: PROVIDER` | Inventory / RuVDS |
-| `/kpax node-ops …` | `CONFIRM: NODEOPS` | Fixed wrappers |
-| `/kpax config …` | `CONFIRM: CONFIGOPS` | Config get-adjacent mutate |
+| `/kpax config …` | `CONFIRM: CONFIGOPS` | patch / apply / rollback / deadman-drill |
+| `/kpax backup` / `restore-drill` / `deploy` / `rollback` / `e2e-maintain` / `dns` / `provider` / `node-ops` | matching `CONFIRM:` | see prior rows |
 
-### Config ops (in-place patch preferred)
+## PL DNS failure — ChatGPT fix playbook (owner confirm required)
 
-Diagnose first (`/kpax diagnose targets=pl`). Then:
+**Root cause (verified):** sing-box `dns.servers[dns-local].address = 127.0.0.1`, but on PL nothing listens on `127.0.0.1:53` (only systemd-resolved stub `127.0.0.53` / `127.0.0.54`). DE/FI have **unbound** on `127.0.0.1:53`, so the same sing-box DNS shape works there.
 
-**A. In-place patch (no full config in GitHub)**
+**Do not invent other fixes first.** Preferred allowlisted patch:
 
-1. Dry-run:
+### 1) Diagnose (read-only)
+
 ```text
-/kpax config action=patch kind=ci-drill targets=panel dry_run=true patch_set=set:note=probe
+/kpax diagnose targets=pl
+/kpax dns-check targets=pl
+/kpax config-get kind=singbox targets=pl
+```
+
+### 2) Dry-run patch (no write)
+
+```text
+/kpax config action=patch kind=singbox targets=pl dry_run=true patch_set=set:dns.server.dns-local.address=1.1.1.1
 CONFIRM: CONFIGOPS
 ```
-2. Note `PATCH_DIGEST=…` from Actions logs.
-3. Real apply (digest binds confirmation to the exact change):
+
+Approve **production**. From Actions logs copy `PATCH_DIGEST=…`.
+
+Known digest for the preferred one-field change (verify in dry-run logs anyway):
+
+`dns.server.dns-local.address=1.1.1.1` → `PATCH_DIGEST=918015c41ec439a04e1ac2a00663574ae6bae38b3085b70bd02e857a4707699a`
+
+Alternative stub address (uses systemd-resolved):  
+`patch_set=set:dns.server.dns-local.address=127.0.0.53`
+
+### 3) Real apply (owner-bound digest + deadman + e2e)
+
 ```text
-/kpax config action=patch kind=ci-drill targets=panel dry_run=false deadman=5 patch_set=set:note=probe patch_digest=<sha256>
+/kpax config action=patch kind=singbox targets=pl dry_run=false deadman=5 run_e2e=true patch_set=set:dns.server.dns-local.address=1.1.1.1 patch_digest=918015c41ec439a04e1ac2a00663574ae6bae38b3085b70bd02e857a4707699a
 CONFIRM: CONFIGOPS
 ```
-4. Optional `run_e2e=true` → SoftProbe + egress IP after apply.
-5. SSH-loss safety: local deadman restores backup unless cancelled.
-6. Rollback: `action=rollback` or wait for deadman.
 
-Allowlisted patch fields:
+Effects on VPS: validate `sing-box check` → backup `/var/backups/k-pax-ci/config-singbox-pre-*` → atomic install → restart `sing-box` → arm deadman 5m → SoftProbe with egress IP.
+
+### 4) If SoftProbe still bad / SSH lost
+
+- Wait for deadman auto-restore, or  
+- `/kpax config action=rollback kind=singbox targets=pl` + `CONFIRM: CONFIGOPS`  
+- Cancel false deadman only after verified OK: `action=deadman-cancel`
+
+### Optional: system resolver drop-in (usually not needed if sing-box points to 1.1.1.1)
+
+```text
+/kpax config action=patch kind=resolved-dropin targets=pl dry_run=true patch_set=set:DNS=1.1.1.1,8.8.8.8 set:FallbackDNS=9.9.9.9
+CONFIRM: CONFIGOPS
+```
+
+Writes `/etc/systemd/resolved.conf.d/99-kpax-dns.conf`, restarts `systemd-resolved`, deadman-capable.
+
+## Config-patch allowlist (DNS-related)
 
 | kind | Fields |
 |------|--------|
-| `singbox` | `log.level`, `inbound.<tag>.sni\|listen_port`, `outbound.<tag>.server\|server_port\|sni` |
-| `panel-config` | `nodes.<id>.reality_sni\|self_domain\|enabled\|host` (never pbk/sid/keys) |
-| `ci-drill` | arbitrary `key=value` lines under `/etc/k-pax/ci-drill.conf` |
+| `singbox` | `dns.server.<tag>.address`, `dns.add_server.<tag>`, `dns.final`, `dns.strategy`, plus prior inbound/outbound/log fields |
+| `resolved-dropin` | `DNS`, `FallbackDNS`, `Domains`, `DNSStubListener`, `DNSOverTLS` |
+| `ci-drill` | isolated drill file only |
 
-**B. Full candidate apply** (only when needed): commit `ops/candidates/<kind>` then `action=diff|apply`.
+Allowed DNS addresses: `1.1.1.1`, `1.0.0.1`, `8.8.8.8`, `8.8.4.4`, `9.9.9.9`, `149.112.112.112`, `208.67.222.222`, `208.67.220.220`, `127.0.0.1`, `127.0.0.53`, `127.0.0.54` (optional `udp://` + port).
 
-**C. Deadman auto-fire proof (isolated):**
-```text
-/kpax config action=deadman-drill kind=ci-drill targets=panel
-CONFIRM: CONFIGOPS
-```
-
-**Live VPN kinds** (`singbox`, …): only after explicit operator agreement. PL config frozen until RCA + confirm.
+**Live VPN kinds still require explicit owner agreement.** Isolated drills: `kind=ci-drill` / `deadman-drill`.
 
 ## Fixed remote binary (`kpax-ci`)
 
-`gha` may only: `sudo /usr/local/lib/kpax-ci/kpax-ci <cmd>`.
+`gha` may only: `sudo /usr/local/lib/kpax-ci/kpax-ci <cmd>` (sudoers **not** widened).
 
 | Subcommand | Effect |
 |------------|--------|
-| `diag` / `diagnose` / `logs` / `health` / `e2e` / `validate-singbox` / `analytics` | Read-oriented |
-| `config-get` / `deadman-status` | Sanitized config / deadman state |
-| `config-diff` / `config-apply` / `config-patch` / `config-rollback` | Allowlisted mutate |
-| `deadman-arm` / `deadman-cancel` / `deadman-fire` | Local emergency rollback timer |
-| `ensure-e2e-env` / `sync-users` | Test account / node users (`sync-users` fails if **any** node fails) |
-| `backup` / `deploy-install` / `rollback` / `list-backups` / `restart` | DR / panel / units |
+| `diagnose` / `dns-check` / `logs` / `diag` / `health` / `e2e` | Read-oriented |
+| `config-get` / `config-patch` / `config-diff` / `config-apply` / `config-rollback` | Allowlisted config |
+| `deadman-*` | Local emergency rollback timer |
+| `sync-users` | Fails if **any** node fails |
 
 ## Phone approval
 
-GitHub mobile → pending Environment **production** → Approve → open **run URL** from bot comment (logs are inline).
+GitHub mobile → pending Environment **production** → Approve → open **run URL** (logs inline).

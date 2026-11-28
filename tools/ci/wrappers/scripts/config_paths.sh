@@ -50,8 +50,15 @@ config_resolve() {
       CONFIG_VALIDATOR="text"
       CONFIG_DEADMAN_DEFAULT=1
       ;;
+    resolved-dropin)
+      # systemd-resolved drop-in (DNS= / FallbackDNS=). Network-sensitive → deadman default.
+      CONFIG_PATH="/etc/systemd/resolved.conf.d/99-kpax-dns.conf"
+      CONFIG_SERVICE="systemd-resolved"
+      CONFIG_VALIDATOR="resolved-dropin"
+      CONFIG_DEADMAN_DEFAULT=1
+      ;;
     *)
-      echo "STATUS=FAIL unknown kind=$kind (allow: singbox|caddy|relay-unit|kpax-unit|panel-config|ufw-status|ci-drill)"
+      echo "STATUS=FAIL unknown kind=$kind (allow: singbox|caddy|relay-unit|kpax-unit|panel-config|ufw-status|ci-drill|resolved-dropin)"
       return 2
       ;;
   esac
@@ -110,6 +117,26 @@ PY
       ;;
     text)
       test -s "$path"
+      ;;
+    resolved-dropin)
+      python3 - "$path" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+assert "[Resolve]" in text, "missing [Resolve]"
+# Only allow known keys
+allowed = {"DNS", "FallbackDNS", "Domains", "DNSStubListener", "DNSOverTLS"}
+for line in text.splitlines():
+    s = line.strip()
+    if not s or s.startswith("#") or s.startswith("["):
+        continue
+    if "=" not in s:
+        raise SystemExit("bad line: " + s)
+    k = s.split("=", 1)[0].strip()
+    assert k in allowed, "refused key " + k
+print("resolved-dropin ok")
+PY
       ;;
     ufw-get)
       true

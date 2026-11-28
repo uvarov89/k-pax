@@ -65,10 +65,20 @@ def scrub(s: str) -> str:
 
 SINGBOX_OK = re.compile(
     r"^(log\.level|inbound\.[A-Za-z0-9_.-]+\.(sni|listen_port|server_name)|"
-    r"outbound\.[A-Za-z0-9_.-]+\.(server|server_port|sni|server_name))$"
+    r"outbound\.[A-Za-z0-9_.-]+\.(server|server_port|sni|server_name)|"
+    r"dns\.server\.[A-Za-z0-9_.-]+\.address|dns\.final|dns\.strategy|"
+    r"dns\.add_server\.[A-Za-z0-9_.-]+)$"
 )
 PANEL_OK = re.compile(r"^nodes\.[A-Za-z0-9_-]+\.(reality_sni|self_domain|enabled|host)$")
 DRILL_OK = re.compile(r"^[A-Za-z0-9_.-]+$")
+RESOLVED_OK = re.compile(r"^(DNS|FallbackDNS|Domains|DNSStubListener|DNSOverTLS)$")
+# Public / stub resolvers only (plus optional scheme + port)
+DNS_ADDR_OK = re.compile(
+    r"^(?:(?:udp|tcp|tls|https|quic)://)?"
+    r"(?:127\.0\.0\.(?:1|53|54)|1\.1\.1\.1|1\.0\.0\.1|8\.8\.8\.8|8\.8\.4\.4|"
+    r"9\.9\.9\.9|149\.112\.112\.112|208\.67\.222\.222|208\.67\.220\.220)"
+    r"(?::\d{1,5})?$"
+)
 
 
 def refuse(msg: str) -> None:
@@ -76,9 +86,65 @@ def refuse(msg: str) -> None:
     raise SystemExit(2)
 
 
+def _set_dns_server_address(cfg: dict, tag: str, address: str) -> None:
+    if not DNS_ADDR_OK.match(address):
+        refuse(f"dns address not allowlisted: {address}")
+    # Strip optional scheme for legacy server/server_port objects
+    host = address
+    port = None
+    for scheme in ("udp://", "tcp://", "tls://", "https://", "quic://"):
+        if host.startswith(scheme):
+            host = host[len(scheme) :]
+            break
+    if ":" in host and host.count(":") == 1:
+        host, port_s = host.rsplit(":", 1)
+        if port_s.isdigit():
+            port = int(port_s)
+    dns = cfg.setdefault("dns", {})
+    servers = dns.setdefault("servers", [])
+    for i, s in enumerate(servers):
+        if isinstance(s, dict) and s.get("tag") == tag:
+            # sing-box 1.10+ uses address; older node configs use server/server_port
+            if "server" in s or "server_port" in s:
+                s["server"] = host
+                s["server_port"] = port if port is not None else int(s.get("server_port") or 53)
+                s.pop("address", None)
+            else:
+                s["address"] = address if "://" in address else host
+                if port is not None and "://" not in str(s.get("address")):
+                    # keep plain host; port only for legacy
+                    pass
+            servers[i] = s
+            return
+        if isinstance(s, str) and tag in ("dns-local", "local") and i == 0:
+            servers[i] = {"tag": tag, "server": host, "server_port": port or 53}
+            return
+    # create tagged server in legacy-compatible shape (matches DE/FI/PL fleet)
+    entry = {"tag": tag, "server": host, "server_port": port or 53}
+    servers.append(entry)
+
+
 def apply_singbox(cfg: dict, key: str, val: str) -> None:
     if key == "log.level":
         cfg.setdefault("log", {})["level"] = val
+        return
+    if key == "dns.final":
+        if not re.match(r"^[A-Za-z0-9_.-]+$", val):
+            refuse(f"bad dns.final {val}")
+        cfg.setdefault("dns", {})["final"] = val
+        return
+    if key == "dns.strategy":
+        if val not in ("prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"):
+            refuse(f"bad dns.strategy {val}")
+        cfg.setdefault("dns", {})["strategy"] = val
+        return
+    m = re.match(r"^dns\.server\.([A-Za-z0-9_.-]+)\.address$", key)
+    if m:
+        _set_dns_server_address(cfg, m.group(1), val)
+        return
+    m = re.match(r"^dns\.add_server\.([A-Za-z0-9_.-]+)$", key)
+    if m:
+        _set_dns_server_address(cfg, m.group(1), val)
         return
     m = re.match(r"inbound\.([^.]+)\.(sni|listen_port|server_name)$", key)
     if m:
@@ -105,6 +171,46 @@ def apply_singbox(cfg: dict, key: str, val: str) -> None:
                 return
         refuse(f"outbound tag not found: {tag}")
     refuse(f"unhandled {key}")
+
+
+def apply_resolved_dropin(text: str, key: str, val: str) -> str:
+    """Maintain a minimal [Resolve] drop-in file."""
+    if not RESOLVED_OK.match(key):
+        refuse(f"resolved field not allowlisted: {key}")
+    if key in ("DNS", "FallbackDNS"):
+        parts = [p.strip() for p in re.split(r"[,\s]+", val) if p.strip()]
+        for p in parts:
+            if not DNS_ADDR_OK.match(p):
+                refuse(f"dns address not allowlisted: {p}")
+        val = " ".join(parts)
+    elif key == "DNSStubListener":
+        if val.lower() not in ("yes", "no", "udp", "tcp"):
+            refuse(f"bad DNSStubListener {val}")
+    lines = text.splitlines() if text.strip() else ["[Resolve]"]
+    if not any(ln.strip() == "[Resolve]" for ln in lines):
+        lines.insert(0, "[Resolve]")
+    out, found = [], False
+    for ln in lines:
+        if ln.strip().startswith("#") or ln.strip().startswith("[") or "=" not in ln:
+            out.append(ln)
+            continue
+        k0 = ln.split("=", 1)[0].strip()
+        if k0 == key:
+            out.append(f"{key}={val}")
+            found = True
+        else:
+            out.append(ln)
+    if not found:
+        # insert after [Resolve]
+        inserted = False
+        new_out = []
+        for ln in out:
+            new_out.append(ln)
+            if ln.strip() == "[Resolve]" and not inserted:
+                new_out.append(f"{key}={val}")
+                inserted = True
+        out = new_out if inserted else out + [f"{key}={val}"]
+    return "\n".join(out).rstrip() + "\n"
 
 
 def apply_panel(cfg: dict, key: str, val: str) -> None:
@@ -149,6 +255,10 @@ def validate(validator: str, path: Path) -> None:
     elif validator == "text":
         if path.stat().st_size <= 0:
             refuse("empty file")
+    elif validator == "resolved-dropin":
+        text = path.read_text(encoding="utf-8")
+        if "[Resolve]" not in text:
+            refuse("resolved-dropin missing [Resolve]")
     elif validator == "caddy":
         if shutil.which("caddy"):
             subprocess.call(["caddy", "validate", "--config", str(path)])
@@ -214,6 +324,9 @@ def main() -> int:
         elif kind == "ci-drill":
             if not DRILL_OK.match(k):
                 refuse(f"bad drill key {k}")
+        elif kind == "resolved-dropin":
+            if not RESOLVED_OK.match(k):
+                refuse(f"field not allowlisted for resolved-dropin: {k}")
         else:
             refuse(f"kind {kind} does not support in-place patch")
 
@@ -227,6 +340,10 @@ def main() -> int:
             else:
                 apply_panel(cfg, k, v)
         after = json.dumps(cfg, indent=2, ensure_ascii=False) + "\n"
+    elif kind == "resolved-dropin":
+        after = before if before.strip() else "[Resolve]\n"
+        for k, v in patches:
+            after = apply_resolved_dropin(after, k, v)
     else:
         after = before
         for k, v in patches:

@@ -124,6 +124,10 @@ jobs:
                 workflow: 'deep-diag.yml',
                 inputs: { targets: 'pl', include_logs: 'true' },
               },
+              'dns-check': {
+                workflow: 'deep-diag.yml',
+                inputs: { targets: 'pl', include_logs: 'false' },
+              },
             };
             const dangerous = {
               backup: { workflow: 'backup.yml', inputs: { confirm: 'BACKUP' }, needsConfirm: 'CONFIRM: BACKUP' },

@@ -23,7 +23,7 @@ on:
         default: 'panel'
         type: string
       kind:
-        description: 'singbox | caddy | relay-unit | kpax-unit | panel-config | ufw-status | ci-drill'
+        description: 'singbox | caddy | relay-unit | kpax-unit | panel-config | ufw-status | ci-drill | resolved-dropin'
         required: true
         default: 'ci-drill'
         type: string

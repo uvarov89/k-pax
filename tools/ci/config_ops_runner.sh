@@ -16,7 +16,7 @@ declare -A HOSTS=(
 )
 
 case "${KIND}" in
-  singbox|caddy|relay-unit|kpax-unit|panel-config|ufw-status|ci-drill) ;;
+  singbox|caddy|relay-unit|kpax-unit|panel-config|ufw-status|ci-drill|resolved-dropin) ;;
   *) echo "::error::kind not allowlisted: $KIND"; exit 1 ;;
 esac
 

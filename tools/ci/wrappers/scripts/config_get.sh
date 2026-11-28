@@ -48,8 +48,24 @@ except json.JSONDecodeError:
 if p.name == "config.json" and "inbounds" in cfg:
     ins = cfg.get("inbounds") or []
     outs = cfg.get("outbounds") or []
+    dns = cfg.get("dns") or {}
+    dns_servers = []
+    for s in dns.get("servers") or []:
+        if isinstance(s, str):
+            dns_servers.append({"address": s})
+        elif isinstance(s, dict):
+            dns_servers.append({
+                "tag": s.get("tag"),
+                "address": s.get("address") or s.get("server"),
+            })
     print(json.dumps({
         "log": cfg.get("log"),
+        "dns": {
+            "servers": dns_servers,
+            "final": dns.get("final"),
+            "strategy": dns.get("strategy") or dns.get("domain_strategy"),
+            "rules_count": len(dns.get("rules") or []),
+        },
         "inbound_count": len(ins),
         "outbound_count": len(outs),
         "inbounds": [

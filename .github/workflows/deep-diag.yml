@@ -49,18 +49,25 @@ jobs:
           if ! "${SSH[@]}" "gha@${PANEL}" "sudo $CI diagnose $TARGETS" | tee out/diagnose.txt; then
             echo "FAIL diagnose" | tee -a out/diagnose.txt
           fi
+          declare -A HOSTS=(
+            [panel]="$PANEL"
+            [de]=31.77.116.51
+            [fi]=144.31.169.6
+            [pl]=2.26.225.213
+            [ru]=195.133.45.167
+            [ru2]=152.228.112.142
+          )
+          IFS=',' read -ra items <<< "$TARGETS"
+          for id in "${items[@]}"; do
+            id="$(echo "$id" | xargs)"
+            host="${HOSTS[$id]:-}"
+            [[ -n "$host" ]] || continue
+            echo "== dns-check $id =="
+            "${SSH[@]}" "gha@${host}" "sudo $CI dns-check" | tee "out/dns-check-${id}.txt" || true
+          done
           if [[ "${INCLUDE_LOGS}" == "true" ]]; then
             echo "== panel e2e logs =="
             "${SSH[@]}" "gha@${PANEL}" "sudo $CI logs e2e 100" | tee out/panel-e2e-logs.txt || true
-            declare -A HOSTS=(
-              [panel]="$PANEL"
-              [de]=31.77.116.51
-              [fi]=144.31.169.6
-              [pl]=2.26.225.213
-              [ru]=195.133.45.167
-              [ru2]=152.228.112.142
-            )
-            IFS=',' read -ra items <<< "$TARGETS"
             for id in "${items[@]}"; do
               id="$(echo "$id" | xargs)"
               host="${HOSTS[$id]:-}"

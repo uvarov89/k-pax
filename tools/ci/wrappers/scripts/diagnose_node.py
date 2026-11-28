@@ -495,28 +495,50 @@ def panel_diagnose(targets: list[str]) -> int:
             print("WARN CI-E2E UUID not on node — sync-users needed")
             fail = 1
 
-        # DNS on exit (common SoftProbe HTTP_000 cause)
+        # DNS on exit (PL SoftProbe HTTP_000: sing-box dns-local → 127.0.0.1:53 refused)
         try:
-            dns_out = ssh(
-                key,
-                kh,
-                host,
-                "getent hosts www.gstatic.com 2>&1 | head -3; "
-                "resolvectl status 2>/dev/null | head -20 || cat /etc/resolv.conf; "
-                "ss -ulnp 2>/dev/null | grep -E ':53\\s' | head -5 || true",
-            )
+            dns_remote = r"""
+import json, subprocess, re
+from pathlib import Path
+c=json.loads(Path('/etc/sing-box/config.json').read_text())
+dns=c.get('dns') or {}
+servers=[]
+for s in dns.get('servers') or []:
+    if isinstance(s,str): servers.append(('?', s))
+    elif isinstance(s,dict): servers.append((s.get('tag') or '?', s.get('address') or s.get('server') or '?'))
+print('singbox_dns_servers', ', '.join('%s=%s'%x for x in servers) or '(none)')
+print('singbox_dns_final', dns.get('final'))
+ss=subprocess.check_output(['ss','-ulnp'], text=True, stderr=subprocess.DEVNULL)
+listen_local = any(('127.0.0.1' in ln and ':53' in ln) for ln in ss.splitlines())
+listen_stub = any(('127.0.0.53' in ln and ':53' in ln) for ln in ss.splitlines())
+print('listen_127_0_0_1_53', 'yes' if listen_local else 'no')
+print('listen_127_0_0_53_53', 'yes' if listen_stub else 'no')
+for ln in ss.splitlines():
+    if ':53' in ln: print('LISTEN53', ln[:160])
+# resolve probes
+def dig(server):
+    try:
+        out=subprocess.check_output(['dig','+time=2','+tries=1','+short','@'+server,'www.gstatic.com','A'], text=True, stderr=subprocess.STDOUT, timeout=5)
+        ok=bool(re.search(r'\d+\.\d+\.\d+\.\d+', out or ''))
+        print('RESOLVE', server, 'OK' if ok else 'FAIL', (out or '').strip().splitlines()[:2])
+        return ok
+    except Exception as e:
+        print('RESOLVE', server, 'FAIL', type(e).__name__); return False
+r1=dig('127.0.0.1'); r53=dig('127.0.0.53'); rpub=dig('1.1.1.1')
+points_local = any(a=='127.0.0.1' or str(a).startswith('127.0.0.1:') for _,a in servers)
+if points_local and not listen_local:
+    print('FAIL root_cause=singbox_dns-local_to_127.0.0.1_but_no_listener (DE/FI have unbound; PL only systemd-resolved stub)')
+    print('HINT patch set:dns.server.dns-local.address=1.1.1.1  OR  address=127.0.0.53')
+if not rpub:
+    print('FAIL public_dns_1.1.1.1_unreachable_from_exit')
+"""
+            dns_out = ssh_py(key, kh, host, dns_remote)
             print("--- exit DNS ---")
-            print(redact(dns_out)[:2000])
-            if "connection refused" in dns_out.lower() or "NXDOMAIN" in dns_out:
-                print("FAIL exit_dns_broken")
+            print(redact(dns_out)[:3500])
+            if "FAIL root_cause=" in dns_out or "FAIL public_dns" in dns_out:
                 fail = 1
-            elif not any(c.isdigit() for c in dns_out.split("www.gstatic.com", 1)[-1][:80]):
-                # getent empty often means resolver broken
-                if "www.gstatic.com" not in dns_out or not re.search(
-                    r"\d+\.\d+\.\d+\.\d+", dns_out
-                ):
-                    print("WARN exit_dns_lookup_empty")
-                    fail = 1
+            if "RESOLVE 127.0.0.1 FAIL" in dns_out and "singbox_dns_servers" in dns_out and "127.0.0.1" in dns_out:
+                fail = 1
         except Exception as e:
             print("exit_dns_check FAIL", type(e).__name__)
             fail = 1

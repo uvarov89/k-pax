@@ -50,8 +50,8 @@ jobs:
           set -euo pipefail
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           CI=/usr/local/lib/kpax-ci/kpax-ci
+          set +o pipefail
           if [[ -n "$BACKUP_NAME" ]]; then
-            # basename only
             case "$BACKUP_NAME" in
               *[!a-zA-Z0-9._-]*) echo "::error::bad backup name"; exit 1 ;;
             esac
@@ -59,6 +59,8 @@ jobs:
           else
             "${SSH[@]}" "gha@${PANEL}" "sudo $CI rollback" | tee rollback-result.txt
           fi
+          set -o pipefail
+          grep -q 'STATUS=OK' rollback-result.txt
           code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "https://k-pax.space/healthz" || true)
           echo "healthz=$code"
           case "$code" in

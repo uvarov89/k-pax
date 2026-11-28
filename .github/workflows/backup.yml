@@ -1,4 +1,5 @@
-# Encrypted DB + allowlisted config backup. Requires production approval.
+# Encrypted DR backup → GitHub Actions artifact (off-panel storage).
+# Requires production approval for manual runs; weekly schedule also uses production.
 name: Backup
 
 on:
@@ -8,6 +9,9 @@ on:
         description: 'Type BACKUP to proceed'
         required: true
         type: string
+  schedule:
+    # Weekly Sunday 03:17 UTC — off-VPS encrypted copy retained as artifact
+    - cron: '17 3 * * 0'
 
 permissions:
   contents: read
@@ -19,12 +23,13 @@ concurrency:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: production
     steps:
       - uses: actions/checkout@v4
 
-      - name: Confirm
+      - name: Confirm (manual only)
+        if: github.event_name == 'workflow_dispatch'
         run: |
           [[ "${{ inputs.confirm }}" == "BACKUP" ]] || {
             echo "::error::Type BACKUP to confirm"
@@ -37,7 +42,7 @@ jobs:
           KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
         run: bash tools/ci/ssh_setup.sh
 
-      - name: Create and fetch encrypted backup
+      - name: Create, fetch, encrypt, integrity-check
         env:
           PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
           BACKUP_PASS: ${{ secrets.KPAX_BACKUP_PASSPHRASE }}
@@ -52,16 +57,47 @@ jobs:
           SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
           SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
 
-          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci backup' | awk '/\/tmp\/kpax-ci-backup-.*\.tar\.gz/{print; exit}')
+          remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci backup' | awk '/\/tmp\/kpax-ci-backup-.*\.tar\.gz$/{print; exit}')
           [[ "$remote_tar" == /tmp/kpax-ci-backup-*.tar.gz ]]
           "${SCP[@]}" "gha@${PANEL}:${remote_tar}" "out/raw.tar.gz"
-          "${SSH[@]}" "gha@${PANEL}" "rm -f '${remote_tar}'"
+          remote_sha=$("${SSH[@]}" "gha@${PANEL}" "sha256sum '${remote_tar}'" | awk '{print $1}')
+          local_sha=$(sha256sum out/raw.tar.gz | awk '{print $1}')
+          [[ "$remote_sha" == "$local_sha" ]] || {
+            echo "::error::SHA mismatch after SCP remote=$remote_sha local=$local_sha"
+            exit 1
+          }
+          echo "raw_sha256=$local_sha" | tee out/RAW_SHA256.txt
+          "${SSH[@]}" "gha@${PANEL}" "rm -f '${remote_tar}' '${remote_tar%.tar.gz}.sha256' 2>/dev/null || rm -f '${remote_tar}'"
+
           openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
             -in out/raw.tar.gz -out "out/kpax-backup-${stamp}.tar.gz.enc" -pass env:BACKUP_PASS
           rm -f out/raw.tar.gz
           test -s "out/kpax-backup-${stamp}.tar.gz.enc"
           sha256sum "out/kpax-backup-${stamp}.tar.gz.enc" | tee out/SHA256.txt
+          # Ciphertext must not contain plaintext SQLite header
           ! grep -aq 'SQLite format' "out/kpax-backup-${stamp}.tar.gz.enc"
+
+          # Round-trip integrity on runner (isolated — never push back to panel)
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in "out/kpax-backup-${stamp}.tar.gz.enc" -out out/verify.tar.gz -pass env:BACKUP_PASS
+          mkdir -p out/verify
+          tar -tzf out/verify.tar.gz | tee out/TAR_LIST.txt | head -80
+          tar -xzf out/verify.tar.gz -C out/verify
+          test -f out/verify/meta/MANIFEST.txt || test -f out/verify/db/k-pax.backup.db || test -f out/verify/db/k-pax.db
+          if [[ -f out/verify/db/k-pax.backup.db ]]; then
+            echo "select count(*) from sqlite_master;" | sqlite3 out/verify/db/k-pax.backup.db | tee out/DB_TABLES.txt
+            sqlite3 out/verify/db/k-pax.backup.db "PRAGMA integrity_check;" | tee out/DB_INTEGRITY.txt
+            grep -qx ok out/DB_INTEGRITY.txt
+          elif [[ -f out/verify/db/k-pax.db ]]; then
+            sqlite3 out/verify/db/k-pax.db "PRAGMA integrity_check;" | tee out/DB_INTEGRITY.txt
+            grep -qx ok out/DB_INTEGRITY.txt
+          fi
+          if [[ -f out/verify/cfg/config.json ]]; then
+            python3 -c "import json; json.load(open('out/verify/cfg/config.json',encoding='utf-8')); print('config_json=ok')"
+          fi
+          # Wipe plaintext immediately
+          rm -rf out/verify out/verify.tar.gz
+          echo "integrity=OK stamp=$stamp" | tee out/INTEGRITY.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -69,4 +105,8 @@ jobs:
           path: |
             out/*.enc
             out/SHA256.txt
-          retention-days: 30
+            out/RAW_SHA256.txt
+            out/TAR_LIST.txt
+            out/DB_INTEGRITY.txt
+            out/INTEGRITY.txt
+          retention-days: 90

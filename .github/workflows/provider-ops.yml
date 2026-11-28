@@ -1,0 +1,84 @@
+# Scoped hosting status / billing / reboot. No unlimited account access.
+# Optional secrets: RUVDS_API_TOKEN, RUVDS_SERVER_IDS (ru=12345)
+# Cloudflare DNS: dns-ops.yml (CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID_KPAX)
+name: Provider ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type PROVIDER to proceed'
+        required: true
+        type: string
+      action:
+        description: 'status | balance | reboot | inventory'
+        required: true
+        default: 'inventory'
+        type: choice
+        options: [inventory, status, balance, reboot]
+      provider:
+        description: 'inventory | ruvds'
+        required: true
+        default: 'inventory'
+        type: choice
+        options: [inventory, ruvds]
+      target:
+        description: 'Logical id (ru) or RuVDS numeric server id (reboot)'
+        required: false
+        default: 'ru'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-provider-ops
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "PROVIDER" ]] || {
+            echo "::error::Type PROVIDER to confirm"
+            exit 1
+          }
+
+      - name: Write inventory
+        run: |
+          mkdir -p out
+          cat > out/INVENTORY.txt <<'EOF'
+          # Provider inventory — phone fallbacks when API secret missing
+          panel 77.221.154.107  — provider NEEDS VERIFY — phone: hoster console reboot
+          de    31.77.116.51    — VPSPay/EU — NO public API — phone: @VPSPay_bot
+          fi    144.31.169.6    — VPSPay/EU — NO public API — phone: @VPSPay_bot
+          pl    2.26.225.213    — VPSPay/EU — NO public API — phone: @VPSPay_bot
+          ru    195.133.45.167  — RuVDS API when RUVDS_API_TOKEN set — else RuVDS app
+          ru2   152.228.112.142 — AdminVPS — phone: my.adminvps.ru (API undocumented)
+          xplm  45.133.209.80   — edge — phone: provider console
+          DNS   Cloudflare     — /kpax dns + CONFIRM: DNS (CLOUDFLARE_* secrets)
+          EOF
+          cat out/INVENTORY.txt
+          echo "STATUS=OK inventory" | tee out/PROVIDER.txt
+
+      - name: RuVDS API
+        if: inputs.provider == 'ruvds'
+        env:
+          RUVDS_API_TOKEN: ${{ secrets.RUVDS_API_TOKEN }}
+          RUVDS_SERVER_IDS: ${{ secrets.RUVDS_SERVER_IDS }}
+          ACTION: ${{ inputs.action }}
+          TARGET: ${{ inputs.target }}
+        run: python3 tools/ci/ruvds_ops.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: provider-ops-${{ github.run_id }}
+          path: out/
+          retention-days: 14

@@ -1,35 +1,36 @@
 # Handoff for next AI agent (K-Pax / X-Plm)
 
-**Date:** 2026-11-27  
+**Date:** 2026-11-28  
 **Operator language:** Russian  
 **Repo:** [uvarov89/k-pax](https://github.com/uvarov89/k-pax)  
 **Site frontend:** not in this repo.
 
-## Doc map (start here)
+## Doc map
 
 | Doc | Purpose |
 |-----|---------|
 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | Inventory + diagram |
 | [OPS-COMMANDS.md](OPS-COMMANDS.md) | `/kpax` + `kpax-ci` |
 | [DIAGNOSTICS.md](DIAGNOSTICS.md) | Outage order + E2E layers |
-| [DISASTER-RECOVERY.md](DISASTER-RECOVERY.md) | Failure scenarios |
-| [OPS-PROVIDER-APIS.md](OPS-PROVIDER-APIS.md) | Cloudflare / VPS APIs |
-| [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | Open defects |
-| [ACCEPTANCE-TESTS.md](ACCEPTANCE-TESTS.md) | VERIFIED matrix |
-| [OPS-RUNBOOK.md](OPS-RUNBOOK.md) | Human SSH / panel detail |
+| [DISASTER-RECOVERY.md](DISASTER-RECOVERY.md) | Backup / rebuild / phone approve |
+| [OPS-PROVIDER-APIS.md](OPS-PROVIDER-APIS.md) | Cloudflare / RuVDS / phone fallbacks |
+| [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | Open defects (PL / RU2) |
+| [ACCEPTANCE-TESTS.md](ACCEPTANCE-TESTS.md) | VERIFIED matrix + run links |
+| [OPS-RUNBOOK.md](OPS-RUNBOOK.md) | Human SSH detail |
 
-## Your access
+## Access
 
 | Access | You |
 |--------|-----|
-| GitHub code / PRs / Actions logs | Yes |
-| Issues `/kpax` gateway | Yes (authorized login) |
+| GitHub code / Actions logs / Issues gateway | Yes |
 | Direct SSH / Cursor laptop | Do not rely on it |
 | Secrets in chat | **Never** |
-| Store / TestFlight publish | Only with explicit operator confirm |
-| Change PL VPN config | **Forbidden** until SoftProbe RCA + confirm |
+| PL VPN config changes | **Forbidden** without operator confirm |
+| Mutate workflows | Need `CONFIRM:` + phone Environment **production** approve |
 
 ## ChatGPT phone path
+
+Read-only:
 
 ```text
 /kpax health
@@ -38,44 +39,56 @@
 /kpax e2e
 ```
 
-Dangerous (include confirm token; approve Environment `production` on phone):
+Mutate (same message includes CONFIRM; then approve in GitHub mobile):
 
 ```text
 /kpax backup
 CONFIRM: BACKUP
+
+/kpax restore-drill
+CONFIRM: RESTOREDRILL
+
+/kpax deploy paths=ci_marker.py
+CONFIRM: DEPLOY
+
+/kpax e2e-maintain
+CONFIRM: E2EMAINTAIN
+
+/kpax provider provider=inventory
+CONFIRM: PROVIDER
+
+/kpax dns action=list name=pl.k-pax.space
+CONFIRM: DNS
 ```
 
-Gateway: `.github/workflows/ops-gateway.yml` — must **not** redeclare `core` (injected by github-script).
+**Note:** `/kpax e2e` is SoftProbe-only. Refreshing `CI-E2E` / syncing UUID is `/kpax e2e-maintain`.
 
 ## Architecture short
 
-Service path bugs → `server/` / fronts / relay / nodes.  
-Universal client bugs → `lib/` (do not thrash client for RF SoftProbe).  
-CI remotes: `tools/ci/wrappers/` → `/usr/local/lib/kpax-ci/kpax-ci` only sudo for `gha`.
+Service bugs → `server/` / fronts / relay. Client bugs → `lib/`.  
+`gha` sudo → **only** `/usr/local/lib/kpax-ci/kpax-ci` (never widen).
 
-## Fleet (non-secret)
+## Fleet
 
 | ID | IP | Role |
 |----|-----|------|
 | panel | 77.221.154.107 | panel + relay + Caddy |
-| de | 31.77.116.51 | exit |
-| fi | 144.31.169.6 | exit |
-| pl | 2.26.225.213 | exit — SoftProbe front path FAIL |
-| ru | 195.133.45.167 | front |
-| ru2 | 152.228.112.142 | front |
+| de / fi / pl | 31.77.116.51 / 144.31.169.6 / 2.26.225.213 | exits (PL SoftProbe FAIL) |
+| ru / ru2 | 195.133.45.167 / 152.228.112.142 | fronts (RU2 Reality flaky) |
 | bg | 79.124.7.111 | disabled |
 | xplm | 45.133.209.80 | brand edge |
 
-E2E: dedicated `CI-E2E` + `/etc/k-pax/ci-e2e.env` via `kpax-ci ensure-e2e-env`.
+## Operator secrets to add (if missing)
 
-## App versions (do not change in ops-only tasks)
+| Secret | Purpose |
+|--------|---------|
+| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID_KPAX` | DNS ops |
+| `RUVDS_API_TOKEN` + optional `RUVDS_SERVER_IDS` | RU status/reboot |
+| Already present | `KPAX_DEPLOY_*`, `KPAX_BACKUP_PASSPHRASE`, `KPAX_OPS_ALLOWLIST` |
 
-Android live **1.0.84**; Windows **1.0.81**; rollback **1.0.70**.
+## Immediate priorities
 
-## Immediate priorities for ChatGPT
-
-1. Gateway verified on [#12](https://github.com/uvarov89/k-pax/issues/12) — continue with `/kpax diag` / `/kpax e2e` / `/kpax analytics`.  
-2. E2E will stay red until PL SoftProbe fixed — collect evidence only; **do not change PL config** without operator confirm.  
-3. Next operator-approved: `/kpax backup` then optional wrapper deploy/rollback drill.  
-4. Investigate RU2 Reality SoftProbe fail (dual-A `media`) separately from PL hop.  
-5. Acceptance matrix: [ACCEPTANCE-TESTS.md](ACCEPTANCE-TESTS.md).
+1. Approve pending **Backup / Restore-drill / Deploy ci_marker / Rollback** runs from phone.  
+2. Add Cloudflare + RuVDS secrets; re-run dns/provider.  
+3. Keep PL config frozen until RCA + confirm.  
+4. Track acceptance links in ACCEPTANCE-TESTS.md.

@@ -112,6 +112,9 @@ jobs:
                 needsConfirm: 'CONFIRM: NODEOPS',
               },
               dns: { workflow: 'dns-ops.yml', inputs: { confirm: 'DNS', action: 'list', name: 'pl.k-pax.space', content: '', proxied: 'false' }, needsConfirm: 'CONFIRM: DNS' },
+              'e2e-maintain': { workflow: 'e2e-maintain.yml', inputs: { confirm: 'E2EMAINTAIN' }, needsConfirm: 'CONFIRM: E2EMAINTAIN' },
+              'restore-drill': { workflow: 'restore-drill.yml', inputs: { confirm: 'RESTOREDRILL', source: 'fresh-backup' }, needsConfirm: 'CONFIRM: RESTOREDRILL' },
+              provider: { workflow: 'provider-ops.yml', inputs: { confirm: 'PROVIDER', action: 'inventory', provider: 'inventory', target: 'ru' }, needsConfirm: 'CONFIRM: PROVIDER' },
             };
 
             let target = safe[cmd] || dangerous[cmd];
@@ -125,12 +128,15 @@ jobs:
                   '',
                   '**Read-only:** `/kpax health` · `/kpax diag panel,de,fi,pl,ru,ru2` · `/kpax analytics` · `/kpax e2e`',
                   '',
-                  '**Dangerous (same message must include CONFIRM token + Environment approval):**',
+                  '**Dangerous (CONFIRM token + Environment approval):**',
                   '`/kpax backup` + `CONFIRM: BACKUP`',
-                  '`/kpax deploy paths=panel.py` + `CONFIRM: DEPLOY`',
+                  '`/kpax deploy paths=ci_marker.py restart=false` + `CONFIRM: DEPLOY`',
                   '`/kpax rollback` + `CONFIRM: ROLLBACK`',
-                  '`/kpax dns` + `CONFIRM: DNS`',
+                  '`/kpax dns action=list name=pl.k-pax.space` + `CONFIRM: DNS`',
                   '`/kpax node-ops` + `CONFIRM: NODEOPS`',
+                  '`/kpax e2e-maintain` + `CONFIRM: E2EMAINTAIN`',
+                  '`/kpax restore-drill` + `CONFIRM: RESTOREDRILL`',
+                  '`/kpax provider provider=inventory` + `CONFIRM: PROVIDER`',
                 ].join('\n'),
               });
               return;
@@ -166,6 +172,27 @@ jobs:
             if (cmd === 'rollback') {
               const bm = rest.match(/backup=([^\s]+)/i);
               if (bm) target.inputs.backup_name = bm[1];
+            }
+            if (cmd === 'dns') {
+              const am = rest.match(/action=(list|upsert-a)/i);
+              const nm = rest.match(/name=([^\s]+)/i);
+              const cm = rest.match(/content=([^\s]+)/i);
+              if (am) target.inputs.action = am[1].toLowerCase();
+              if (nm) target.inputs.name = nm[1];
+              if (cm) target.inputs.content = cm[1];
+              if (/proxied=true/i.test(rest)) target.inputs.proxied = 'true';
+            }
+            if (cmd === 'restore-drill') {
+              const sm = rest.match(/source=([^\s]+)/i);
+              if (sm) target.inputs.source = sm[1];
+            }
+            if (cmd === 'provider') {
+              const am = rest.match(/action=(inventory|status|balance|reboot)/i);
+              const pm = rest.match(/provider=(inventory|ruvds)/i);
+              const tm = rest.match(/target=([^\s]+)/i);
+              if (am) target.inputs.action = am[1].toLowerCase();
+              if (pm) target.inputs.provider = pm[1].toLowerCase();
+              if (tm) target.inputs.target = tm[1];
             }
 
             const before = Date.now();

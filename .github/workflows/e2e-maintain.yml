@@ -1,0 +1,61 @@
+# Mutating E2E tooling: refresh CI-E2E account/env and sync UUID to nodes.
+# Separated from read-only vpn-e2e.yml. Requires production approval.
+name: E2E maintain
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type E2EMAINTAIN to proceed'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-e2e-maintain
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "E2EMAINTAIN" ]] || {
+            echo "::error::Type E2EMAINTAIN to confirm"
+            exit 1
+          }
+
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: ensure-e2e-env + sync-users
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
+          "${SSH[@]}" "gha@${PANEL}" "sudo $CI ensure-e2e-env" | tee out/ensure-e2e-env.txt
+          "${SSH[@]}" "gha@${PANEL}" "sudo $CI sync-users" | tee out/sync-users.txt
+          grep -q 'STATUS=OK' out/ensure-e2e-env.txt
+          grep -q 'STATUS=OK' out/sync-users.txt
+          # Never print UUID
+          ! grep -Eiq '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' out/*.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-maintain-${{ github.run_id }}
+          path: out/
+          retention-days: 14

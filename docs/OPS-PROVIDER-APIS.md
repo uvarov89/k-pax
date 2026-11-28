@@ -1,65 +1,69 @@
 # Hosting / DNS provider APIs (emergency)
 
-Secrets are **not** stored in git. Create scoped tokens in GitHub Actions secrets only. Never paste tokens into ChatGPT chat.
+Secrets are **not** stored in git. Create scoped tokens in GitHub Actions **production** environment secrets only. Never paste tokens into ChatGPT chat.
 
-## Cloudflare (DNS) — primary automated path
+## Cloudflare (DNS)
 
 | Item | Guidance |
 |------|----------|
-| Secret names | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID_KPAX` |
+| Secrets | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID_KPAX` |
 | Token scope | **Zone → DNS → Edit** on `k-pax.space` only. Never Global API Key. |
-| Workflow | `.github/workflows/dns-ops.yml` (`production` + `CONFIRM: DNS`) |
+| Workflow | `dns-ops.yml` via `/kpax dns action=list name=pl.k-pax.space` + `CONFIRM: DNS` |
 | Allowlisted names | `pl.k-pax.space`, `de.k-pax.space`, `fi.k-pax.space`, `cdn.k-pax.space`, apex/www |
 | Reality tip | Exit/front A records **DNS-only** (`proxied=false`) |
-| Phone fallback | Cloudflare mobile app / dashboard → DNS |
+| Phone fallback | Cloudflare mobile app → DNS |
+| Status | Secrets **must be created by operator** if missing — workflow fails closed |
 
-Status: token presence **NEEDS VERIFY** per environment secrets.
-
-## Namecheap (nastolkashop.store)
+## RuVDS (RU front)
 
 | Item | Guidance |
 |------|----------|
-| API | Optional Namecheap API (ClientIp allowlist) — usually unused |
-| Phone fallback | Namecheap app/site → Advanced DNS for `media` / `files` / `static` / `img` |
-| Scope for ChatGPT | Describe needed record change; operator confirms in UI |
+| Docs | https://ruvds.com/api-docs/ (API v2) |
+| Secrets | `RUVDS_API_TOKEN`, optional `RUVDS_SERVER_IDS` (`ru=12345`) |
+| Workflow | `provider-ops.yml` — `/kpax provider provider=ruvds action=status` + `CONFIRM: PROVIDER` |
+| Allowed actions | `status`, `balance`, `reboot` (numeric id or map) |
+| Phone fallback | RuVDS mobile / console power cycle |
 
-## VPS providers
+## AdminVPS (RU2)
 
-| Host role | Typical provider | API / actions | Phone fallback |
-|-----------|------------------|---------------|----------------|
-| Panel | **NEEDS VERIFY** brand | Status, hard reboot if API token scoped | Provider console reboot |
-| DE / FI / PL | VPSPay / EU VPS family | Status + reboot if enabled | Ticket / console |
-| RU | RuVDS | Panel API or console | App/console power cycle |
-| RU2 | AdminVPS | Console | Console |
-| X-Plm edge | **NEEDS VERIFY** | Console | Console |
+| Item | Guidance |
+|------|----------|
+| API | No reliable public reboot contract documented for our use |
+| Phone fallback | https://my.adminvps.ru → service → reboot |
+| Actions | inventory note only until operator supplies a verified API token + path |
 
-**Do not** give ChatGPT unbounded hosting account passwords. Prefer:
+## VPSPay / EU (DE, FI, PL)
 
-1. `kpax-ci` via Actions for service restart.  
-2. One-shot `provider-reboot` workflow (future) with Environment approval.  
-3. Operator phone console for power only.
+| Item | Guidance |
+|------|----------|
+| API | **None published** — Telegram management only |
+| Phone fallback | [@VPSPay_bot](https://t.me/VPSPay_bot) → server reboot / status |
+| Actions | Prefer `kpax-ci restart sing-box` when SSH works; bot for hard power |
 
-## Domains / certificates
+## Namecheap (`nastolkashop.store`)
 
-| Domain | Where | Notes |
-|--------|-------|-------|
-| `k-pax.space` | Cloudflare + LE on panel/Caddy | diag shows expiry |
-| `media.nastolkashop.store` | LE on `ru`, sync to `ru2` | `kpax-sync-media-cert` |
-| `pl.k-pax.space` | CF A → PL | DNS-only required for Reality |
+| Item | Guidance |
+|------|----------|
+| API | Optional; ClientIp allowlist friction |
+| Phone fallback | Namecheap app → Advanced DNS (`media` / `files` / `static` / `img`) |
 
-## Billing / renewal alerts
+## Panel host provider
 
-| Item | Status |
-|------|--------|
-| VPS payment due alerts | **PARTIAL** — rely on provider email + Telegram watch; no unified Actions notifier yet |
-| Cert expiry | diag + LE timers; alert automation **NEEDS VERIFY** |
-| Domain expiry | registrar email; no CI poll yet |
+| Item | Guidance |
+|------|----------|
+| Brand | **NEEDS VERIFY** with operator |
+| Phone fallback | Provider console hard reboot |
 
-## Polish exit (do not mutate)
+## Fallback when admin VPS or Actions unavailable
+
+1. Phone: Cloudflare app (DNS), RuVDS/AdminVPS/VPSPay (power).  
+2. Phone: GitHub mobile cannot run SSH wrappers without Actions — wait for Actions or use laptop.  
+3. Keep latest backup artifact downloaded to phone/cloud storage periodically.
+
+## Polish exit (do not mutate without confirm)
 
 | Field | Value |
 |-------|-------|
 | Host | `2.26.225.213` |
-| SNI / domain | `pl.k-pax.space` |
-| Front port | `2445` |
-| Relay | `28445` → PL:443 |
+| SNI | `pl.k-pax.space` |
+| Front | `2445` / relay `28445` |

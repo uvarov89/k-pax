@@ -1,0 +1,102 @@
+# Isolated restore drill: decrypt backup on runner, verify DB/config offline.
+# NEVER writes to production hosts.
+name: Restore drill (isolated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESTOREDRILL to proceed'
+        required: true
+        type: string
+      source:
+        description: 'fresh-backup | <numeric Backup run id>'
+        required: false
+        default: 'fresh-backup'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: kpax-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          [[ "${{ inputs.confirm }}" == "RESTOREDRILL" ]] || {
+            echo "::error::Type RESTOREDRILL to confirm"
+            exit 1
+          }
+
+      - name: Setup SSH (fresh-backup)
+        if: inputs.source == 'fresh-backup'
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+
+      - name: Obtain encrypted backup
+        id: get
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          BACKUP_PASS: ${{ secrets.KPAX_BACKUP_PASSPHRASE }}
+          SOURCE: ${{ inputs.source }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          [[ -n "${BACKUP_PASS:-}" ]] || { echo "::error::Missing KPAX_BACKUP_PASSPHRASE"; exit 1; }
+
+          if [[ "$SOURCE" == "fresh-backup" ]]; then
+            SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+            SCP=(scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+            stamp=$(date -u +%Y%m%dT%H%MZ)
+            remote_tar=$("${SSH[@]}" "gha@${PANEL}" 'sudo /usr/local/lib/kpax-ci/kpax-ci backup' | awk '/\/tmp\/kpax-ci-backup-.*\.tar\.gz$/{print; exit}')
+            [[ "$remote_tar" == /tmp/kpax-ci-backup-*.tar.gz ]]
+            "${SCP[@]}" "gha@${PANEL}:${remote_tar}" "out/raw.tar.gz"
+            "${SSH[@]}" "gha@${PANEL}" "rm -f '${remote_tar}'"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+              -in out/raw.tar.gz -out "out/kpax-backup-${stamp}.tar.gz.enc" -pass env:BACKUP_PASS
+            rm -f out/raw.tar.gz
+            echo "enc=out/kpax-backup-${stamp}.tar.gz.enc" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$SOURCE" =~ ^[0-9]+$ ]] || { echo "::error::source must be fresh-backup or numeric run id"; exit 1; }
+            gh run download "$SOURCE" -D out/art
+            enc=$(find out/art -name '*.enc' | head -1)
+            [[ -n "$enc" ]] || { echo "::error::no .enc in artifact from run $SOURCE"; exit 1; }
+            cp "$enc" out/from-artifact.enc
+            echo "enc=out/from-artifact.enc" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Isolated decrypt + verify
+        env:
+          BACKUP_PASS: ${{ secrets.KPAX_BACKUP_PASSPHRASE }}
+          ENC: ${{ steps.get.outputs.enc }}
+        run: |
+          set -euo pipefail
+          mkdir -p drill
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in "$ENC" -out drill/backup.tar.gz -pass env:BACKUP_PASS
+          tar -xzf drill/backup.tar.gz -C drill
+          python3 tools/ci/restore_drill_verify.py
+          rm -rf drill
+          echo "plaintext_wiped=yes" | tee -a out/DRILL.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restore-drill-${{ github.run_id }}
+          path: |
+            out/DRILL.txt
+            out/DB_INTEGRITY.txt
+          retention-days: 30

@@ -1,31 +1,42 @@
 # Acceptance tests — remote ChatGPT ops
 
-Fill **Status** after each real run: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TESTED`.
+Statuses: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TESTED`.
 
 | # | Capability | Status | Evidence |
 |---|------------|--------|----------|
-| 1 | Issues gateway dispatches + run URL comment | VERIFIED | [#12](https://github.com/uvarov89/k-pax/issues/12) → gateway success → [health 46034378616](https://github.com/uvarov89/k-pax/actions/runs/46034378616) |
-| 2 | Fresh diagnostics logs in Actions | VERIFIED | [diagnostics 46034295380](https://github.com/uvarov89/k-pax/actions/runs/46034295380) |
-| 3 | Dedicated CI-E2E subscription/env | VERIFIED | `CI-E2E` + `ci-e2e.env`; synced to de/fi/pl/ru/ru2; ensure step in E2E OK |
-| 4 | Per-node SoftProbe map | VERIFIED | [e2e 46034310970](https://github.com/uvarov89/k-pax/actions/runs/46034310970) — DE/FI OK; PL FAIL; honest red |
-| 5 | Root-cause notes for failures | PARTIAL | KNOWN-ISSUES: RU2 Reality fail + PL hop/direct SoftProbe 000; **no PL config change** |
-| 6 | Server journals via diag | VERIFIED | diagnostics run above (redacted journals in log stream) |
-| 7 | Encrypted backup | NOT TESTED | needs phone `CONFIRM: BACKUP` + production approval |
-| 8 | Test deploy via wrapper | NOT TESTED | code path `kpax-ci deploy-install`; needs approval |
-| 9 | Test rollback via wrapper | NOT TESTED | code path `kpax-ci rollback`; needs approval |
-| 10 | Restore from encrypted backup (isolated) | NOT TESTED | no scratch VM |
-| 11 | Critical confirm from phone | NOT TESTED | owner Environment approval UI |
-| 12 | Manage without owner laptop | PARTIAL | Gateway+read-only VERIFIED; mutate path waiting phone approvals |
+| 1 | Issues gateway + run URL | VERIFIED | [#12](https://github.com/uvarov89/k-pax/issues/12) → [46034378616](https://github.com/uvarov89/k-pax/actions/runs/46034378616) |
+| 2 | Diagnostics | VERIFIED | [46034295380](https://github.com/uvarov89/k-pax/actions/runs/46034295380) |
+| 3 | CI-E2E account | VERIFIED | dedicated user + env; maintain via `e2e-maintain.yml` |
+| 4 | SoftProbe map (read-only e2e) | VERIFIED | DE/FI OK; PL FAIL honest red ([46123390878](https://github.com/uvarov89/k-pax/actions/runs/46123390878)) |
+| 5 | PL RCA notes | PARTIAL | KNOWN-ISSUES; no PL config change |
+| 6 | Encrypted backup + integrity | VERIFIED | [46124869589](https://github.com/uvarov89/k-pax/actions/runs/46124869589) — `integrity=OK`, nodes/*.sing-box.json, off-panel artifact |
+| 7 | Isolated restore drill | VERIFIED | [46124873224](https://github.com/uvarov89/k-pax/actions/runs/46124873224) — sqlite ok, 5 node configs, plaintext wiped |
+| 8 | Deploy via `kpax-ci` | VERIFIED | [46125540435](https://github.com/uvarov89/k-pax/actions/runs/46125540435) — `ci_marker.py`, restart=false, healthz=200 |
+| 9 | Rollback via `kpax-ci` | VERIFIED | [46126028116](https://github.com/uvarov89/k-pax/actions/runs/46126028116) |
+| 10 | Production Environment approval | VERIFIED | API/phone approve path exercised (`required_reviewers` + 5m wait_timer) |
+| 11 | Provider inventory workflow | VERIFIED | [46123387272](https://github.com/uvarov89/k-pax/actions/runs/46123387272) |
+| 12 | Cloudflare DNS ops | FAILED (secrets) | [46123394596](https://github.com/uvarov89/k-pax/actions/runs/46123394596) — missing `CLOUDFLARE_*` |
+| 13 | RuVDS API status/reboot | NOT TESTED | needs `RUVDS_API_TOKEN` secret |
+| 14 | Weekly off-VPS backup schedule | PARTIAL | cron in `backup.yml`; first schedule not yet fired |
+| 15 | Read-only e2e separated from ensure/sync | VERIFIED | `vpn-e2e.yml` SoftProbe only; `e2e-maintain.yml` gated |
+| 16 | Manage without laptop | PARTIAL | read-only + DR backup/restore/deploy verified; CF/RuVDS secrets still needed |
 
-## Runs (this pass)
+## Key runs (2026-11-28)
 
 | Check | Run |
 |-------|-----|
-| Gateway #12 | https://github.com/uvarov89/k-pax/actions/runs/46034364950 |
-| Health (via gateway) | https://github.com/uvarov89/k-pax/actions/runs/46034378616 |
-| Health (manual) | https://github.com/uvarov89/k-pax/actions/runs/46034288084 |
-| Diagnostics | https://github.com/uvarov89/k-pax/actions/runs/46034295380 |
-| Analytics | https://github.com/uvarov89/k-pax/actions/runs/46034303399 |
-| VPN E2E (honest PL red) | https://github.com/uvarov89/k-pax/actions/runs/46034310970 |
+| Backup integrity | https://github.com/uvarov89/k-pax/actions/runs/46124869589 |
+| Restore drill | https://github.com/uvarov89/k-pax/actions/runs/46124873224 |
+| Deploy ci_marker | https://github.com/uvarov89/k-pax/actions/runs/46125540435 |
+| Rollback | https://github.com/uvarov89/k-pax/actions/runs/46126028116 |
+| Provider inventory | https://github.com/uvarov89/k-pax/actions/runs/46123387272 |
+| Read-only E2E | https://github.com/uvarov89/k-pax/actions/runs/46123390878 |
+| DNS (needs secrets) | https://github.com/uvarov89/k-pax/actions/runs/46123394596 |
 
-Commits: `fdfb0fd`, `a6a5dc3`.
+## Operator TODO (phone)
+
+1. Add `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ZONE_ID_KPAX` → re-run `/kpax dns`.  
+2. Add `RUVDS_API_TOKEN` (+ `RUVDS_SERVER_IDS=ru=…`) → `/kpax provider provider=ruvds action=status`.  
+3. Download a backup artifact to personal cloud (extra offsite copy).
+
+Commits: `d67f538`, `f17747e`, `45d372a`, `89cc1b9` (+ docs update).

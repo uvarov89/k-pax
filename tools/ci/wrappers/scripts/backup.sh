@@ -77,6 +77,10 @@ PY
 
 out="/tmp/kpax-ci-backup-${stamp}.tar.gz"
 tar -C "$work" -czf "$out" .
-sha256sum "$out" | tee "/tmp/kpax-ci-backup-${stamp}.sha256"
+# Readable by gha for SCP (file created as root via sudo kpax-ci)
+chmod 644 "$out"
+chown gha:gha "$out" 2>/dev/null || true
+sha256sum "$out" | tee "/tmp/kpax-ci-backup-${stamp}.sha256" >/dev/null
+# Print ONLY the path on its own line for CI parsers
 echo "$out"
 echo "STATUS=OK"

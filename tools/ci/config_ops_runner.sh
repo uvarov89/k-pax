@@ -96,16 +96,77 @@ for id in "${items[@]}"; do
         FAIL=1
       fi
       ;;
+    patch)
+      [[ -n "${PATCH_SET:-}" ]] || { echo "FAIL patch_set empty"; FAIL=1; continue; }
+      # shellcheck disable=SC2029
+      args=("$KIND")
+      if [[ "${DRY_RUN:-true}" == "true" ]]; then
+        args+=(--dry-run)
+      else
+        [[ -n "${PATCH_DIGEST:-}" ]] || { echo "FAIL real patch needs patch_digest"; FAIL=1; continue; }
+        args+=(--digest "$PATCH_DIGEST")
+      fi
+      if [[ -n "${DEADMAN:-}" && "${DEADMAN}" != "0" && "${DRY_RUN:-true}" != "true" ]]; then
+        args+=(--deadman "$DEADMAN")
+      fi
+      # Pass patch tokens as separate args (no secrets allowed by allowlist)
+      # shellcheck disable=SC2086
+      if ! "${SSH[@]}" "gha@${host}" "sudo $CI config-patch ${args[*]} -- ${PATCH_SET}" \
+        | tee "out/${id}-patch.txt"; then
+        echo "FAIL patch $id" | tee -a "out/${id}-patch.txt"
+        FAIL=1
+      fi
+      ;;
+    deadman-drill)
+      # Isolated auto-rollback proof on ci-drill only (panel)
+      [[ "$KIND" == "ci-drill" ]] || { echo "FAIL deadman-drill only for ci-drill"; FAIL=1; continue; }
+      [[ "$id" == "panel" ]] || { echo "skip deadman-drill on $id"; continue; }
+      if ! "${SSH[@]}" "gha@${host}" "sudo bash -s" <<'REMOTE' | tee "out/${id}-deadman-drill.txt"
+set -euo pipefail
+CI=/usr/local/lib/kpax-ci/kpax-ci
+mkdir -p /etc/k-pax /tmp/kpax-ci-stage /var/backups/k-pax-ci
+# Baseline v1 without deadman
+printf '%s\n' 'drill_version=1' 'note=deadman-base' > /tmp/kpax-ci-stage/ci-drill
+$CI config-apply ci-drill --deadman 0
+grep -q 'drill_version=1' /etc/k-pax/ci-drill.conf
+# Mutate to v2 with 1-minute deadman — intentionally do NOT cancel
+printf '%s\n' 'drill_version=2' 'note=deadman-temp' > /tmp/kpax-ci-stage/ci-drill
+$CI config-apply ci-drill --deadman 1
+grep -q 'drill_version=2' /etc/k-pax/ci-drill.conf
+echo "armed waiting for deadman fire..."
+ok=0
+for i in $(seq 1 20); do
+  sleep 5
+  if grep -q 'drill_version=1' /etc/k-pax/ci-drill.conf 2>/dev/null && ! grep -q 'drill_version=2' /etc/k-pax/ci-drill.conf 2>/dev/null; then
+    echo "DEADMAN_FIRE_OK after $((i*5))s"
+    cat /etc/k-pax/ci-drill.conf
+    ok=1
+    break
+  fi
+  echo "wait $i content=$(tr '\n' ' ' </etc/k-pax/ci-drill.conf 2>/dev/null || true)"
+done
+$CI deadman-status || true
+[[ "$ok" -eq 1 ]] || { echo "STATUS=FAIL deadman did not restore"; exit 1; }
+echo "STATUS=OK deadman-drill"
+REMOTE
+      then
+        echo "ok deadman-drill"
+      else
+        echo "FAIL deadman-drill" | tee -a "out/${id}-deadman-drill.txt"
+        FAIL=1
+      fi
+      ;;
     *) echo "FAIL bad action"; exit 1 ;;
   esac
 done
 
-if [[ "${RUN_E2E:-false}" == "true" && "${DRY_RUN:-true}" != "true" && "$ACTION" == "apply" && "$FAIL" -eq 0 ]]; then
-  echo "== post-apply e2e =="
+if [[ "${RUN_E2E:-false}" == "true" && "${DRY_RUN:-true}" != "true" && ( "$ACTION" == "apply" || "$ACTION" == "patch" ) && "$FAIL" -eq 0 ]]; then
+  echo "== post-apply e2e (egress IP checked inside SoftProbe) =="
   if ! "${SSH[@]}" "gha@${PANEL}" "sudo $CI e2e" | tee out/e2e.txt; then
     echo "FAIL e2e after apply — consider config-rollback / deadman" | tee -a out/e2e.txt
     FAIL=1
   fi
+  "${SSH[@]}" "gha@${PANEL}" "sudo $CI logs e2e 80" | tee out/e2e-logs-inline.txt || true
 fi
 
 {

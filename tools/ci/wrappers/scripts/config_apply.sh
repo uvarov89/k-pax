@@ -7,11 +7,13 @@ kind="${1:?kind}"
 shift
 dry=0
 deadman=0
+deadman_set=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) dry=1; shift ;;
     --deadman)
       deadman="${2:?}"
+      deadman_set=1
       shift 2
       ;;
     *) echo "STATUS=FAIL unknown arg $1"; exit 2 ;;
@@ -68,8 +70,8 @@ if [[ -n "$CONFIG_SERVICE" ]]; then
   echo "restarted=$CONFIG_SERVICE"
 fi
 
-# Arm deadman for network-sensitive kinds (or explicit --deadman)
-if [[ "$deadman" -eq 0 && "$CONFIG_DEADMAN_DEFAULT" -eq 1 ]]; then
+# Arm deadman for network-sensitive kinds unless explicitly --deadman 0
+if [[ "$deadman_set" -eq 0 && "$deadman" -eq 0 && "$CONFIG_DEADMAN_DEFAULT" -eq 1 ]]; then
   deadman=5
 fi
 if [[ "$deadman" -gt 0 ]]; then

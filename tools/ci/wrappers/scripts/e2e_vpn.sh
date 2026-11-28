@@ -182,6 +182,20 @@ for k in "${!NODE_STATUS[@]}"; do
   echo "  $k -> ${NODE_STATUS[$k]}"
 done | sort
 
+# Inline recent fail logs so Actions viewers need no ZIP
+echo "=== recent e2e fail logs (redacted, inline) ==="
+if [[ -d "$LOG_DIR" ]]; then
+  mapfile -t _fails < <(ls -1t "$LOG_DIR"/fail-*.log 2>/dev/null | head -6 || true)
+  if ((${#_fails[@]} == 0)); then
+    echo "(none)"
+  else
+    for f in "${_fails[@]}"; do
+      echo "--- $(basename "$f") ---"
+      redact < "$f" | tail -n 60
+    done
+  fi
+fi
+
 # Honest gates: front-de OR front-fi must OK; front-pl must OK for STATUS=OK
 DE_OK=0; FI_OK=0; PL_OK=0
 [[ "${NODE_STATUS[front-de:${FRONT_HOST}:2443]:-}" == "OK" ]] && DE_OK=1

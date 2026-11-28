@@ -1,6 +1,7 @@
-# Allowlisted server config get / diff / apply / rollback via kpax-ci.
+# Allowlisted server config get / diff / apply / patch / rollback via kpax-ci.
 # get / deadman-status: no Environment approval.
-# diff / apply / rollback / deadman-cancel: production approval + confirm CONFIGOPS.
+# mutate actions: production approval + confirm CONFIGOPS.
+# patch: in-place allowlisted fields; real apply requires patch_digest binding.
 name: Config ops
 
 on:
@@ -11,11 +12,11 @@ on:
         required: true
         type: string
       action:
-        description: 'get | diff | apply | rollback | deadman-cancel | deadman-status'
+        description: 'get | diff | apply | patch | rollback | deadman-cancel | deadman-status | deadman-drill'
         required: true
         default: 'get'
         type: choice
-        options: [get, diff, apply, rollback, deadman-cancel, deadman-status]
+        options: [get, diff, apply, patch, rollback, deadman-cancel, deadman-status, deadman-drill]
       targets:
         description: 'Comma host ids: panel,de,fi,pl,ru,ru2'
         required: true
@@ -27,22 +28,32 @@ on:
         default: 'ci-drill'
         type: string
       dry_run:
-        description: 'For apply: dry-run only (no write)'
+        description: 'For apply/patch: dry-run only (no write)'
         required: false
         default: true
         type: boolean
       deadman_minutes:
-        description: 'Deadman minutes for apply (1-30; 0 = kind default)'
+        description: 'Deadman minutes for apply/patch (1-30; 0 = kind default)'
         required: false
         default: '5'
         type: string
       run_e2e:
-        description: 'After real apply: SoftProbe e2e on panel'
+        description: 'After real apply/patch: SoftProbe e2e + egress IP on panel'
         required: false
         default: false
         type: boolean
       backup_name:
         description: 'rollback: backup basename (empty = latest config-<kind>-pre-*)'
+        required: false
+        default: ''
+        type: string
+      patch_set:
+        description: 'patch only: space-separated set:field=value (no secrets)'
+        required: false
+        default: ''
+        type: string
+      patch_digest:
+        description: 'patch only: sha256 of sorted field=value lines (required for real patch)'
         required: false
         default: ''
         type: string
@@ -87,7 +98,9 @@ jobs:
           retention-days: 14
 
   mutate:
-    if: inputs.action == 'diff' || inputs.action == 'apply' || inputs.action == 'rollback' || inputs.action == 'deadman-cancel'
+    if: >
+      inputs.action == 'diff' || inputs.action == 'apply' || inputs.action == 'patch' ||
+      inputs.action == 'rollback' || inputs.action == 'deadman-cancel' || inputs.action == 'deadman-drill'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: production
@@ -114,9 +127,14 @@ jobs:
           DEADMAN: ${{ inputs.deadman_minutes }}
           RUN_E2E: ${{ inputs.run_e2e }}
           BACKUP_NAME: ${{ inputs.backup_name }}
+          PATCH_SET: ${{ inputs.patch_set }}
+          PATCH_DIGEST: ${{ inputs.patch_digest }}
         run: bash tools/ci/config_ops_runner.sh
-      - name: Cancel deadman after successful isolated apply
-        if: success() && inputs.action == 'apply' && inputs.dry_run == false && inputs.kind == 'ci-drill'
+      - name: Cancel deadman after successful isolated apply/patch
+        if: >
+          success() && inputs.dry_run == false && inputs.kind == 'ci-drill' &&
+          inputs.action != 'deadman-drill' &&
+          (inputs.action == 'apply' || inputs.action == 'patch')
         env:
           PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
           ACTION: deadman-cancel

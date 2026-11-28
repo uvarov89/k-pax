@@ -50,7 +50,10 @@ for n in cfg.get("nodes") or []:
         print("sync", nid, "FAIL", type(e).__name__)
         fail += 1
 print("sync_summary ok=%s fail=%s" % (ok, fail))
-if fail and not ok:
+# Any node failure is a failed sync (no false STATUS=OK on partial success)
+if fail:
+    raise SystemExit(1)
+if ok == 0:
     raise SystemExit(1)
 PY
 

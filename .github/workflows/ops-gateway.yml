@@ -112,7 +112,17 @@ jobs:
                   deadman_minutes: '5',
                   run_e2e: 'false',
                   backup_name: '',
+                  patch_set: '',
+                  patch_digest: '',
                 },
+              },
+              diagnose: {
+                workflow: 'deep-diag.yml',
+                inputs: { targets: 'pl', include_logs: 'true' },
+              },
+              logs: {
+                workflow: 'deep-diag.yml',
+                inputs: { targets: 'pl', include_logs: 'true' },
               },
             };
             const dangerous = {
@@ -139,6 +149,8 @@ jobs:
                   deadman_minutes: '5',
                   run_e2e: 'false',
                   backup_name: '',
+                  patch_set: '',
+                  patch_digest: '',
                 },
                 needsConfirm: 'CONFIRM: CONFIGOPS',
               },
@@ -153,12 +165,11 @@ jobs:
                 body: [
                   'Unknown `/kpax` command.',
                   '',
-                  '**Read-only:** `/kpax health` · `/kpax diag` · `/kpax analytics` · `/kpax e2e` · `/kpax config-get kind=singbox targets=panel,de`',
+                  '**Read-only:** `/kpax health` · `/kpax diag` · `/kpax diagnose targets=pl` · `/kpax e2e` · `/kpax config-get` · `/kpax logs targets=pl`',
                   '',
                   '**Dangerous (CONFIRM + production approval):**',
-                  '`/kpax backup` + `CONFIRM: BACKUP`',
-                  '`/kpax config action=diff|apply|rollback kind=ci-drill targets=panel dry_run=true` + `CONFIRM: CONFIGOPS`',
-                  '`/kpax deploy` · `/kpax rollback` · `/kpax dns` · `/kpax node-ops` · `/kpax e2e-maintain` · `/kpax restore-drill`',
+                  '`/kpax config action=patch|diff|apply|rollback|deadman-drill kind=ci-drill …` + `CONFIRM: CONFIGOPS`',
+                  '`/kpax backup` · `/kpax deploy` · `/kpax dns` · `/kpax node-ops` · `/kpax e2e-maintain`',
                 ].join('\n'),
               });
               return;
@@ -222,21 +233,32 @@ jobs:
               if (km) target.inputs.kind = km[1].toLowerCase();
               if (tm) target.inputs.targets = tm[1];
             }
+            if (cmd === 'diagnose' || cmd === 'logs') {
+              const tm = rest.match(/targets=([a-z0-9,]+)/i);
+              if (tm) target.inputs.targets = tm[1];
+              else {
+                const t = rest.split(/\s+/)[0];
+                if (t && /^[a-z0-9,]+$/i.test(t)) target.inputs.targets = t;
+              }
+            }
             if (cmd === 'config') {
-              const am = rest.match(/action=(get|diff|apply|rollback|deadman-cancel|deadman-status)/i);
+              const am = rest.match(/action=(get|diff|apply|patch|rollback|deadman-cancel|deadman-status|deadman-drill)/i);
               const km = rest.match(/kind=([a-z0-9-]+)/i);
               const tm = rest.match(/targets=([a-z0-9,]+)/i);
               const bm = rest.match(/backup=([^\s]+)/i);
               const dm = rest.match(/deadman=(\d+)/i);
+              const ps = rest.match(/patch_set=([^\n]+?)(?=\s+CONFIRM:|\s+patch_digest=|$)/i);
+              const pd = rest.match(/patch_digest=([a-f0-9]{64})/i);
               if (am) target.inputs.action = am[1].toLowerCase();
               if (km) target.inputs.kind = km[1].toLowerCase();
               if (tm) target.inputs.targets = tm[1];
               if (bm) target.inputs.backup_name = bm[1];
               if (dm) target.inputs.deadman_minutes = dm[1];
+              if (ps) target.inputs.patch_set = ps[1].trim();
+              if (pd) target.inputs.patch_digest = pd[1].toLowerCase();
               if (/dry_run=false/i.test(rest)) target.inputs.dry_run = 'false';
               if (/dry_run=true/i.test(rest)) target.inputs.dry_run = 'true';
               if (/run_e2e=true/i.test(rest)) target.inputs.run_e2e = 'true';
-              // get/deadman-status via /kpax config still need CONFIGOPS confirm but read job accepts CONFIGOPS
               if (target.inputs.action === 'get' || target.inputs.action === 'deadman-status') {
                 target.inputs.confirm = 'GET';
                 delete target.needsConfirm;

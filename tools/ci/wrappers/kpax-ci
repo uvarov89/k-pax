@@ -19,6 +19,12 @@ case "$CMD" in
   diag)
     exec bash "$SCRIPTS/diag.sh" "$@"
     ;;
+  diagnose)
+    exec python3 "$SCRIPTS/diagnose_node.py" "$@"
+    ;;
+  logs)
+    exec bash "$SCRIPTS/logs.sh" "$@"
+    ;;
   health)
     export KPAX_CI_ROLE="${1:-unknown}"
     exec bash "$SCRIPTS/health.sh"
@@ -70,11 +76,14 @@ case "$CMD" in
   config-rollback)
     exec bash "$SCRIPTS/config_rollback.sh" "$@"
     ;;
+  config-patch)
+    exec bash "$SCRIPTS/config_patch.sh" "$@"
+    ;;
   deadman-arm|deadman-cancel|deadman-status|deadman-fire)
     exec bash "$SCRIPTS/deadman.sh" "${CMD#deadman-}" "$@"
     ;;
   *)
-    echo "STATUS=FAIL usage: kpax-ci {diag|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups|deploy-install|rollback|ensure-e2e-env|config-get|config-diff|config-apply|config-rollback|deadman-arm|deadman-cancel|deadman-status}"
+    echo "STATUS=FAIL usage: kpax-ci {diag|diagnose|logs|health|e2e|validate-singbox|sync-users|restart|backup|analytics|list-backups|deploy-install|rollback|ensure-e2e-env|config-get|config-diff|config-apply|config-patch|config-rollback|deadman-arm|deadman-cancel|deadman-status}"
     exit 2
     ;;
 esac

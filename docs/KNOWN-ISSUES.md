@@ -2,7 +2,7 @@
 
 | ID | Severity | Status | Notes |
 |----|----------|--------|-------|
-| PL SoftProbe via `front-pl:2445` + direct PL | High | Open (RCA partial) | Forced-IP probe 2026-11-27: **`ru` 2443/2444 SoftProbe 204 OK**; **`ru` 2445 HTTP 000** after front Reality OK (hop/relay/PL). **`ru2` all 2443–2445 Reality verification failed** (dual-A `media` flaky). **`direct-pl` SoftProbe 000**. Panel PL pbk/sid match front `to-pl` meta; live key-derive not completed (no nacl). Clients “OK on PL” may be sticky DE/FI — **do not change PL config until operator confirms next step.** |
+| PL SoftProbe via `front-pl:2445` + direct PL | High | Open (RCA refreshed 2026-11-28) | Deep-diagnose: PBK/SID match panel↔`ru`/`ru2` `to-pl` (relay `panel:28445`); CI-E2E present on PL. **`front-pl` SoftProbe: `reality verification failed`**. **`direct-pl`**: Reality inbound accepts CI-E2E then **DNS fails** — sing-box resolves via `127.0.0.1:53` → `connection refused` (host resolvectl has 1.1.1.1/8.8.8.8). Hops TCP OPEN. **No PL config change without operator confirm.** |
 | RU2 front Reality vs panel front PBK | High | Open | Same `sk_sha12` as RU but SoftProbe from panel keys fails on RU2 only — investigate camouflage/UUID/sync; consider DNS single-A or health-gated media. |
 | Issues gateway #8–#11 no feedback | High | Fixed in code | Cause: `ops-gateway.yml` redeclared `const core` inside `github-script` → SyntaxError. Rewrite avoids redeclare; adds run URL + dedupe. **Needs fresh Issue verification after push.** |
 | E2E used last-active customer UUID | High | Fixed in code | Now dedicated `CI-E2E` + `ensure-e2e-env`. |

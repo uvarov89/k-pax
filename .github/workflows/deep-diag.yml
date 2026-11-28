@@ -1,0 +1,91 @@
+# Deep read-only node diagnose + inline redacted logs (no ZIP required).
+# SoftProbe / Reality fingerprints / CI-E2E presence / hops — no production mutate.
+name: Deep diagnose
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Comma node ids (e.g. pl or pl,de)'
+        required: true
+        default: 'pl'
+        type: string
+      include_logs:
+        description: 'Also dump sing-box/e2e journals on targets'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kpax-deep-diag
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH
+        env:
+          KPAX_DEPLOY_SSH_KEY: ${{ secrets.KPAX_DEPLOY_SSH_KEY }}
+          KPAX_DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.KPAX_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: bash tools/ci/ssh_setup.sh
+      - name: Deep diagnose (panel-orchestrated)
+        env:
+          PANEL: ${{ secrets.KPAX_DEPLOY_HOST }}
+          TARGETS: ${{ inputs.targets }}
+          INCLUDE_LOGS: ${{ inputs.include_logs }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CI=/usr/local/lib/kpax-ci/kpax-ci
+          echo "== diagnose $TARGETS =="
+          # Full output must appear in Actions logs (tee)
+          if ! "${SSH[@]}" "gha@${PANEL}" "sudo $CI diagnose $TARGETS" | tee out/diagnose.txt; then
+            echo "FAIL diagnose" | tee -a out/diagnose.txt
+          fi
+          if [[ "${INCLUDE_LOGS}" == "true" ]]; then
+            echo "== panel e2e logs =="
+            "${SSH[@]}" "gha@${PANEL}" "sudo $CI logs e2e 100" | tee out/panel-e2e-logs.txt || true
+            declare -A HOSTS=(
+              [panel]="$PANEL"
+              [de]=31.77.116.51
+              [fi]=144.31.169.6
+              [pl]=2.26.225.213
+              [ru]=195.133.45.167
+              [ru2]=152.228.112.142
+            )
+            IFS=',' read -ra items <<< "$TARGETS"
+            for id in "${items[@]}"; do
+              id="$(echo "$id" | xargs)"
+              host="${HOSTS[$id]:-}"
+              [[ -n "$host" ]] || continue
+              echo "== logs sing-box $id =="
+              "${SSH[@]}" "gha@${host}" "sudo $CI logs sing-box 80" | tee "out/logs-${id}-singbox.txt" || true
+            done
+            # For PL path also grab front journals
+            if [[ "$TARGETS" == *pl* ]]; then
+              "${SSH[@]}" "gha@195.133.45.167" "sudo $CI logs sing-box 80" | tee out/logs-ru-singbox.txt || true
+              "${SSH[@]}" "gha@${PANEL}" "sudo $CI logs relay 60" | tee out/logs-panel-relay.txt || true
+            fi
+          fi
+          {
+            echo "# deep-diag summary $(date -u +%Y-%m-%dT%H:%MZ)"
+            grep -E 'STATUS=|FAIL|WARN|softprobe|hop |pbk_|sid_|ci_e2e|PL_|NODE ' out/*.txt 2>/dev/null | head -200 || true
+          } | tee out/SUMMARY.txt
+          # Honest: diagnose STATUS=FAIL marks job failed
+          if grep -q 'STATUS=FAIL' out/diagnose.txt 2>/dev/null; then
+            echo "::error::diagnose reported STATUS=FAIL (see inline logs above)"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deep-diag-${{ github.run_id }}
+          path: out/
+          retention-days: 14

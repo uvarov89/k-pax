@@ -29,8 +29,8 @@ Statuses: `VERIFIED` / `PARTIAL` / `FAILED` / `NOT TESTED`.
 | 23 | In-place config-patch dry-run | VERIFIED | [46135857661](https://github.com/uvarov89/k-pax/actions/runs/46135857661) — `ci-drill` |
 | 24 | Deadman auto-fire drill | VERIFIED | [46135409109](https://github.com/uvarov89/k-pax/actions/runs/46135409109) — restored `drill_version=1` |
 | 25 | sync-users no false OK on partial fail | VERIFIED (code) | exits non-zero if any node fails (`eaf35ef`) |
-| 26 | DNS patch allowlist + dry-run (no PL write) | VERIFIED (panel→PL dry-run) | `server 127.0.0.1→1.1.1.1`, `sing-box check` OK, digest `918015c4…`; Actions link after push |
-| 27 | dns-check DNS root-cause | VERIFIED (on PL) | `FAIL root_cause=singbox_dns_to_127.0.0.1_without_listener`; stub/public resolve OK |
+| 26 | DNS patch allowlist + dry-run (no PL write) | VERIFIED | [46156385608](https://github.com/uvarov89/k-pax/actions/runs/46156385608) — `127.0.0.1→1.1.1.1`, validate OK, digest `918015c4…` |
+| 27 | dns-check DNS root-cause | VERIFIED | [46156382215](https://github.com/uvarov89/k-pax/actions/runs/46156382215) — honest FAIL; no listener on `127.0.0.1:53` |
 
 ## Key config-ops runs (2026-11-28)
 
